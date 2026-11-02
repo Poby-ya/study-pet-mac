@@ -14,8 +14,8 @@ private let myX = (petSize.width - deskWidth) / 2
 private let seatX = myX - deskWidth - 22
 private let rightX = myX + deskWidth + 22
 
-/// A little classroom, drawn like the Windows app's PetWindow.cs: my desk on the right
-/// and the pinned seatmate's on the left, each with a nameplate and a speech bubble, and
+/// A little classroom, drawn like the Windows app's PetWindow.cs: my desk in the centre
+/// and pinned friends on the left and right, each with a nameplate and a speech bubble, and
 /// (unless hidden) a classroom behind them with a chalkboard of who's studying. It floats
 /// above every app on every desktop without ever taking focus, and stays out of ⌘-Tab.
 /// It starts bottom-right above the Dock; drag it anywhere and it remembers the spot.

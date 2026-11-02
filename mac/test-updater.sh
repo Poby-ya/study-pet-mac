@@ -8,7 +8,7 @@ HASH="$(tr -d '[:space:]' < mac/build/StudyPet-mac.zip.sha256)"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DATA="$HOME/Library/Application Support/StudyPet"
 mkdir -p "$DATA"
-wait_quit() { for _ in {1..40}; do kill -0 "$1" 2>/dev/null || return; sleep 0.2; done; echo "quit timed out"; exit 1; }
+wait_quit() { for _ in {1..40}; do kill -0 "$1" 2>/dev/null || return 0; sleep 0.2; done; echo "quit timed out"; exit 1; }
 for mode in studying paused; do
   printf 'updateResume={"state":"%s","subject":"updater-fixture","seconds":1234.5}\n' "$mode" > "$DATA/settings.txt"
   open "$APP"

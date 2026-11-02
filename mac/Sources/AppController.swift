@@ -244,7 +244,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Switching gender also rolls a new hairstyle and outfit.
+    /// One button rolls a complete new look.
     @objc private func switchLook() {
         pet.look = Look.random(girl: Bool.random())
         statusItem.button?.image = Sprites.face(pet.look)
