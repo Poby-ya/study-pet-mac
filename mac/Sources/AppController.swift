@@ -456,7 +456,6 @@ final class AppController: NSObject, NSMenuDelegate {
             var status = room.error.isEmpty ? "방에 \(members.count)명" : "연결 안 됨: " + room.error
             if status.count > 60 { status = String(status.prefix(60)) + "…" }
             share.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
-            if !requests.isEmpty { share.addItem(item("가입 요청 \(requests.count)건 보기", #selector(showRequests))) }
             share.addItem(item("초대 코드 복사", #selector(copyInvite)))
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {
