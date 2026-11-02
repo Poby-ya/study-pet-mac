@@ -13,13 +13,13 @@
         "approved": {
           "$uid": {
             ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && newData.parent().parent().child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid)",
+            ".write": "auth != null && newData.parent().parent().child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid) && ($uid != auth.uid || newData.val() == true)",
             ".validate": "newData.val() == true"
           }
         },
         "members": {
           "$uid": {
-            ".write": "auth != null && ((auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true && (!root.child('seats').child($uid).exists() || root.child('seats').child($uid).val() == $room)) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == auth.uid))",
+            ".write": "auth != null && ((auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == auth.uid))",
             ".validate": "newData.hasChildren(['name', 'look', 'state', 'subject', 'minutes', 'updated'])",
             "name": {
               ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
@@ -49,7 +49,7 @@
         },
         "pokes": {
           "$to": {
-            ".write": "auth != null && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
+            ".write": "auth != null && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true && ((!newData.exists() && auth.uid == $to) || (newData.exists() && root.child('rooms').child($room).child('approved').child($to).val() == true))",
             ".validate": "newData.hasChildren(['from', 'name', 'look', 'message', 'at']) && newData.child('from').val() == auth.uid",
             "from": {
               ".validate": "newData.isString()"
@@ -76,9 +76,13 @@
         },
         "names": {
           "$uid": {
-            ".write": "auth != null && (newData.parent().parent().child('owner').val() == auth.uid || (auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true && (!root.child('seats').child($uid).exists() || root.child('seats').child($uid).val() == $room)))",
+            ".write": "auth != null && (newData.parent().parent().child('owner').val() == auth.uid || (auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true))",
             ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
           }
+        },
+        "entry": {
+          ".write": "auth != null && newData.parent().child('owner').val() == auth.uid",
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{16,40}$/) && newData.parent().parent().child(newData.val()).child('owner').val() == auth.uid"
         }
       }
     },
@@ -126,6 +130,15 @@
           "$other": {
             ".validate": false
           }
+        }
+      }
+    },
+    "access": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$room": {
+          ".write": "auth != null && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid)",
+          ".validate": "newData.val() == true && newData.parent().parent().parent().child('rooms').child($room).child('approved').child($uid).val() == true"
         }
       }
     }
