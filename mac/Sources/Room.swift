@@ -236,6 +236,7 @@ final class Room: @unchecked Sendable {
 
     private static let stream: URLSession = {
         let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 128
         config.timeoutIntervalForRequest = 120 // Firebase sends a keep-alive every 30 s
         return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
     }()

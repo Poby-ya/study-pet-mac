@@ -257,7 +257,7 @@ final class PetWindow: NSPanel {
         let tapping = visiting && !walking && !outgoing && (mood == .studying || mood == .dozing)
         let tap = tapping && frameCount % 2 == 0
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : tapping ? .reach : .wave, x: visitorX,
-                                 hop: walking && frameCount % 2 == 0 ? scale : 0, mirror: visitSide == 1) }
+                                 hop: walking && frameCount % 2 == 0 ? scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
         drawNameplate(myName(), deskX: myX)
         if tapping {
@@ -266,7 +266,7 @@ final class PetWindow: NSPanel {
             Sprites.draw(layers: Sprites.reachLayers(down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
-        let destination = outgoingSide < 0 ? seatX : outgoingSide > 0 ? rightX : petSize.width - deskWidth / 2
+        let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : petSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Self.travelStep(outgoingTick)) / 4
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
                                  hop: frameCount % 2 == 0 ? scale : 0, mirror: (destination < myX) != (outgoingTick > 18)) }
