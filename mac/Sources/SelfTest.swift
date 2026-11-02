@@ -24,9 +24,10 @@ enum SelfTest {
         checkRecords()
         checkRecovery()
         checkUpdater()
+        checkPetControls(out)
         checkRoom()
         checkSprites()
-        if let invite { checkNetwork(invite, out) }
+        if let invite { checkNetwork(invite, out); checkManyRooms(invite) }
 
         save(render(Sprites.sheetSize(scale: 4)) { Sprites.drawSheet(scale: 4) }, out, "sprites.png")
         save(scenes(), out, "scenes.png")
@@ -67,6 +68,73 @@ enum SelfTest {
         try? report.write(to: out.appendingPathComponent("selftest.txt"), atomically: true, encoding: .utf8)
         print(report)
         return failures.isEmpty ? 0 : 1
+    }
+
+    private static func checkPetControls(_ out: URL) {
+        check([0, 2, 4, 18, 21, 24].map(PetWindow.travelStep) == [0, 2, 4, 4, 2, 0], "visit: walk out, greet and return")
+        let mixed = (0..<100).map { _ in Look.random(girl: Bool.random()) }
+        check(mixed.contains(where: \.girl) && mixed.contains(where: { !$0.girl }), "look: random decoration includes all genders")
+        let pet = PetWindow()
+        pet.myName = { "지우" }
+        pet.bubbleText = { "영어\n23분째 공부 중" }
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: true, dozing: true, text: "국어 · 5분\n쿨쿨… 쉬는 중") }
+        for percent in [50, 75, 100, 125, 150] {
+            pet.setDisplaySize(percent)
+            pet.preview(.studying, frame: 0)
+            pet.orderFrontRegardless()
+            save(capture(pet.contentView!), out, "three-seats-\(percent).png")
+            check(pet.sizePercent == percent && pet.frame.width <= (NSScreen.main?.visibleFrame.width ?? 10000) && pet.frame.height <= (NSScreen.main?.visibleFrame.height ?? 10000), "size: three seats fit screen at \(percent)")
+        }
+        for direction in [-1, 1, 0] {
+            for tick in [2, 8, 21] {
+                pet.preview(.studying, frame: tick, outgoingTick: tick, outgoingDirection: direction)
+                save(render(petSize) { pet.paint() }, out, "outgoing-\(direction)-\(tick).png")
+            }
+        }
+        pet.preview(.leaving, frame: 4)
+        save(render(petSize) { pet.paint() }, out, "farewell.png")
+        pet.close()
+    }
+
+    private static func checkManyRooms(_ code: String) {
+        guard let base = Invite.parse(code), base.key.isEmpty else { return }
+        let invite = base.withRoom(Room.randomId(20)), second = Room.randomId(20)
+        let owner = Room.randomId(12), friend = Room.randomId(12), other = Room.randomId(12)
+        func patch(_ body: [String: Any]) {
+            let data = Room.json(body)
+            _ = finish { try await Room.call("PATCH", invite.url("", ""), data) }
+        }
+        patch(["rooms/\(invite.roomId)/owner": owner, "rooms/\(invite.roomId)/name": "첫 방", "rooms/\(second)/owner": owner, "rooms/\(second)/name": "둘째 방",
+               "rooms/\(invite.roomId)/approved/\(owner)": true, "rooms/\(second)/approved/\(owner)": true,
+               "rooms/\(invite.roomId)/approved/\(friend)": true, "rooms/\(second)/approved/\(friend)": true, "rooms/\(second)/approved/\(other)": true,
+               "access/\(owner)/\(invite.roomId)": true, "access/\(owner)/\(second)": true,
+               "access/\(friend)/\(invite.roomId)": true, "access/\(friend)/\(second)": true, "access/\(other)/\(second)": true])
+        let a = StudyRooms(invite: invite, me: owner, token: { "" })
+        let b = StudyRooms(invite: invite, me: friend, token: { "" })
+        let c = StudyRooms(invite: invite, me: other, token: { "" })
+        var seen: [Member] = [], received = false, ready = false
+        b.changed = { seen = $0 }
+        c.changed = { _ in ready = true }
+        c.poked = { received = $0.from == friend }
+        func status(_ name: String, _ minutes: Int) -> [String: Any] {
+            ["name": name, "look": "boy", "style": "b120310", "state": "studying", "subject": "수학", "minutes": minutes, "updated": Room.serverTime]
+        }
+        a.publish(status("방장", 5)); b.publish(status("친구", 17)); c.publish(status("다른 친구", 2))
+        check(waitFor { a.choices.count == 2 && b.choices.count == 2 && seen.count == 3 && ready }, "multi-room: all allowed rooms and cross-room friends are visible")
+        for id in [invite.roomId, second] {
+            try? b.select(id)
+            check(waitFor { b.boardMembers.contains { $0.id == friend && $0.minutes == 17 } }, "multi-room: one elapsed time is mirrored to every allowed room")
+            check(b.boardMembers.contains { $0.id == owner }, "multi-room: the owner appears in all rooms")
+        }
+        check(Set(seen.map(\.id)).count == seen.count, "multi-room: shared members are deduplicated")
+        try? b.select(invite.roomId)
+        b.poke(other, ["from": friend, "name": "친구", "look": "boy", "message": "같이 공부하자 !", "at": Room.serverTime])
+        check(waitFor { received }, "multi-room: poke reaches another room's member while viewing the first board")
+        patch(["access/\(friend)/\(invite.roomId)": NSNull(), "rooms/\(invite.roomId)/approved/\(friend)": NSNull(), "rooms/\(invite.roomId)/members/\(friend)": NSNull(), "rooms/\(invite.roomId)/names/\(friend)": NSNull()])
+        check(waitFor { b.choices.count == 1 && b.selected == second }, "multi-room: revoked room disappears and selection falls back")
+        a.leave(); b.leave(); c.leave(); a.flush(); b.flush(); c.flush()
+        a.dispose(); b.dispose(); c.dispose()
     }
 
     private static func checkUpdater() {
@@ -377,7 +445,7 @@ enum SelfTest {
 
         a.leave()
         a.flush()
-        check(waitFor { seenByB != nil && !seenByB!.contains { $0.id == owner } }, "network: B should see A leave")
+        check(waitFor { seenByB != nil && !seenByB!.contains { $0.id == owner && $0.state != "off" } }, "network: B should see A leave")
         b.leave()
         b.flush()
         a.dispose()

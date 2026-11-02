@@ -15,7 +15,7 @@ final class StudyRooms {
     var changed: (([Member]) -> Void)?
     var poked: ((Poke) -> Void)?
     var choices: [(id: String, name: String)] {
-        channels.map { (id: $0.key, name: $0.value.name.isEmpty ? "방 · " + $0.key.suffix(4) : $0.value.name) }.sorted { $0.name < $1.name }
+        channels.map { (id: $0.key, name: $0.value.name.isEmpty ? "방 · " + String($0.key.suffix(4)) : $0.value.name) }.sorted { $0.name < $1.name }
     }
     var name: String { channels[selected]?.name ?? "" }
     var error: String { setupError.isEmpty ? channels.values.first(where: { !$0.error.isEmpty })?.error ?? "" : setupError }
@@ -25,6 +25,7 @@ final class StudyRooms {
         self.invite = invite; self.me = me; self.token = token
         selected = Settings.get("viewRoom")
         Task { @MainActor in
+            while !disposed {
             do {
                 let credential = try await token()
                 let text = try await Room.call("GET", invite.url("access/" + me, credential), nil)
@@ -33,6 +34,7 @@ final class StudyRooms {
                 let legacy = ids.isEmpty
                 if legacy, let id = try await Room.resolve(invite, me: me, token: credential) { ids = [id] }
                 guard !disposed else { return }
+                setupError = ""
                 sync(ids)
                 monitor = Room(invite: invite, me: me, token: token, followSeat: false, watchAccess: true, listenToRoom: false)
                 var hasIndex = !legacy
@@ -40,11 +42,14 @@ final class StudyRooms {
                     if !ids.isEmpty { hasIndex = true }
                     if hasIndex { self?.sync(ids) }
                 }
+                return
             } catch {
                 if !disposed {
                     setupError = "여러 방에 연결하지 못했어요. 방장의 최신 보안 규칙 게시와 인터넷 연결을 확인해 주세요. " + describe(error)
                     changed?([])
                 }
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
             }
         }
     }
