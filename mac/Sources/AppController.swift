@@ -13,7 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard controller?.prepareQuit() != false else { return .terminateCancel }
         if controller?.beginFarewell() == true {
             terminating = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { sender.reply(toApplicationShouldTerminate: true) }
+            // Termination may run a modal loop; dispatching back to the busy main queue can stall it.
+            let farewell = Timer(timeInterval: 3, repeats: false) { _ in sender.reply(toApplicationShouldTerminate: true) }
+            RunLoop.main.add(farewell, forMode: .common)
+            RunLoop.main.add(farewell, forMode: .modalPanel)
             return .terminateLater
         }
         return .terminateNow

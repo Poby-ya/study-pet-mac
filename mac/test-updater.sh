@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integration test on the disposable CI account, never on a person's Mac.
-set -euo pipefail
+set -euxo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true ]] || { echo 'CI only'; exit 2; }
 APP="$HOME/Applications/StudyPet.app"
 ZIP="$PWD/mac/build/StudyPet-mac.zip"
