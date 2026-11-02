@@ -38,8 +38,7 @@ test "$(pgrep -f "$APP/Contents/MacOS/StudyPet")" = "$before"
 # A bundle that cannot start rolls back and reopens the previous working app.
 bash mac/install-mac.sh --prepare-update "$ZIP" "$HASH" "$APP" "$VERSION"
 next="$APP.update-${HASH:0:16}.app"
-printf '#!/bin/bash\nexit 7\n' > "$next/Contents/MacOS/StudyPet"
-chmod +x "$next/Contents/MacOS/StudyPet"
+printf 'int main(void) { return 7; }\n' | clang -x c - -o "$next/Contents/MacOS/StudyPet"
 codesign --force --sign - "$next"
 kill -TERM "$before"
 sleep 2
