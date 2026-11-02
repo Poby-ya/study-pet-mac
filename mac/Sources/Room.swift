@@ -305,7 +305,7 @@ final class Room: @unchecked Sendable {
 
     /// Approved, still waiting, or turned down (the owner deleted the request).
     static func check(_ invite: Invite, me: String, token: String) async throws -> Standing {
-        if try await call("GET", invite.url("rooms/\(invite.roomId)/approved/\(me)", token), nil) == "true" { return .approved }
+        if try await resolve(invite, me: me, token: token) != nil { return .approved }
         return try await call("GET", invite.url("requests/\(invite.roomId)/\(me)", token), nil) == "null" ? .rejected : .waiting
     }
 

@@ -35,7 +35,10 @@ enum SelfTest {
                               anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
         save(capture(planner.contentView!), out, "planner.png")
         let help = HelpWindow()
+        help.orderFront(nil)
+        help.contentView?.layoutSubtreeIfNeeded()
         save(capture(help.contentView!), out, "help.png")
+        help.close()
         for count in [0, 1, 8] {
             let page = Planner(ranking: (0..<count).map { _ in Records.Rank(subject: "아주 긴 한글 과목 이름", month: 1234, total: 12345) }, anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
             save(capture(page.contentView!), out, "planner-\(count).png")

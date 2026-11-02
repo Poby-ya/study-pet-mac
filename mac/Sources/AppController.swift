@@ -397,11 +397,10 @@ final class AppController: NSObject, NSMenuDelegate {
                 let token = try await auth?.token() ?? ""
                 let me = await auth?.uid ?? self.localId
                 let standing = try await Room.check(invite, me: me, token: token)
-                if standing == .waiting { return }
-                self.safely("방 저장") {
-                    try Settings.set("pending", "")
-                    if standing == .rejected { try Settings.set("room", "") }
-                }
+                if standing == .waiting || Settings.get("room") != invite.code { return }
+                let seat = standing == .approved ? try await Room.resolve(invite, me: me, token: token) ?? "" : ""
+                if Settings.get("room") != invite.code { return }
+                try Settings.setMany(("pending", ""), ("room", standing == .rejected ? "" : invite.code), ("seat", seat))
                 self.alert(standing == .approved ? "방에 들어왔어요! 메뉴의 옆자리 만들기로 친구를 옆에 앉혀 보세요."
                                                  : "방장이 가입 요청을 받지 않았어요.")
                 self.connect()

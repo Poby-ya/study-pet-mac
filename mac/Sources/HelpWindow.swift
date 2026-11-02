@@ -28,6 +28,8 @@ final class HelpWindow: NSWindow {
         contentView?.addSubview(tabs)
         center()
     }
+    override func cancelOperation(_ sender: Any?) { close() }
+
     static func sections() -> [(String, String)] {
         guard let url = Bundle.main.url(forResource: "help", withExtension: "txt"), let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         return text.components(separatedBy: "## ").filter { !$0.isEmpty }.compactMap { part in
