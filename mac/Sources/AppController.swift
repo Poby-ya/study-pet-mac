@@ -1,0 +1,673 @@
+import AppKit
+import Carbon.HIToolbox
+import ServiceManagement
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var controller: AppController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) { controller = AppController() }
+
+    func applicationWillTerminate(_ notification: Notification) { controller?.shutDown() }
+}
+
+/// Owns the study state (off / studying / paused), the shortcuts, the menu bar icon and
+/// the shared room, and turns them into pet moods, rows in sessions.csv and status
+/// updates for friends, the way AppController.cs does on Windows.
+final class AppController: NSObject, NSMenuDelegate {
+    private enum State { case off, studying, paused }
+
+    private static let pokeCooldown: TimeInterval = 10
+
+    private let pet = PetWindow()
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let menu = NSMenu()
+    private let hotkeys = Hotkeys()
+    private var heartbeat: Timer?    // runs while the pet is out: saves the open segment, tells friends we're here
+    private var pendingCheck: Timer? // runs while waiting for the owner's approval
+    private let localId: String      // my id on the local test server, which has no sign-in
+    private var myId = ""            // my member id in the room: the Firebase uid, or localId
+    private var auth: Auth?
+
+    private var state = State.off
+    private var subject = ""
+    private var banked: TimeInterval = 0 // closed segments of the current session
+    private var segmentStart: Date?      // set while studying
+    private var farewell = ""
+    private var flash = ""               // a short note in my bubble, e.g. after poking someone
+    private var flashUntil = Date.distantPast
+    private var lastPoke = Date.distantPast
+    private var news = ""                // "민지가 공부를 시작했어요 !", in a bubble above mine for a while
+    private var newsUntil = Date.distantPast
+    private var planner: Planner?
+    private var stats: StatsWindow?
+    private var room: Room?
+    private var members: [Member] = []
+    private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
+    private var requests: [JoinRequest] = [] // owner only
+    private var later = Set<String>()        // requests the owner put off
+    private var deciding = false
+    private var checking = false
+
+    override init() {
+        let saved = Settings.get("id")
+        localId = saved.isEmpty ? Room.randomId(12) : saved
+        super.init()
+        if saved.isEmpty { safely("설정 저장") { try Settings.set("id", self.localId) } }
+
+        menu.delegate = self
+        menu.autoenablesItems = false
+        statusItem.button?.image = Sprites.face(pet.look)
+        statusItem.button?.toolTip = "공부 친구 · ⌃⌥S로 공부 시작"
+        statusItem.menu = menu
+
+        pet.contextMenu = menu
+        pet.bubbleText = { [unowned self] in self.bubble() }
+        pet.seatmate = { [unowned self] in self.seatView() }
+        pet.myName = { Settings.get("name") }
+        pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
+        pet.board = { [unowned self] in
+            if Settings.get("background") == "hidden" { return nil }
+            if self.room != nil { return Room.board(self.members, me: self.myId) }
+            return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
+        }
+        pet.seatmateClicked = { [unowned self] in self.pokeSeatmate() }
+        pet.petClicked = { [unowned self] in
+            if self.state != .off { self.toggle() } // pause or resume; never reopens the planner mid-farewell
+        }
+        pet.awayClicked = { [unowned self] in
+            if self.state == .off { self.showPlanner() }
+        }
+
+        Hotkeys.pressed = { [weak self] id in
+            if id == 1 { self?.toggle() } else { self?.stop() }
+        }
+        let startKey = hotkeys.register(1, keyCode: kVK_ANSI_S)
+        let stopKey = hotkeys.register(2, keyCode: kVK_ANSI_X)
+        if !startKey || !stopKey {
+            alert("⌃⌥S 또는 ⌃⌥X를 다른 프로그램이 쓰고 있어요. 메뉴 막대의 펫 얼굴을 눌러 시작할 수 있어요.")
+        }
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
+
+        safely("지난 기록 복구") { try Records.recoverOpen() }
+        connect()
+    }
+
+    private var nickname: String { Settings.get("name") }
+
+    @objc private func toggle() {
+        switch state {
+        case .studying: pause()
+        case .paused: resume()
+        case .off: showPlanner()
+        }
+    }
+
+    private func showPlanner() {
+        if let planner, planner.isVisible {
+            planner.present()
+            return
+        }
+        var ranking: [Records.Rank] = []
+        let month = Calendar.current.dateInterval(of: .month, for: Date())!.start
+        safely("기록 읽기") { ranking = try Records.ranking(Records.load(), hidden: Records.hidden(), monthStart: month, count: 8) }
+        let page = Planner(ranking: ranking, anchor: pet.frame)
+        page.picked = { [weak self] in self?.start($0) }
+        page.removed = { [weak self] removed, alsoRecords in
+            self?.safely("과목 지우기") {
+                try Records.hide(removed)
+                if alsoRecords { try Records.deleteSubject(removed) }
+            }
+        }
+        planner = page
+        page.present()
+    }
+
+    private func start(_ picked: String) {
+        guard state == .off else { return }
+        safely("과목 목록 저장") { try Records.unhide(picked) }
+        subject = picked
+        banked = 0
+        state = .studying
+        openSegment()
+        let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
+        pet.appear(.studying)
+        publish()
+    }
+
+    @objc private func beat() {
+        saveOpen()
+        publish()
+    }
+
+    private func pause() {
+        closeSegment()
+        state = .paused
+        pet.setMood(.dozing)
+        publish()
+    }
+
+    private func resume() {
+        state = .studying
+        openSegment()
+        pet.setMood(.studying)
+        publish()
+    }
+
+    @objc private func stop() {
+        guard state != .off else { return }
+        closeSegment()
+        heartbeat?.invalidate()
+        heartbeat = nil
+        state = .off
+        var today = 0.0
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: midnight)!
+        safely("기록 읽기") { today = Records.minutes(Records.daily(try Records.load()), from: midnight, to: tomorrow) }
+        farewell = "수고했어요!\n오늘 \(Records.duration(today))"
+        pet.standUpAndLeave()
+        publish()
+    }
+
+    private func openSegment() {
+        segmentStart = Date()
+        saveOpen()
+    }
+
+    private func saveOpen() {
+        guard let start = segmentStart else { return }
+        safely("기록 저장") { try Records.saveOpen(start: start, lastSeen: Date(), subject: self.subject) }
+    }
+
+    /// Writes the running segment to sessions.csv. Safe to call when nothing is running.
+    private func closeSegment() {
+        guard let start = segmentStart else { return }
+        let end = Date()
+        segmentStart = nil
+        banked += end.timeIntervalSince(start)
+        // If the append fails, open.txt stays behind and the next launch recovers it.
+        safely("기록 저장") {
+            try Records.append(Segment(start: start, end: end, subject: self.subject))
+            try Records.clearOpen()
+        }
+    }
+
+    private var elapsed: TimeInterval { banked + (segmentStart.map { Date().timeIntervalSince($0) } ?? 0) }
+
+    private func bubble() -> String {
+        if Date() < flashUntil { return flash }
+        switch state {
+        case .studying: return elapsed < 60 ? "\(subject)\n공부 시작!" : "\(subject)\n\(Records.duration(elapsed / 60))째 공부 중"
+        case .paused: return "\(subject) · \(Records.duration(elapsed / 60))\n쿨쿨… 쉬는 중"
+        case .off: return farewell
+        }
+    }
+
+    /// Switching gender also rolls a new hairstyle and outfit.
+    @objc private func switchLook() {
+        pet.look = Look.random(girl: !pet.look.girl)
+        statusItem.button?.image = Sprites.face(pet.look)
+        publish()
+    }
+
+    // ---- Friends ------------------------------------------------------------------
+
+    private func connect() {
+        room?.dispose()
+        room = nil
+        members = []
+        requests = []
+        roomSeen = false
+        pendingCheck?.invalidate()
+        pendingCheck = nil
+        guard let invite = Invite.parse(Settings.get("room")) else { return }
+        auth = invite.key.isEmpty ? nil : Auth(apiKey: invite.key)
+        myId = auth != nil ? Settings.get("uid") : localId
+        if Settings.get("pending") == "1" {
+            let check = Timer(timeInterval: 10, target: self, selector: #selector(checkPending), userInfo: nil, repeats: true)
+            RunLoop.main.add(check, forMode: .common)
+            pendingCheck = check
+            return
+        }
+        if nickname.isEmpty || myId.isEmpty { return }
+        let auth = self.auth
+        let joined = Room(invite: invite, me: myId, token: { try await auth?.token() ?? "" }, owner: Settings.get("owner") == "1")
+        joined.requested = { [weak self, weak joined] list in
+            guard let self, self.room === joined else { return }
+            self.requests = list
+            self.showNextRequest()
+        }
+        joined.changed = { [weak self, weak joined] list in
+            guard let self, self.room === joined else { return }
+            let started = Room.newlyStarted(before: self.members, after: list, me: self.myId)
+            if self.roomSeen && !started.isEmpty {
+                self.news = Room.startedText(started)
+                self.newsUntil = Date().addingTimeInterval(8)
+            }
+            self.roomSeen = true
+            self.members = list
+        }
+        joined.poked = { [weak self, weak joined] poke in
+            guard let self, self.room === joined else { return }
+            self.pet.visit(poke.look, text: "\(poke.name) : \(poke.message)", fromSeatmate: poke.from == Settings.get("seatmate"))
+        }
+        room = joined
+        publish()
+    }
+
+    private func publish() {
+        room?.publish([
+            "name": nickname,
+            "look": pet.look.girl ? "girl" : "boy",
+            "style": pet.look.code,
+            "state": state == .studying ? "studying" : state == .paused ? "paused" : "off",
+            "subject": state == .off ? "" : subject,
+            "minutes": min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
+            "updated": Room.serverTime,
+        ])
+    }
+
+    @discardableResult
+    @objc private func askNickname() -> Bool {
+        let name = Room.cleanName(ask("친구들에게 보일 이름을 정해 주세요. (\(Room.maxNameLength)자까지)", title: "닉네임", value: nickname))
+        if name.isEmpty { return false }
+        safely("닉네임 저장") { try Settings.set("name", name) }
+        if room == nil { connect() } else { publish() }
+        return true
+    }
+
+    /// Signs in to the invite's database; the local test server has no sign-in.
+    private func signIn(_ invite: Invite) async throws -> (me: String, token: String) {
+        if invite.key.isEmpty { return (localId, "") }
+        let signIn = Auth(apiKey: invite.key)
+        let token = try await signIn.token()
+        return (await signIn.uid, token)
+    }
+
+    /// Asking to join: nickname, real name and referrer go to the owner, who decides.
+    @objc private func joinRoom() {
+        let code = ask("친구에게 받은 초대 코드를 붙여 넣어 주세요.", title: "초대 코드 넣기", value: "")
+        if code.isEmpty { return }
+        guard let invite = Invite.parse(code) else {
+            alert("초대 코드가 올바르지 않아요. 받은 코드를 앞뒤 빠짐없이 그대로 붙여 넣었는지 확인해 주세요.")
+            return
+        }
+        guard let form = askJoinForm() else { return }
+        safely("닉네임 저장") { try Settings.set("name", form.nickname) }
+        let look = pet.look
+        Task { @MainActor in
+            do {
+                let (me, token) = try await self.signIn(invite)
+                try await Room.request(invite, me: me, token: token, [
+                    "name": form.nickname, "realName": form.realName, "referrer": form.referrer,
+                    "look": look.girl ? "girl" : "boy", "style": look.code, "at": Room.serverTime,
+                ])
+            } catch {
+                self.alert("가입 요청을 보내지 못했어요.\n\n" + describe(error))
+                return
+            }
+            self.safely("방 저장") {
+                try Settings.set("room", invite.code)
+                try Settings.set("owner", "")
+                try Settings.set("seatmate", "")
+                try Settings.set("pending", "1")
+            }
+            self.alert("가입 요청을 보냈어요. 방장이 승인하면 알려 드릴게요.")
+            self.connect()
+        }
+    }
+
+    /// The join form: nickname, real name and who invited you, all required.
+    private func askJoinForm() -> (nickname: String, realName: String, referrer: String)? {
+        var values = [nickname, "", ""]
+        while true {
+            let alert = NSAlert()
+            alert.messageText = "방에 들어가기"
+            alert.informativeText = "방장이 확인하고 승인하면 들어갈 수 있어요.\n이름은 방장만 보고, 승인·거절이 정해지면 지워져요."
+            alert.addButton(withTitle: "요청 보내기")
+            alert.addButton(withTitle: "취소")
+            let labels = ["닉네임", "이름", "추천인"]
+            let stack = NSStackView()
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            let fields = labels.indices.map { i -> NSTextField in
+                let field = NSTextField(string: values[i])
+                field.placeholderString = labels[i]
+                field.widthAnchor.constraint(equalToConstant: 260).isActive = true
+                let row = NSStackView(views: [NSTextField(labelWithString: labels[i]), field])
+                row.views[0].widthAnchor.constraint(equalToConstant: 50).isActive = true
+                stack.addArrangedSubview(row)
+                return field
+            }
+            stack.frame = NSRect(x: 0, y: 0, width: 320, height: 90)
+            alert.accessoryView = stack
+            alert.window.initialFirstResponder = fields[0]
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() != .alertFirstButtonReturn { return nil }
+            values = [Room.cleanName(fields[0].stringValue), Room.cleanName(fields[1].stringValue, max: Room.maxRealNameLength),
+                      Room.cleanName(fields[2].stringValue)]
+            if !values.contains(where: \.isEmpty) { return (values[0], values[1], values[2]) }
+            self.alert("닉네임, 이름, 추천인을 모두 적어 주세요.")
+        }
+    }
+
+    /// While waiting to be let in: has the owner decided yet?
+    @objc private func checkPending() {
+        guard !checking, let invite = Invite.parse(Settings.get("room")) else { return }
+        checking = true
+        let auth = self.auth
+        Task { @MainActor in
+            defer { self.checking = false }
+            do {
+                let token = try await auth?.token() ?? ""
+                let me = await auth?.uid ?? self.localId
+                let standing = try await Room.check(invite, me: me, token: token)
+                if standing == .waiting { return }
+                self.safely("방 저장") {
+                    try Settings.set("pending", "")
+                    if standing == .rejected { try Settings.set("room", "") }
+                }
+                self.alert(standing == .approved ? "방에 들어왔어요! 메뉴의 옆자리 만들기로 친구를 옆에 앉혀 보세요."
+                                                 : "방장이 가입 요청을 받지 않았어요.")
+                self.connect()
+            } catch {
+                // Offline or the server hiccupped: the next tick tries again.
+            }
+        }
+    }
+
+    @objc private func createRoom() {
+        let database = ask("Firebase Realtime Database 주소를 붙여 넣어 주세요.\n(예: https://poby-study-room-default-rtdb.asia-southeast1.firebasedatabase.app)",
+                           title: "새 방 만들기 (1/2)", value: "")
+        if database.isEmpty { return }
+        let key = Invite.isLoopback(database) ? ""
+            : ask("Firebase 웹 API 키를 붙여 넣어 주세요.\n(프로젝트 설정 → 일반 → 웹 API 키, AIza로 시작해요)", title: "새 방 만들기 (2/2)", value: "")
+        guard let invite = Invite.create(database: database, key: key) else {
+            alert("주소나 웹 API 키가 올바르지 않아요. 주소는 https://로, 키는 AIza로 시작해요.")
+            return
+        }
+        if nickname.isEmpty && !askNickname() { return }
+        Task { @MainActor in
+            do {
+                let (me, token) = try await self.signIn(invite)
+                try await Room.create(invite, me: me, token: token)
+            } catch {
+                self.alert("방을 만들지 못했어요.\n\n" + describe(error))
+                return
+            }
+            self.safely("방 저장") {
+                try Settings.set("room", invite.code)
+                try Settings.set("owner", "1")
+                try Settings.set("seatmate", "")
+                try Settings.set("pending", "")
+            }
+            self.connect()
+            self.copyInvite()
+        }
+    }
+
+    /// The owner's decision on the next request that hasn't been put off.
+    // shortcut: a modal alert takes focus, where Windows shows a card that doesn't; fine for
+    // a handful of friends joining once each, worth a non-activating card if it gets in the way.
+    private func showNextRequest() {
+        guard !deciding, let next = requests.first(where: { !later.contains($0.uid) }) else { return }
+        deciding = true
+        let alert = NSAlert()
+        alert.messageText = "방에 들어오고 싶대요"
+        alert.informativeText = "닉네임: \(next.name)\n이름: \(next.realName)\n추천인: \(next.referrer)"
+        alert.addButton(withTitle: "승인")
+        alert.addButton(withTitle: "거절")
+        alert.addButton(withTitle: "나중에").keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        let answer = alert.runModal()
+        deciding = false
+        if answer == .alertFirstButtonReturn { room?.approve(next.uid) }
+        else if answer == .alertSecondButtonReturn { room?.reject(next.uid) }
+        else { later.insert(next.uid) }
+        requests.removeAll { $0.uid == next.uid }
+        showNextRequest()
+    }
+
+    @objc private func showRequests() {
+        later.removeAll()
+        showNextRequest()
+    }
+
+    @objc private func copyInvite() {
+        let invite = Settings.get("room")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(invite, forType: .string)
+        alert("초대 코드를 복사했어요. 카카오톡 등으로 친구에게 보내 주세요.\n\n" + invite)
+    }
+
+    /// Leaves the room, or withdraws a join request still waiting.
+    @objc private func leaveRoom() {
+        if Settings.get("pending") == "1", let invite = Invite.parse(Settings.get("room")) {
+            let auth = self.auth, me = myId
+            // The owner just won't find it, or will find a stale one; nothing to undo here.
+            Task {
+                guard let token = try? await auth?.token() ?? "" else { return }
+                try? await Room.cancelRequest(invite, me: me, token: token)
+            }
+        }
+        room?.leave()
+        room?.dispose()
+        room = nil
+        members = []
+        requests = []
+        pendingCheck?.invalidate()
+        pendingCheck = nil
+        safely("방 나가기") {
+            try Settings.set("room", "")
+            try Settings.set("seatmate", "")
+            try Settings.set("pending", "")
+            try Settings.set("owner", "")
+        }
+    }
+
+    private func findSeatmate() -> Member? {
+        let id = Settings.get("seatmate")
+        return id.isEmpty ? nil : members.first { $0.id == id }
+    }
+
+    private func seatView() -> PetWindow.Seat? {
+        guard room != nil, let mate = findSeatmate() else { return nil }
+        let here = Room.isHere(mate, Room.latest(members))
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused",
+                              text: Room.seatText(mate, here: here))
+    }
+
+    @objc private func pinSeatmate(_ sender: NSMenuItem) {
+        let id = sender.representedObject as? String ?? ""
+        safely("옆자리 저장") { try Settings.set("seatmate", id) }
+    }
+
+    /// Clicking the seatmate sends them a poke; their pet gets a visit from mine.
+    private func pokeSeatmate() {
+        guard let room, let mate = findSeatmate(), Date().timeIntervalSince(lastPoke) >= AppController.pokeCooldown else { return }
+        lastPoke = Date()
+        let message = Room.pokeMessage(mate, here: Room.isHere(mate, Room.latest(members)))
+        room.poke(mate.id, [
+            "from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code,
+            "message": message, "at": Room.serverTime,
+        ])
+        flash = "\(mate.name)에게 콕!\n“\(message)”"
+        flashUntil = Date().addingTimeInterval(5)
+    }
+
+    // ---- Menu ---------------------------------------------------------------------
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let toggleItem = item(state == .studying ? "일시정지" : state == .paused ? "다시 시작" : "공부 시작", #selector(toggle))
+        toggleItem.keyEquivalent = "s"
+        toggleItem.keyEquivalentModifierMask = [.control, .option]
+        menu.addItem(toggleItem)
+        let stopItem = item("그만하기", #selector(stop))
+        stopItem.keyEquivalent = "x"
+        stopItem.keyEquivalentModifierMask = [.control, .option]
+        stopItem.isEnabled = state != .off
+        menu.addItem(stopItem)
+        menu.addItem(.separator())
+        menu.addItem(item("기록 보기", #selector(showStats)))
+        menu.addItem(item(pet.look.girl ? "남학생으로 바꾸기" : "여학생으로 바꾸기", #selector(switchLook)))
+        menu.addItem(.separator())
+        menu.addItem(item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)))
+
+        let share = NSMenu()
+        if Settings.get("pending") == "1" {
+            share.addItem(NSMenuItem(title: "방장의 승인을 기다리는 중…", action: nil, keyEquivalent: ""))
+            share.addItem(item("가입 요청 취소", #selector(leaveRoom)))
+        } else if let room {
+            var status = room.error.isEmpty ? "방에 \(members.count)명" : "연결 안 됨: " + room.error
+            if status.count > 60 { status = String(status.prefix(60)) + "…" }
+            share.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
+            if !requests.isEmpty { share.addItem(item("가입 요청 \(requests.count)건 보기", #selector(showRequests))) }
+            share.addItem(item("초대 코드 복사", #selector(copyInvite)))
+            share.addItem(item("방 나가기", #selector(leaveRoom)))
+        } else {
+            share.addItem(item("초대 코드 넣기…", #selector(joinRoom)))
+            share.addItem(item("새 방 만들기…", #selector(createRoom)))
+        }
+        let shareItem = NSMenuItem(title: "친구와 공부하기", action: nil, keyEquivalent: "")
+        shareItem.submenu = share
+        menu.addItem(shareItem)
+
+        if room != nil {
+            let pinned = Settings.get("seatmate")
+            let seats = NSMenu()
+            let newest = Room.latest(members)
+            for m in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
+                let place = !Room.isHere(m, newest) ? "자리 비움" : m.state == "paused" ? "쉬는 중" : "공부 중"
+                let seat = item("\(m.name) (\(place))", #selector(pinSeatmate(_:)))
+                seat.representedObject = m.id
+                seat.state = m.id == pinned ? .on : .off
+                seats.addItem(seat)
+            }
+            if seats.items.isEmpty { seats.addItem(NSMenuItem(title: "방에 아직 친구가 없어요", action: nil, keyEquivalent: "")) }
+            if !pinned.isEmpty {
+                seats.addItem(.separator())
+                let clear = item("옆자리 비우기", #selector(pinSeatmate(_:)))
+                clear.representedObject = ""
+                seats.addItem(clear)
+            }
+            let seatItem = NSMenuItem(title: pinned.isEmpty ? "옆자리 만들기" : "옆자리 바꾸기", action: nil, keyEquivalent: "")
+            seatItem.submenu = seats
+            menu.addItem(seatItem)
+        }
+        menu.addItem(item(Settings.get("background") == "hidden" ? "배경 보이기" : "배경 숨기기", #selector(toggleBackground)))
+        menu.addItem(.separator())
+        let login = item("로그인할 때 자동 실행", #selector(toggleLogin))
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
+        menu.addItem(item("종료", #selector(quit)))
+    }
+
+    private func item(_ title: String, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    @objc private func toggleBackground() {
+        safely("배경 설정 저장") { try Settings.set("background", Settings.get("background") == "hidden" ? "" : "hidden") }
+    }
+
+    @objc private func toggleLogin() {
+        safely("자동 실행 설정") {
+            if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
+        }
+        if SMAppService.mainApp.status == .requiresApproval {
+            alert("시스템 설정 → 일반 → 로그인 항목에서 '공부 친구'를 허용해 주세요.")
+        }
+    }
+
+    @objc private func showStats() {
+        if let stats, stats.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            stats.makeKeyAndOrderFront(nil)
+            return
+        }
+        var segments: [Segment] = []
+        safely("기록 읽기") { segments = try Records.load() }
+        if let start = segmentStart { segments.append(Segment(start: start, end: Date(), subject: subject)) }
+        let window = StatsWindow(segments: segments)
+        stats = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    // Lid closed: doze, so the night doesn't count as study time.
+    @objc private func willSleep() {
+        if state == .studying { pause() }
+    }
+
+    @objc private func quit() { NSApp.terminate(nil) }
+
+    /// On quitting (from the menu, or when the Mac logs out or shuts down).
+    func shutDown() {
+        closeSegment()
+        state = .off
+        publish()
+        room?.flush()
+    }
+
+    private func safely(_ what: String, _ action: () throws -> Void) {
+        do {
+            try action()
+        } catch {
+            alert("\(what) 실패: \(error.localizedDescription)")
+        }
+    }
+
+    private func alert(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = "공부 친구"
+        alert.informativeText = text
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    /// A one-line question; "" when cancelled.
+    private func ask(_ prompt: String, title: String, value: String) -> String {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = prompt
+        alert.addButton(withTitle: "확인")
+        alert.addButton(withTitle: "취소")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        field.stringValue = value
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn ? field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    }
+}
+
+/// ⌃⌥S and ⌃⌥X anywhere, through Carbon's hot keys (no accessibility permission needed).
+final class Hotkeys {
+    static var pressed: ((UInt32) -> Void)?
+    private var refs: [EventHotKeyRef?] = []
+
+    init() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+            var id = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &id)
+            Hotkeys.pressed?(id.id)
+            return noErr
+        }, 1, &spec, nil, nil)
+    }
+
+    func register(_ id: UInt32, keyCode: Int) -> Bool {
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(UInt32(keyCode), UInt32(controlKey | optionKey), EventHotKeyID(signature: 0x53545950, id: id),
+                                         GetApplicationEventTarget(), 0, &ref)
+        if status == noErr { refs.append(ref) }
+        return status == noErr
+    }
+}

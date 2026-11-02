@@ -1,0 +1,42 @@
+# Builds and tests the Mac app on GitHub's macOS runner. Copied to .github/workflows/ of the
+# private build repo by mac/build-on-github.ps1.
+name: Build Mac app
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: bash mac/build.sh
+      - name: Self-test with the mock Firebase
+        run: |
+          node tools/mock-firebase.js > mock.log 2>&1 &
+          sleep 1
+          mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest" http://127.0.0.1:8790/rooms/selftestroom0000001
+      - name: Self-test on Intel (Rosetta)
+        continue-on-error: true
+        run: arch -x86_64 mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest-intel"
+      - name: Install script syntax
+        run: bash -n mac/install-mac.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest
+          path: |
+            selftest
+            selftest-intel/selftest.txt
+            mock.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyPet-mac
+          path: |
+            mac/build/StudyPet-mac.zip
+            mac/build/StudyPet-mac.zip.sha256
+            mac/install-mac.sh
+          if-no-files-found: error
