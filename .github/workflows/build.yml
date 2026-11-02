@@ -30,6 +30,28 @@ jobs:
           mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest" http://127.0.0.1:8790/rooms/selftestroom0000001
       - name: Self-test on Intel (Rosetta)
         run: arch -x86_64 mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest-intel"
+      - name: Install and update the local build
+        run: |
+          python3 -m http.server 18798 --directory mac/build > install-http.log 2>&1 &
+          sleep 1
+          export STUDYPET_CHANNEL=http://127.0.0.1:18798
+          app="$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet"
+          bash mac/install-mac.sh
+          sleep 2
+          before="$(pgrep -f "$app")"
+          test -n "$before"
+          bash mac/install-mac.sh
+          sleep 2
+          after="$(pgrep -f "$app")"
+          test -n "$after" && test "$before" != "$after"
+          cp mac/build/StudyPet-mac.zip.sha256 mac/build/expected.sha256
+          printf 'bad-checksum' > mac/build/StudyPet-mac.zip.sha256
+          if bash mac/install-mac.sh; then echo 'bad checksum was accepted'; exit 1; fi
+          test "$(pgrep -f "$app")" = "$after"
+          mv mac/build/expected.sha256 mac/build/StudyPet-mac.zip.sha256
+          pkill -TERM -f "$app"
+          sleep 2
+          if pgrep -f "$app"; then echo 'normal termination failed'; exit 1; fi
       - name: Install script syntax
         run: bash -n mac/install-mac.sh
       - uses: actions/upload-artifact@v5
