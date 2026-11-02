@@ -24,16 +24,6 @@ struct Poke {
     var look: Look { Look.parse(style, girl: girl) }
 }
 
-/// Someone asking to be let into the room. Only the owner can read these, and they're
-/// deleted once the owner decides, so real names don't stay on the server.
-struct JoinRequest {
-    var uid = ""
-    var name = ""
-    var realName = ""
-    var referrer = ""
-    var at: Int64 = 0
-}
-
 struct RoomError: Error {
     let message: String
     /// Firebase answered, and said no (as opposed to not answering at all).
@@ -70,15 +60,6 @@ struct Invite {
         guard keyFits(components, key) else { return nil }
         return Invite(database: database, roomId: segments[1], key: key)
     }
-
-    /// A new room in the given database, with a fresh random id.
-    static func create(database text: String, key raw: String) -> Invite? {
-        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parsed = Invite.database(text), keyFits(parsed.0, key) else { return nil }
-        return Invite(database: parsed.1, roomId: Room.randomId(20), key: key)
-    }
-
-    static func isLoopback(_ text: String) -> Bool { Invite.database(text).map { isLoopback($0.0) } ?? false }
 
     // A real database needs sign-in, so a key; the local test server takes none.
     private static func keyFits(_ components: URLComponents, _ key: String) -> Bool {
@@ -206,8 +187,9 @@ actor Auth {
 
 /// A study room in a Firebase Realtime Database through its REST API, speaking exactly
 /// what the Windows app's Room.cs speaks. Writes are plain PUTs, one at a time in order;
-/// a streaming GET (server-sent events) keeps a local copy of the room current. The owner
-/// streams the join requests as well. Every call carries the signed-in user's token.
+/// a streaming GET (server-sent events) keeps a local copy of the room current. Every call
+/// carries the signed-in user's token. The Mac app only joins rooms: creating one and
+/// approving requests stay with the owner on Windows.
 ///
 /// rooms/{room}/owner           = owner's uid
 /// rooms/{room}/approved/{uid}  = true (written by the owner)
@@ -237,45 +219,30 @@ final class Room: @unchecked Sendable {
     private var lastWrite: Task<Void, Never>?
     private var listeners: [Task<Void, Never>] = []
     private var tree: [String: Any] = [:]        // only touched by the room listener
-    private var requestTree: [String: Any] = [:] // only touched by the requests listener
     private var lastPokeAt: Int64 = -1           // -1 until the first snapshot: pokes already waiting then are stale
 
     /// Called on the main thread with everyone in the room.
     var changed: (([Member]) -> Void)?
     var poked: ((Poke) -> Void)?
-    /// The owner's room only: everyone waiting to be let in.
-    var requested: (([JoinRequest]) -> Void)?
 
     /// Why the last request failed, or "" while things work. Main thread.
     private(set) var error = ""
 
     /// `token` gives the signed-in user's ID token ("" for the local test server).
-    init(invite: Invite, me: String, token: @escaping @Sendable () async throws -> String, owner: Bool) {
+    init(invite: Invite, me: String, token: @escaping @Sendable () async throws -> String) {
         self.invite = invite
         self.me = me
         self.token = token
         listeners.append(Task.detached { [weak self] in await self?.listen(self?.roomPath ?? "") { self?.applyRoom($0, $1) } })
-        if owner {
-            listeners.append(Task.detached { [weak self] in await self?.listen(self?.requestsPath ?? "") { self?.applyRequests($0, $1) } })
-        }
     }
 
     private var roomPath: String { "rooms/" + invite.roomId }
-    private var requestsPath: String { "requests/" + invite.roomId }
 
     func publish(_ status: [String: Any]) { write("PUT", "\(roomPath)/members/\(me)", status) }
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
 
     func leave() { write("DELETE", "\(roomPath)/members/\(me)", nil) }
-
-    /// Owner only. The request (with the real name) is deleted either way.
-    func approve(_ uid: String) {
-        write("PUT", "\(roomPath)/approved/\(uid)", true)
-        write("DELETE", "\(requestsPath)/\(uid)", nil)
-    }
-
-    func reject(_ uid: String) { write("DELETE", "\(requestsPath)/\(uid)", nil) }
 
     /// Waits up to two seconds for queued writes, so "off" reaches friends before exit.
     func flush() {
@@ -293,12 +260,6 @@ final class Room: @unchecked Sendable {
     func dispose() { listeners.forEach { $0.cancel() } }
 
     // ---- Before being in a room ----------------------------------------------------
-
-    /// Claims a new room: I'm its owner, and the first one approved.
-    static func create(_ invite: Invite, me: String, token: String) async throws {
-        _ = try await call("PUT", invite.url("rooms/\(invite.roomId)/owner", token), json(me))
-        _ = try await call("PUT", invite.url("rooms/\(invite.roomId)/approved/\(me)", token), json(true))
-    }
 
     static func request(_ invite: Invite, me: String, token: String, _ request: [String: Any]) async throws {
         _ = try await call("PUT", invite.url("requests/\(invite.roomId)/\(me)", token), json(request))
@@ -402,13 +363,6 @@ final class Room: @unchecked Sendable {
         return (e["path"] as? String ?? "/", nonNull(e["data"]))
     }
 
-    private func applyRequests(_ type: String, _ json: String) {
-        guard let e = Room.event(json) else { return }
-        requestTree = Room.applyEvent(requestTree, type, e.path, e.data)
-        let list = Room.requests(requestTree)
-        DispatchQueue.main.async { self.requested?(list) }
-    }
-
     private func applyRoom(_ type: String, _ json: String) {
         guard let e = Room.event(json) else { return }
         tree = Room.applyEvent(tree, type, e.path, e.data)
@@ -464,13 +418,6 @@ final class Room: @unchecked Sendable {
         guard let p = (tree["pokes"] as? [String: Any])?[me] as? [String: Any] else { return nil }
         return Poke(from: str(p, "from"), name: str(p, "name"), message: str(p, "message"), girl: str(p, "look") == "girl",
                     style: str(p, "style"), at: num(p, "at"))
-    }
-
-    static func requests(_ tree: [String: Any]) -> [JoinRequest] {
-        tree.compactMap { (uid, value) -> JoinRequest? in
-            guard let r = value as? [String: Any] else { return nil }
-            return JoinRequest(uid: uid, name: str(r, "name"), realName: str(r, "realName"), referrer: str(r, "referrer"), at: num(r, "at"))
-        }.sorted { $0.at < $1.at }
     }
 
     // Other people's data: nothing read back is trusted to have the right type or size.

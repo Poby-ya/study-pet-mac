@@ -3,9 +3,10 @@ import AppKit
 /// `StudyPet --selftest <folder> [invite]`: checks the record keeping, the room logic and
 /// the sprite grids, and writes selftest.txt (PASS or the failures) plus pictures of the
 /// art, the pet window, the planner and the stats window into the folder, like
-/// SelfTest.cs. With an invite (the local test server's) it also runs a room owner and a
-/// friend through joining, approval, a poke and leaving, and saves the room as the Mac
-/// app wrote it to room.json, for reading back with the Windows app's code.
+/// SelfTest.cs. With an invite (the local test server's) it also takes a friend through
+/// asking to join, being let in, poking the owner and leaving, playing the owner (whose
+/// side lives in the Windows app) with plain requests, and saves the room as the Mac app
+/// wrote it to room.json, for reading back with the Windows app's code.
 enum SelfTest {
     private static var failures: [String] = []
 
@@ -146,9 +147,6 @@ enum SelfTest {
         check(Room.members(tree).count == 2 && Room.members(tree).contains { $0.id == "bbb" && $0.name == "" && $0.minutes == 0 && $0.updated == 0 },
               "room: wrong types read as empty instead of throwing")
         check(Room.members(Room.applyEvent(tree, "put", "/", nil)).isEmpty, "room: put / null empties the room")
-        let requests = Room.requests(Room.applyEvent([:], "put", "/",
-            json(#"{"u2":{"name":"나중","realName":"이름2","referrer":"민지","at":9},"u1":{"name":"먼저","realName":"이름1","referrer":"민지","at":3}}"#)))
-        check(requests.map(\.name) == ["먼저", "나중"] && requests[0].realName == "이름1" && requests[0].uid == "u1", "requests: oldest first")
 
         // Who's here, and how it reads.
         let now: Int64 = 10_000_000
@@ -194,8 +192,6 @@ enum SelfTest {
         check(Invite.parse("https://example.com/rooms/short?key=\(key)") == nil, "invite: a short room id is refused")
         check(Invite.parse("https://example.com/rooms/ABCDEFGHIJ0123456789?key=\(key)") == nil, "invite: uppercase room id is refused")
         check(Invite.parse("https://example.com/rooms/abcdefghij0123456789?key=nope") == nil, "invite: a malformed key is refused")
-        check(Invite.create(database: "https://pet-1-default-rtdb.firebaseio.com/", key: key).flatMap { Invite.parse($0.code) } != nil,
-              "invite: a new room makes a valid invite")
         check(pasted?.url("rooms/x", "a+b/c") == "https://pet-1-default-rtdb.asia-southeast1.firebasedatabase.app/rooms/x.json?auth=a%2Bb%2Fc",
               "invite: the token is escaped in the URL")
         let id = Room.randomId(12)
@@ -251,51 +247,59 @@ enum SelfTest {
         return condition()
     }
 
-    /// The owner creates the room, a friend asks to join and is let in, the friend pokes
-    /// the owner, the owner leaves.
+    /// A friend asks to join, waits, is let in, and pokes the owner; the owner leaves.
     private static func checkNetwork(_ code: String, _ out: URL) {
         guard let base = Invite.parse(code), base.key.isEmpty else {
-            check(false, "network: needs a local test server invite, got \(code)")
+            check(false, "network: needs a local test server invite, got (code)")
             return
         }
-        guard let invite = Invite.create(database: base.database, key: "") else { return }
+        let invite = Invite(database: base.database, roomId: Room.randomId(20), key: "")
         let owner = Room.randomId(12), friend = Room.randomId(12)
-        _ = finish { try await Room.create(invite, me: owner, token: "") }
-        _ = finish { try await Room.request(invite, me: friend, token: "", ["name": "다라", "realName": "김다라", "referrer": "가나",
-                                                                        "look": "boy", "style": "b120350", "at": Room.serverTime]) }
-        check(finish { try await Room.check(invite, me: friend, token: "") } == .waiting, "network: the friend waits for approval")
+        func ownerWrites(_ method: String, _ path: String, _ body: Any?) {
+            let data = body.flatMap(Room.json)
+            _ = finish { try await Room.call(method, invite.url(path, ""), data) }
+        }
+        // What the Windows owner does on creating the room.
+        ownerWrites("PUT", "rooms/(invite.roomId)/owner", owner)
+        ownerWrites("PUT", "rooms/(invite.roomId)/approved/(owner)", true)
 
-        let a = Room(invite: invite, me: owner, token: { "" }, owner: true)
-        var waiting: [JoinRequest] = []
+        _ = finish { try await Room.request(invite, me: friend, token: "", ["name": "다라", "realName": "김다라", "referrer": "가나",
+                                                                         "look": "boy", "style": "b120310", "at": Room.serverTime]) }
+        check(finish { try await Room.check(invite, me: friend, token: "") } == .waiting, "network: the friend waits for approval")
+        let request = finish { try await Room.call("GET", invite.url("requests/(invite.roomId)/(friend)", ""), nil) } ?? ""
+        check(request.contains("\"realName\":\"김다라\"") && request.contains("\"referrer\":\"가나\"") && request.contains("\"at\":"),
+              "network: the request carries what the owner's card shows: (request)")
+        _ = finish { try await Room.cancelRequest(invite, me: friend, token: "") }
+        check(finish { try await Room.check(invite, me: friend, token: "") } == .rejected, "network: a withdrawn request reads as not waiting")
+        _ = finish { try await Room.request(invite, me: friend, token: "", ["name": "다라", "realName": "김다라", "referrer": "가나",
+                                                                         "look": "boy", "style": "b120310", "at": Room.serverTime]) }
+        // What the Windows owner does on 승인.
+        ownerWrites("PUT", "rooms/(invite.roomId)/approved/(friend)", true)
+        ownerWrites("DELETE", "requests/(invite.roomId)/(friend)", nil)
+        check(finish { try await Room.check(invite, me: friend, token: "") } == .approved, "network: the friend is let in")
+
+        let a = Room(invite: invite, me: owner, token: { "" })
+        let b = Room(invite: invite, me: friend, token: { "" })
+        var seenByB: [Member]?
         var aReady = false
         var pokeAtA: Poke?
-        a.requested = { waiting = $0 }
         a.changed = { _ in aReady = true }
         a.poked = { pokeAtA = $0 }
-        check(waitFor { waiting.contains { $0.uid == friend && $0.realName == "김다라" && $0.referrer == "가나" } },
-              "network: the owner sees the request (\(a.error))")
-        a.approve(friend)
-        a.flush()
-        check(finish { try await Room.check(invite, me: friend, token: "") } == .approved, "network: the friend is let in")
-        check(waitFor { waiting.isEmpty }, "network: the request (with the real name) is gone once decided")
-
-        let b = Room(invite: invite, me: friend, token: { "" }, owner: false)
-        var seenByB: [Member]?
         b.changed = { seenByB = $0 }
         a.publish(["name": "가나", "look": "girl", "style": "g213402", "state": "studying", "subject": "영어", "minutes": 5, "updated": Room.serverTime])
-        b.publish(["name": "다라", "look": "boy", "style": "b120350", "state": "paused", "subject": "수학", "minutes": 12, "updated": Room.serverTime])
+        b.publish(["name": "다라", "look": "boy", "style": "b120310", "state": "paused", "subject": "수학", "minutes": 12, "updated": Room.serverTime])
         check(waitFor { seenByB?.contains { $0.id == owner && $0.name == "가나" && $0.state == "studying" && $0.look.code == "g213402" && $0.updated > 0 } == true },
-              "network: B should see A studying (A: \(a.error) B: \(b.error))")
+              "network: B should see A studying (A: (a.error) B: (b.error))")
         check(waitFor { aReady }, "network: A should get its first snapshot")
-        b.poke(owner, ["from": friend, "name": "다라", "look": "boy", "style": "b120350", "message": "일어나 !", "at": Room.serverTime])
-        check(waitFor { pokeAtA != nil }, "network: A should be poked (B: \(b.error))")
-        check(pokeAtA?.from == friend && pokeAtA?.message == "일어나 !" && pokeAtA?.look.code == "b120350", "network: the poke arrives intact")
+        b.poke(owner, ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": "일어나 !", "at": Room.serverTime])
+        check(waitFor { pokeAtA != nil }, "network: A should be poked (B: (b.error))")
+        check(pokeAtA?.from == friend && pokeAtA?.message == "일어나 !" && pokeAtA?.look.code == "b120310", "network: the poke arrives intact")
 
         // The room as the Mac app wrote it, with one poke left waiting, for the Windows app to read.
-        b.poke("macselftest0", ["from": friend, "name": "다라", "look": "boy", "style": "b120350", "message": "화이팅 !", "at": Room.serverTime])
+        b.poke("macselftest0", ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": "화이팅 !", "at": Room.serverTime])
         b.flush()
         a.flush()
-        if let text = finish({ try await Room.call("GET", invite.url("rooms/\(invite.roomId)", ""), nil) }) {
+        if let text = finish({ try await Room.call("GET", invite.url("rooms/(invite.roomId)", ""), nil) }) {
             try? text.write(to: out.appendingPathComponent("room.json"), atomically: true, encoding: .utf8)
         }
 

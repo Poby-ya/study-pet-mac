@@ -43,9 +43,6 @@ final class AppController: NSObject, NSMenuDelegate {
     private var room: Room?
     private var members: [Member] = []
     private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
-    private var requests: [JoinRequest] = [] // owner only
-    private var later = Set<String>()        // requests the owner put off
-    private var deciding = false
     private var checking = false
 
     override init() {
@@ -219,7 +216,6 @@ final class AppController: NSObject, NSMenuDelegate {
         room?.dispose()
         room = nil
         members = []
-        requests = []
         roomSeen = false
         pendingCheck?.invalidate()
         pendingCheck = nil
@@ -234,12 +230,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         if nickname.isEmpty || myId.isEmpty { return }
         let auth = self.auth
-        let joined = Room(invite: invite, me: myId, token: { try await auth?.token() ?? "" }, owner: Settings.get("owner") == "1")
-        joined.requested = { [weak self, weak joined] list in
-            guard let self, self.room === joined else { return }
-            self.requests = list
-            self.showNextRequest()
-        }
+        let joined = Room(invite: invite, me: myId, token: { try await auth?.token() ?? "" })
         joined.changed = { [weak self, weak joined] list in
             guard let self, self.room === joined else { return }
             let started = Room.newlyStarted(before: self.members, after: list, me: self.myId)
@@ -311,7 +302,6 @@ final class AppController: NSObject, NSMenuDelegate {
             }
             self.safely("방 저장") {
                 try Settings.set("room", invite.code)
-                try Settings.set("owner", "")
                 try Settings.set("seatmate", "")
                 try Settings.set("pending", "1")
             }
@@ -379,63 +369,6 @@ final class AppController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func createRoom() {
-        let database = ask("Firebase Realtime Database 주소를 붙여 넣어 주세요.\n(예: https://poby-study-room-default-rtdb.asia-southeast1.firebasedatabase.app)",
-                           title: "새 방 만들기 (1/2)", value: "")
-        if database.isEmpty { return }
-        let key = Invite.isLoopback(database) ? ""
-            : ask("Firebase 웹 API 키를 붙여 넣어 주세요.\n(프로젝트 설정 → 일반 → 웹 API 키, AIza로 시작해요)", title: "새 방 만들기 (2/2)", value: "")
-        guard let invite = Invite.create(database: database, key: key) else {
-            alert("주소나 웹 API 키가 올바르지 않아요. 주소는 https://로, 키는 AIza로 시작해요.")
-            return
-        }
-        if nickname.isEmpty && !askNickname() { return }
-        Task { @MainActor in
-            do {
-                let (me, token) = try await self.signIn(invite)
-                try await Room.create(invite, me: me, token: token)
-            } catch {
-                self.alert("방을 만들지 못했어요.\n\n" + describe(error))
-                return
-            }
-            self.safely("방 저장") {
-                try Settings.set("room", invite.code)
-                try Settings.set("owner", "1")
-                try Settings.set("seatmate", "")
-                try Settings.set("pending", "")
-            }
-            self.connect()
-            self.copyInvite()
-        }
-    }
-
-    /// The owner's decision on the next request that hasn't been put off.
-    // shortcut: a modal alert takes focus, where Windows shows a card that doesn't; fine for
-    // a handful of friends joining once each, worth a non-activating card if it gets in the way.
-    private func showNextRequest() {
-        guard !deciding, let next = requests.first(where: { !later.contains($0.uid) }) else { return }
-        deciding = true
-        let alert = NSAlert()
-        alert.messageText = "방에 들어오고 싶대요"
-        alert.informativeText = "닉네임: \(next.name)\n이름: \(next.realName)\n추천인: \(next.referrer)"
-        alert.addButton(withTitle: "승인")
-        alert.addButton(withTitle: "거절")
-        alert.addButton(withTitle: "나중에").keyEquivalent = "\u{1b}"
-        NSApp.activate(ignoringOtherApps: true)
-        let answer = alert.runModal()
-        deciding = false
-        if answer == .alertFirstButtonReturn { room?.approve(next.uid) }
-        else if answer == .alertSecondButtonReturn { room?.reject(next.uid) }
-        else { later.insert(next.uid) }
-        requests.removeAll { $0.uid == next.uid }
-        showNextRequest()
-    }
-
-    @objc private func showRequests() {
-        later.removeAll()
-        showNextRequest()
-    }
-
     @objc private func copyInvite() {
         let invite = Settings.get("room")
         NSPasteboard.general.clearContents()
@@ -457,14 +390,12 @@ final class AppController: NSObject, NSMenuDelegate {
         room?.dispose()
         room = nil
         members = []
-        requests = []
         pendingCheck?.invalidate()
         pendingCheck = nil
         safely("방 나가기") {
             try Settings.set("room", "")
             try Settings.set("seatmate", "")
             try Settings.set("pending", "")
-            try Settings.set("owner", "")
         }
     }
 
@@ -530,7 +461,6 @@ final class AppController: NSObject, NSMenuDelegate {
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {
             share.addItem(item("초대 코드 넣기…", #selector(joinRoom)))
-            share.addItem(item("새 방 만들기…", #selector(createRoom)))
         }
         let shareItem = NSMenuItem(title: "친구와 공부하기", action: nil, keyEquivalent: "")
         shareItem.submenu = share
