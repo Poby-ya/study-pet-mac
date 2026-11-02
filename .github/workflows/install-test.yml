@@ -1,0 +1,36 @@
+# Runs the friends' one-line install against the public release on a clean macOS runner:
+# first install, then the same line again while the app runs (an update).
+# Started by hand: gh workflow run install-test.yml -R Poby-ya/study-pet-mac
+name: Install test
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: First install (the line friends paste)
+        run: /bin/bash -c "$(curl -fsSL https://github.com/Poby-ya/study-pet-releases/releases/latest/download/install-mac.sh)"
+      - name: Installed, signed, not quarantined, running, saving settings
+        run: |
+          app="$HOME/Applications/StudyPet.app"
+          codesign --verify --strict "$app"
+          if xattr -p com.apple.quarantine "$app" 2>/dev/null; then echo "quarantined"; exit 1; fi
+          sleep 3
+          pgrep -fl "$app/Contents/MacOS/StudyPet"
+          cat "$HOME/Library/Application Support/StudyPet/settings.txt"
+      - name: Update while running (the same line again)
+        run: |
+          app="$HOME/Applications/StudyPet.app"
+          before="$(pgrep -f "$app/Contents/MacOS/StudyPet")"
+          /bin/bash -c "$(curl -fsSL https://github.com/Poby-ya/study-pet-releases/releases/latest/download/install-mac.sh)"
+          sleep 3
+          after="$(pgrep -f "$app/Contents/MacOS/StudyPet")"
+          echo "before=$before after=$after"
+          test -n "$after" && test "$after" != "$before" && test "$(echo "$after" | wc -l)" -eq 1
+      - name: SIGTERM quits through the app (no crash report, process gone)
+        run: |
+          pkill -TERM -f "$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet"
+          sleep 2
+          if pgrep -f "$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet"; then echo "still running"; exit 1; fi

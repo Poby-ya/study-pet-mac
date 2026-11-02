@@ -21,6 +21,13 @@ editItem.submenu = edit
 mainMenu.addItem(editItem)
 app.mainMenu = mainMenu
 
+// The installer stops a running copy with SIGTERM (an AppleScript "quit" would ask the
+// friend for permission); quit properly, so the open segment is saved and friends see "off".
+signal(SIGTERM, SIG_IGN)
+let terminateSignal = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+terminateSignal.setEventHandler { NSApp.terminate(nil) }
+terminateSignal.resume()
+
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
 app.delegate = delegate

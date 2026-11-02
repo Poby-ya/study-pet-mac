@@ -11,7 +11,6 @@ set -euo pipefail
 CHANNEL="${STUDYPET_CHANNEL:-https://github.com/Poby-ya/study-pet-releases/releases/latest/download}"
 APPS_DIR="$HOME/Applications"
 APP="$APPS_DIR/StudyPet.app"
-BUNDLE_ID="io.github.poby-ya.studypet"
 WORK="$(/usr/bin/mktemp -d)"
 trap '/bin/rm -rf -- "$WORK"' EXIT
 
@@ -39,7 +38,8 @@ fetch "$CHANNEL/StudyPet-mac.zip.sha256" "$WORK/expected" || fail '확인용 파
 # Already running (an update): quit it first; quitting saves the open study segment.
 if /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then
   note '실행 중인 공부 친구를 닫습니다. 공부하던 시간은 저장됩니다.'
-  /usr/bin/osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+  # SIGTERM, which the app turns into a normal quit; AppleScript would ask for permission.
+  /usr/bin/pkill -TERM -f "$APP/Contents/MacOS/StudyPet" || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" || break
     /bin/sleep 0.5
