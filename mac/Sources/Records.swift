@@ -48,6 +48,7 @@ enum Records {
 
     static func append(_ segment: Segment) throws {
         guard segment.end > segment.start else { return }
+        try files.createDirectory(at: folder, withIntermediateDirectories: true)
         guard let normalized = parse(format(segment)), normalized.end > normalized.start else { return }
         let existing = try load()
         if existing.contains(where: { $0.subject == normalized.subject && $0.start <= normalized.start && $0.end >= normalized.end }) { return }
