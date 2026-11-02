@@ -5,15 +5,18 @@ final class SettingsWindow: NSWindow {
     private let updater: Updater
     private let apply: () -> Void
     private let login: () -> Void
+    private let resize: (Int) -> Void
+    private let sizeChoice = NSPopUpButton()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let check = NSButton(title: "업데이트 확인", target: nil, action: nil)
     private let install = NSButton(title: "업데이트하고 다시 시작", target: nil, action: nil)
 
-    init(updater: Updater, apply: @escaping () -> Void, login: @escaping () -> Void) {
+    init(updater: Updater, apply: @escaping () -> Void, login: @escaping () -> Void, resize: @escaping (Int) -> Void = { _ in }) {
         self.updater = updater
         self.apply = apply
         self.login = login
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 540, height: 340), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        self.resize = resize
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 540, height: 390), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         title = "설정 · 공부 친구"
         isReleasedWhenClosed = false
         let stack = NSStackView()
@@ -31,6 +34,13 @@ final class SettingsWindow: NSWindow {
         background.state = Settings.get("background") == "hidden" ? .off : .on
         stack.addArrangedSubview(startup)
         stack.addArrangedSubview(background)
+        let sizeLabel = NSTextField(labelWithString: "캐릭터 크기")
+        let sizes = [50, 75, 100, 125, 150]
+        sizeChoice.addItems(withTitles: sizes.map { "\($0)%" })
+        sizeChoice.selectItem(at: sizes.firstIndex(of: Int(Settings.get("petSize")) ?? 75) ?? 1)
+        sizeChoice.target = self; sizeChoice.action = #selector(changeSize)
+        let sizeRow = NSStackView(views: [sizeLabel, sizeChoice]); sizeRow.spacing = 12
+        stack.addArrangedSubview(sizeRow)
         let heading = NSTextField(labelWithString: "업데이트 · 현재 버전 " + Updater.current)
         heading.font = .boldSystemFont(ofSize: 15)
         stack.addArrangedSubview(heading)
@@ -53,6 +63,11 @@ final class SettingsWindow: NSWindow {
         status.stringValue = updater.status
         check.isEnabled = !updater.checking && !updater.installing
         install.isEnabled = updater.available && !updater.checking && !updater.installing
+    }
+    @objc private func changeSize() {
+        let percent = [50, 75, 100, 125, 150][sizeChoice.indexOfSelectedItem]
+        do { try Settings.set("petSize", String(percent)); resize(percent) }
+        catch { let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
     }
     @objc private func checkUpdate() { updater.check() }
     @objc private func installUpdate() { apply() }

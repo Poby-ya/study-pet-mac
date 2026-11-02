@@ -94,7 +94,7 @@ if [[ "$MODE" == apply ]]; then
 elif /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then
   note '실행 중인 공부 친구를 닫습니다. 공부하던 시간은 저장됩니다.'
   /usr/bin/pkill -TERM -f "$APP/Contents/MacOS/StudyPet" || true
-  for _ in {1..10}; do
+  for _ in {1..30}; do
     /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" || break
     /bin/sleep 0.5
   done

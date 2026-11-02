@@ -4,10 +4,20 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: AppController?
+    private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) { controller = AppController() }
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { controller?.prepareQuit() == false ? .terminateCancel : .terminateNow }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if terminating { return .terminateLater }
+        guard controller?.prepareQuit() != false else { return .terminateCancel }
+        if controller?.beginFarewell() == true {
+            terminating = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { sender.reply(toApplicationShouldTerminate: true) }
+            return .terminateLater
+        }
+        return .terminateNow
+    }
 
     func applicationWillTerminate(_ notification: Notification) { controller?.shutDown() }
 }
@@ -35,9 +45,9 @@ final class AppController: NSObject, NSMenuDelegate {
     private var banked: TimeInterval = 0 // closed segments of the current session
     private var segmentStart: Date?      // set while studying
     private var farewell = ""
-    private var flash = ""               // a short note in my bubble, e.g. after poking someone
-    private var flashUntil = Date.distantPast
-    private var lastPoke = Date.distantPast
+    private var lastPokes: [String: Date] = [:]
+    private var invitePromptOpen = false
+    private var quitting = false
     private var news = ""                // "민지가 공부를 시작했어요 !", in a bubble above mine for a while
     private var newsUntil = Date.distantPast
     private var planner: Planner?
@@ -48,7 +58,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private let updater = Updater()
     private var updateCheck: Timer?
     private var pendingCommit: Segment?
-    private var room: Room?
+    private var room: StudyRooms?
     private var members: [Member] = []
     private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
     private var checking = false
@@ -67,18 +77,20 @@ final class AppController: NSObject, NSMenuDelegate {
 
         pet.contextMenu = menu
         pet.bubbleText = { [unowned self] in self.bubble() }
-        pet.seatmate = { [unowned self] in self.seatView() }
+        pet.seatmate = { [unowned self] in self.seatView("seatmate") }
+        pet.rightSeatmate = { [unowned self] in self.seatView("seatmateRight") }
         pet.myName = { Settings.get("name") }
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
-                let board = Room.board(self.members, me: self.myId)
+                let board = Room.board(room.boardMembers, me: self.myId)
                 return (room.name.isEmpty ? board.title : "\(room.name) · \(board.title)", board.lines)
             }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
         }
-        pet.seatmateClicked = { [unowned self] in self.pokeSeatmate() }
+        pet.seatmateClicked = { [unowned self] in self.pokeSeatmate("seatmate") }
+        pet.rightSeatmateClicked = { [unowned self] in self.pokeSeatmate("seatmateRight") }
         pet.petClicked = { [unowned self] in
             if self.state != .off { self.toggle() } // pause or resume; never reopens the planner mid-farewell
         }
@@ -111,6 +123,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private var nickname: String { Settings.get("name") }
 
     @objc private func toggle() {
+        if quitting { return }
         switch state {
         case .studying: pause()
         case .paused: resume()
@@ -119,6 +132,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func showPlanner() {
+        if quitting { return }
         if let planner, planner.isVisible {
             planner.present()
             return
@@ -166,6 +180,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func resume() {
+        if quitting { return }
         guard tryCommit() else { return }
         state = .studying
         openSegment()
@@ -174,6 +189,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     @objc private func stop() {
+        if quitting { return }
         guard state != .off else { return }
         guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
         heartbeat?.invalidate()
@@ -218,7 +234,6 @@ final class AppController: NSObject, NSMenuDelegate {
     private var elapsed: TimeInterval { banked + (segmentStart.map { Date().timeIntervalSince($0) } ?? 0) }
 
     private func bubble() -> String {
-        if Date() < flashUntil { return flash }
         switch state {
         case .studying: return elapsed < 60 ? "\(subject)\n공부 시작!" : "\(subject)\n\(Records.duration(elapsed / 60))째 공부 중"
         case .paused: return "\(subject) · \(Records.duration(elapsed / 60))\n쿨쿨… 쉬는 중"
@@ -228,7 +243,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     /// Switching gender also rolls a new hairstyle and outfit.
     @objc private func switchLook() {
-        pet.look = Look.random(girl: !pet.look.girl)
+        pet.look = Look.random(girl: Bool.random())
         statusItem.button?.image = Sprites.face(pet.look)
         publish()
     }
@@ -253,18 +268,9 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         if nickname.isEmpty || myId.isEmpty { return }
         let auth = self.auth
-        // The invite is the front door; the owner may have seated me in another room since.
-        let seat = Settings.get("seat")
-        let joined = Room(invite: Invite.isRoomId(seat) ? invite.withRoom(seat) : invite, me: myId, token: { [weak self] in
+        let joined = StudyRooms(invite: invite, me: myId, token: { [weak self] in
             guard let self else { throw RoomError("연결이 종료됐어요.") }; return try await self.roomToken(auth)
         })
-        joined.moved = { [weak self, weak joined] moved in
-            guard let self, self.room === joined else { return }
-            self.safely("자리 저장") {
-                try Settings.setMany(("seat", moved), ("seatmate", ""))
-            }
-            self.connect()
-        }
         joined.changed = { [weak self, weak joined] list in
             guard let self, self.room === joined else { return }
             let started = Room.newlyStarted(before: self.members, after: list, me: self.myId)
@@ -277,7 +283,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         joined.poked = { [weak self, weak joined] poke in
             guard let self, self.room === joined else { return }
-            self.pet.visit(poke.look, text: "\(poke.name) : \(poke.message)", fromSeatmate: poke.from == Settings.get("seatmate"))
+            self.receivePoke(poke)
         }
         room = joined
         publish()
@@ -342,7 +348,7 @@ final class AppController: NSObject, NSMenuDelegate {
             do {
                 let (me, token) = try await self.signIn(invite)
                 if let seat = try await Room.resolve(invite, me: me, token: token) {
-                    try Settings.setMany(("room", invite.code), ("seat", seat), ("seatmate", ""), ("pending", ""))
+                    try Settings.setMany(("room", invite.code), ("seat", seat), ("seatmate", ""), ("seatmateRight", ""), ("viewRoom", ""), ("pending", ""))
                     self.connect()
                     return
                 }
@@ -438,44 +444,64 @@ final class AppController: NSObject, NSMenuDelegate {
             }
         }
         room?.leave()
+        room?.flush()
         room?.dispose()
         room = nil
         members = []
         pendingCheck?.invalidate()
         pendingCheck = nil
         safely("방 나가기") {
-                try Settings.setMany(("room", ""), ("seat", ""), ("seatmate", ""), ("pending", ""))
+                try Settings.setMany(("room", ""), ("seat", ""), ("seatmate", ""), ("seatmateRight", ""), ("viewRoom", ""), ("pending", ""))
         }
     }
 
-    private func findSeatmate() -> Member? {
-        let id = Settings.get("seatmate")
-        return id.isEmpty ? nil : members.first { $0.id == id }
-    }
+    private func findSeatmate(_ key: String) -> Member? { members.first { $0.id == Settings.get(key) } }
 
-    private func seatView() -> PetWindow.Seat? {
-        guard room != nil, let mate = findSeatmate() else { return nil }
+    private func seatView(_ key: String) -> PetWindow.Seat? {
+        guard room != nil, let mate = findSeatmate(key) else { return nil }
         let here = Room.isHere(mate, Room.latest(members))
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused",
-                              text: Room.seatText(mate, here: here))
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here))
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
-        let id = sender.representedObject as? String ?? ""
-        safely("옆자리 저장") { try Settings.set("seatmate", id) }
+        guard let value = sender.representedObject as? [String: String], let id = value["id"], let key = value["key"] else { return }
+        let other = key == "seatmate" ? "seatmateRight" : "seatmate"
+        safely("옆자리 저장") { try Settings.setMany((key, id), (other, Settings.get(other) == id ? "" : Settings.get(other))) }
     }
 
-    /// Clicking the seatmate sends them a poke; their pet gets a visit from mine.
-    private func pokeSeatmate() {
-        guard let room, let mate = findSeatmate(), Date().timeIntervalSince(lastPoke) >= AppController.pokeCooldown else { return }
-        lastPoke = Date()
+    private func pokeSeatmate(_ key: String) { if let mate = findSeatmate(key) { pokeMember(mate) } }
+    @objc private func pokePerson(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) { pokeMember(mate) } }
+    @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id) } } }
+
+    private func pokeMember(_ mate: Member) {
+        guard let room, Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { return }
+        lastPokes[mate.id] = Date()
         let message = Room.pokeMessage(mate, here: Room.isHere(mate, Room.latest(members)))
-        room.poke(mate.id, [
-            "from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code,
-            "message": message, "at": Room.serverTime,
-        ])
-        flash = "\(mate.name)에게 콕!\n“\(message)”"
-        flashUntil = Date().addingTimeInterval(5)
+        room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
+        pet.goVisit(mate.name, message: message, side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
+    }
+
+    private func receivePoke(_ poke: Poke) {
+        if quitting { return }
+        let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
+        pet.visit(poke.look, text: "\(poke.name) : \(poke.message)", side: side)
+        guard state != .studying, !invitePromptOpen else { return }
+        invitePromptOpen = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            defer { self.invitePromptOpen = false }
+            if self.quitting { return }
+            let alert = NSAlert()
+            alert.messageText = "\(poke.name)님이 찾고 있어요."
+            alert.informativeText = "공부를 시작하시겠습니까?\n과목을 고르는 스터디플래너가 열립니다."
+            alert.addButton(withTitle: "공부 시작")
+            alert.addButton(withTitle: "나중에")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                if self.state != .off { self.stop() }
+                if self.state == .off { self.showPlanner() }
+            }
+        }
     }
 
     // ---- Menu ---------------------------------------------------------------------
@@ -494,7 +520,7 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
-        menu.addItem(item(pet.look.girl ? "남학생으로 바꾸기" : "여학생으로 바꾸기", #selector(switchLook)))
+        menu.addItem(item("랜덤 꾸미기", #selector(switchLook)))
         menu.addItem(.separator())
         menu.addItem(item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)))
 
@@ -503,9 +529,21 @@ final class AppController: NSObject, NSMenuDelegate {
             share.addItem(NSMenuItem(title: "방장의 승인을 기다리는 중…", action: nil, keyEquivalent: ""))
             share.addItem(item("가입 요청 취소", #selector(leaveRoom)))
         } else if let room {
-            var status = room.error.isEmpty ? "방에 \(members.count)명" : "연결 안 됨: " + room.error
+            var status = room.error.isEmpty ? "등록 \(room.boardMembers.count)명 · 공부 중 \(room.boardMembers.filter { Room.isHere($0, Room.latest(members)) }.count)명" : "연결 안 됨: " + room.error
             if status.count > 60 { status = String(status.prefix(60)) + "…" }
             share.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
+            let views = NSMenu()
+            for choice in room.choices {
+                let view = item(choice.name, #selector(chooseRoom(_:)))
+                view.representedObject = choice.id; view.state = choice.id == room.selected ? .on : .off
+                views.addItem(view)
+            }
+            let viewItem = NSMenuItem(title: "칠판 방 선택", action: nil, keyEquivalent: ""); viewItem.submenu = views; share.addItem(viewItem)
+            let calls = NSMenu()
+            for friend in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
+                let call = item(friend.name, #selector(pokePerson(_:))); call.representedObject = friend.id; calls.addItem(call)
+            }
+            let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; share.addItem(callItem)
             share.addItem(item("초대 코드 복사", #selector(copyInvite)))
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {
@@ -516,26 +554,20 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(shareItem)
 
         if room != nil {
-            let pinned = Settings.get("seatmate")
-            let seats = NSMenu()
-            let newest = Room.latest(members)
-            for m in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
-                let place = !Room.isHere(m, newest) ? "자리 비움" : m.state == "paused" ? "쉬는 중" : "공부 중"
-                let seat = item("\(m.name) (\(place))", #selector(pinSeatmate(_:)))
-                seat.representedObject = m.id
-                seat.state = m.id == pinned ? .on : .off
-                seats.addItem(seat)
+            let allSeats = NSMenu()
+            for (key, label) in [("seatmate", "왼쪽 자리"), ("seatmateRight", "오른쪽 자리")] {
+                let seats = NSMenu()
+                let newest = Room.latest(members)
+                for m in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
+                    let place = !Room.isHere(m, newest) ? "자리 비움" : m.state == "paused" ? "쉬는 중" : "공부 중"
+                    let seat = item("\(m.name) (\(place))", #selector(pinSeatmate(_:)))
+                    seat.representedObject = ["id": m.id, "key": key]; seat.state = m.id == Settings.get(key) ? .on : .off
+                    seats.addItem(seat)
+                }
+                let clear = item("자리 비우기", #selector(pinSeatmate(_:))); clear.representedObject = ["id": "", "key": key]; seats.addItem(clear)
+                let sideItem = NSMenuItem(title: label, action: nil, keyEquivalent: ""); sideItem.submenu = seats; allSeats.addItem(sideItem)
             }
-            if seats.items.isEmpty { seats.addItem(NSMenuItem(title: "방에 아직 친구가 없어요", action: nil, keyEquivalent: "")) }
-            if !pinned.isEmpty {
-                seats.addItem(.separator())
-                let clear = item("옆자리 비우기", #selector(pinSeatmate(_:)))
-                clear.representedObject = ""
-                seats.addItem(clear)
-            }
-            let seatItem = NSMenuItem(title: pinned.isEmpty ? "옆자리 만들기" : "옆자리 바꾸기", action: nil, keyEquivalent: "")
-            seatItem.submenu = seats
-            menu.addItem(seatItem)
+            let seatsItem = NSMenuItem(title: "양옆 자리 고정", action: nil, keyEquivalent: ""); seatsItem.submenu = allSeats; menu.addItem(seatsItem)
         }
         menu.addItem(item(Settings.get("background") == "hidden" ? "배경 보이기" : "배경 숨기기", #selector(toggleBackground)))
         menu.addItem(.separator())
@@ -567,7 +599,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     @objc private func showSettings() {
         if settingsWindow == nil {
-            settingsWindow = SettingsWindow(updater: updater, apply: { [weak self] in self?.installUpdate() }, login: { [weak self] in self?.toggleLogin() })
+            settingsWindow = SettingsWindow(updater: updater, apply: { [weak self] in self?.installUpdate() }, login: { [weak self] in self?.toggleLogin() }, resize: { [weak self] in self?.pet.setDisplaySize($0) })
         }
         updateNotice?.orderOut(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -660,10 +692,20 @@ final class AppController: NSObject, NSMenuDelegate {
     /// On quitting (from the menu, or when the Mac logs out or shuts down).
     func prepareQuit() -> Bool { closeSegment() }
 
+    func beginFarewell() -> Bool {
+        quitting = true
+        guard state != .off, pet.isVisible else { return false }
+        state = .off
+        farewell = "다녀올게요!"
+        publish()
+        heartbeat?.invalidate()
+        pet.standUpAndLeave()
+        return true
+    }
+
     func shutDown() {
         closeSegment()
-        state = .off
-        publish()
+        if state != .off { state = .off; publish() }
         room?.flush()
     }
 

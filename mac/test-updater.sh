@@ -8,6 +8,7 @@ HASH="$(tr -d '[:space:]' < mac/build/StudyPet-mac.zip.sha256)"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DATA="$HOME/Library/Application Support/StudyPet"
 mkdir -p "$DATA"
+wait_quit() { for _ in {1..40}; do kill -0 "$1" 2>/dev/null || return; sleep 0.2; done; echo "quit timed out"; exit 1; }
 for mode in studying paused; do
   printf 'updateResume={"state":"%s","subject":"updater-fixture","seconds":1234.5}\n' "$mode" > "$DATA/settings.txt"
   open "$APP"
@@ -19,7 +20,7 @@ for mode in studying paused; do
   bash mac/install-mac.sh --prepare-update "$ZIP" "$HASH" "$APP" "$VERSION"
   # Mirror the button's session handoff after saving the active segment.
   kill -TERM "$before"
-  for _ in {1..20}; do kill -0 "$before" 2>/dev/null || break; sleep 0.2; done
+  wait_quit "$before"
   printf 'updateResume={"state":"%s","subject":"updater-fixture","seconds":1234.5}\n' "$mode" > "$DATA/settings.txt"
   bash mac/install-mac.sh --apply-update "$ZIP" "$HASH" "$APP" "$before" "$DATA/update-error.txt"
   after="$(pgrep -f "$APP/Contents/MacOS/StudyPet")"
@@ -27,7 +28,7 @@ for mode in studying paused; do
   if [[ "$mode" == studying ]]; then test -f "$DATA/open.txt"; else test ! -f "$DATA/open.txt"; fi
   ! grep -q 'updateResume={' "$DATA/settings.txt"
   kill -TERM "$after"
-  sleep 2
+  wait_quit "$after"
 done
 # A damaged download must be refused before the installed bundle or process changes.
 open "$APP"
@@ -41,7 +42,7 @@ next="$APP.update-${HASH:0:16}.app"
 printf 'int main(void) { return 7; }\n' | clang -x c - -o "$next/Contents/MacOS/StudyPet"
 codesign --force --sign - "$next"
 kill -TERM "$before"
-sleep 2
+wait_quit "$before"
 if bash mac/install-mac.sh --apply-update "$ZIP" "$HASH" "$APP" "$before" "$DATA/update-error.txt"; then echo 'broken app was accepted'; exit 1; fi
 sleep 2
 pgrep -f "$APP/Contents/MacOS/StudyPet"

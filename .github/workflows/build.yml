@@ -50,7 +50,7 @@ jobs:
           test "$(pgrep -f "$app")" = "$after"
           mv mac/build/expected.sha256 mac/build/StudyPet-mac.zip.sha256
           pkill -TERM -f "$app"
-          sleep 2
+          for _ in {1..40}; do pgrep -f "$app" >/dev/null || break; sleep 0.2; done
           if pgrep -f "$app"; then echo 'normal termination failed'; exit 1; fi
       - name: Install script syntax
         run: bash -n mac/install-mac.sh

@@ -254,6 +254,8 @@ final class Room: @unchecked Sendable {
     var poked: ((Poke) -> Void)?
     /// The owner has seated me in another room; reconnect there.
     var moved: ((String) -> Void)?
+    var accessChanged: (([String]) -> Void)?
+    private var accessTree: [String: Any] = [:]
 
     /// The room's name as the owner set it; "" until known. Main thread.
     private(set) var name = ""
@@ -262,12 +264,13 @@ final class Room: @unchecked Sendable {
     private(set) var error = ""
 
     /// `token` gives the signed-in user's ID token ("" for the local test server).
-    init(invite: Invite, me: String, token: @escaping @Sendable () async throws -> String) {
+    init(invite: Invite, me: String, token: @escaping @Sendable () async throws -> String, followSeat: Bool = true, watchAccess: Bool = false, listenToRoom: Bool = true) {
         self.invite = invite
         self.me = me
         self.token = token
-        listeners.append(Task.detached { [weak self] in await self?.listen(self?.roomPath ?? "") { self?.applyRoom($0, $1) } })
-        listeners.append(Task.detached { [weak self] in await self?.listen("seats/" + me) { self?.applySeat($0, $1) } })
+        if listenToRoom { listeners.append(Task.detached { [weak self] in await self?.listen(self?.roomPath ?? "") { self?.applyRoom($0, $1) } }) }
+        if followSeat { listeners.append(Task.detached { [weak self] in await self?.listen("seats/" + me) { self?.applySeat($0, $1) } }) }
+        if watchAccess { listeners.append(Task.detached { [weak self] in await self?.listen("access/" + me) { self?.applyAccess($0, $1) } }) }
     }
 
     private var roomPath: String { "rooms/" + invite.roomId }
@@ -279,6 +282,10 @@ final class Room: @unchecked Sendable {
     func leave() { write("DELETE", "\(roomPath)/members/\(me)", nil) }
 
     /// Waits up to two seconds for queued writes, so "off" reaches friends before exit.
+    func pendingWrites() -> Task<Void, Never>? {
+        writeLock.lock(); defer { writeLock.unlock() }; return lastWrite
+    }
+
     func flush() {
         writeLock.lock()
         let last = lastWrite
@@ -407,6 +414,13 @@ final class Room: @unchecked Sendable {
 
     /// seats/{me}: the room the owner has me sitting in. Being moved out also takes my
     /// approval in the old room away, so its stream gets a "cancel"; that's expected.
+    private func applyAccess(_ type: String, _ json: String) {
+        guard let e = Room.event(json) else { return }
+        accessTree = Room.applyEvent(accessTree, type, e.path, e.data)
+        let ids = accessTree.filter { $0.value as? Bool == true && Invite.isRoomId($0.key) }.map(\.key).sorted()
+        DispatchQueue.main.async { if !self.disposed { self.accessChanged?(ids) } }
+    }
+
     private func applySeat(_ type: String, _ json: String) {
         guard let e = Room.event(json), e.path == "/", let seat = e.data as? String,
               seat != invite.roomId, Invite.isRoomId(seat) else { return }
@@ -459,12 +473,16 @@ final class Room: @unchecked Sendable {
     }
 
     static func members(_ tree: [String: Any]) -> [Member] {
-        guard let all = tree["members"] as? [String: Any] else { return [] }
-        return all.compactMap { (id, value) -> Member? in
+        let all = tree["members"] as? [String: Any] ?? [:]
+        var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
                           style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"))
         }
+        for (id, value) in tree["names"] as? [String: Any] ?? [:] {
+            if let name = value as? String, !result.contains(where: { $0.id == id }) { result.append(Member(id: id, name: name)) }
+        }
+        return result
     }
 
     static func pokeFor(_ tree: [String: Any], _ me: String) -> Poke? {
@@ -492,7 +510,7 @@ final class Room: @unchecked Sendable {
     /// person up to boardLines; the title always has the head count.
     static func board(_ members: [Member], me: String) -> (title: String, lines: [String]) {
         let newest = latest(members)
-        let here = members.filter { $0.id != me && isHere($0, newest) }.sorted { a, b in
+        let here = members.filter { isHere($0, newest) }.sorted { a, b in
             if (a.state == "paused") != (b.state == "paused") { return b.state == "paused" }
             if a.minutes != b.minutes { return a.minutes > b.minutes }
             return a.name < b.name

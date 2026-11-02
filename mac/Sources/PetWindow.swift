@@ -8,10 +8,11 @@ private let boardLine: CGFloat = 20
 private let boardSpace = 48 + CGFloat(Room.boardLines) * boardLine
 private let bubbleArea: CGFloat = 92 // a two-line bubble, and a one-line news bubble above it
 private let floorY = boardSpace + bubbleArea // top of the desks' grid
-let petSize = NSSize(width: 420, height: floorY + CGFloat(Sprites.height) * scale + 10)
-private let myX = petSize.width - deskWidth - 14
+let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites.height) * scale + 10)
+private let myX = (petSize.width - deskWidth) / 2
 // The gap keeps two neighbouring bubbles from running into each other.
 private let seatX = myX - deskWidth - 22
+private let rightX = myX + deskWidth + 22
 
 /// A little classroom, drawn like the Windows app's PetWindow.cs: my desk on the right
 /// and the pinned seatmate's on the left, each with a nameplate and a speech bubble, and
@@ -54,7 +55,13 @@ final class PetWindow: NSPanel {
     private var visitTick = -1  // -1: nobody visiting
     private var visitLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
     private var visitText = ""
-    private var visitFromSeat = false // the visitor is my seatmate, so their desk empties meanwhile
+    private var visitSide = 0
+    private var outgoingTick = -1
+    private var outgoingSide = 0
+    private var outgoingText = ""
+    private var previousSeats: [Seat?] = [nil, nil]
+    private var leavingTicks = [-1, -1]
+    private(set) var sizePercent = [50, 75, 100, 125, 150].contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
     private var dragFrom: NSPoint?
     private var dragOrigin = NSPoint.zero
     private var dragged = false
@@ -65,10 +72,12 @@ final class PetWindow: NSPanel {
     var newsText: () -> String = { "" }
     var myName: () -> String = { "" }
     var seatmate: () -> Seat? = { nil }
+    var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
     var board: () -> (title: String, lines: [String])? = { nil }
 
     var seatmateClicked: () -> Void = {}
+    var rightSeatmateClicked: () -> Void = {}
     var awayClicked: () -> Void = {}
     var petClicked: () -> Void = {}
     var contextMenu: NSMenu?
@@ -96,6 +105,7 @@ final class PetWindow: NSPanel {
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         contentView = Canvas(owner: self)
+        setDisplaySize(sizePercent)
         setFrameOrigin(savedLocation() ?? defaultLocation())
     }
 
@@ -103,6 +113,19 @@ final class PetWindow: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    func setDisplaySize(_ percent: Int) {
+        guard [50, 75, 100, 125, 150].contains(percent) else { return }
+        sizePercent = percent
+        let area = (screen ?? NSScreen.main)?.visibleFrame.size ?? petSize
+        let factor = min(CGFloat(percent) / 100, min(area.width / petSize.width, area.height / petSize.height))
+        let size = NSSize(width: petSize.width * factor, height: petSize.height * factor)
+        setContentSize(size)
+        contentView?.frame = NSRect(origin: .zero, size: size)
+        contentView?.bounds = NSRect(origin: .zero, size: petSize)
+        setFrameOrigin(savedLocation() ?? defaultLocation())
+        redraw()
+    }
 
     func appear(_ newMood: Mood) {
         mood = newMood
@@ -125,33 +148,46 @@ final class PetWindow: NSPanel {
     }
 
     /// Stand up, wave for about two seconds, fade out, hide.
-    func standUpAndLeave() { setMood(.leaving) }
+    func standUpAndLeave() { visitTick = -1; outgoingTick = -1; setMood(.leaving) }
 
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
     func visit(_ friend: Look, text: String, fromSeatmate: Bool) {
         visitLook = friend
         visitText = text
-        visitFromSeat = fromSeatmate
+        visitSide = fromSeatmate ? -1 : 0
         visitTick = 0
         if !isVisible || fading || mood == .leaving { appear(.away) }
     }
 
+    func visit(_ friend: Look, text: String, side: Int) {
+        visit(friend, text: text, fromSeatmate: side != 0)
+        visitSide = side
+    }
+
+    func goVisit(_ name: String, message: String, side: Int) {
+        outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message
+        if !isVisible { appear(.away) }
+    }
+
     /// For the self-test: one moment of the animation, set up without showing the window.
     func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Int = -1,
-                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "") {
+                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Int = -1, outgoingDirection: Int = 0) {
         mood = atMood
         frameCount = atFrame
         tick = atFrame
         visitTick = atVisitTick
         visitLook = friend
         visitText = friendText
-        visitFromSeat = true
+        visitSide = -1
+        outgoingTick = atOutgoingTick; outgoingSide = outgoingDirection; outgoingText = "민지에게\n화이팅 !"
     }
 
     @objc private func step() {
         frameCount += 1
         tick += 1
+        for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 10 { leavingTicks[i] += 1 } }
+        if outgoingTick >= 0 { outgoingTick += 1; if outgoingTick > PetWindow.visitTicks { outgoingTick = -1; if mood == .away { fading = true } } }
         if visitTick >= 0 {
             visitTick += 1
             if visitTick > PetWindow.visitTicks {
@@ -198,50 +234,64 @@ final class PetWindow: NSPanel {
     func paint() {
         if let board = board() { drawClassroom(board.title, board.lines) }
 
-        let seat = seatmate()
+        let seats = [seatmate(), rightSeatmate()]
         let visiting = visitTick >= 0
-        if let seat {
-            // A seatmate who has come over to my desk has left theirs empty.
-            let gone = visiting && visitFromSeat
-            Sprites.draw(gone ? .empty : seatPose(seat), seat.look, left: seatX, top: floorY, scale: scale)
-            drawNameplate(seat.name, deskX: seatX)
+        let outgoing = outgoingTick >= 0
+        for i in 0..<2 {
+            guard let seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
+            if let before = previousSeats[i], before.name == seat.name && before.here && !seat.here { leavingTicks[i] = 0 }
+            if seat.here { leavingTicks[i] = -1 }
+            previousSeats[i] = seat
+            let gone = visiting && visitSide == (i == 0 ? -1 : 1)
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
+                ? (leavingTicks[i] < 2 ? .stand : leavingTicks[i] % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
+            let x = i == 0 ? seatX : rightX
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
+            drawNameplate(seat.name, deskX: x)
         }
-
-        // The visitor walks over during the first second (from the seatmate's chair, or in
-        // from the left) and stops behind the left end of my desk, which hides their legs.
-        let start = visitFromSeat ? seatX : seatX - CGFloat(Int(deskWidth) / 2)
-        let arrived = myX - 19 * scale
-        let steps = min(max(visitTick, 0), 4)
-        let visitorX = start + CGFloat(Int(arrived - start) * steps / 4)
-        let walking = steps < 4
-        let tapping = visiting && !walking && (mood == .studying || mood == .dozing)
-        let tap = tapping && frameCount % 2 == 0 // hand down on the shoulder; up on the other frame
-        if visiting {
-            let pose: Sprites.Visiting = walking ? .walk : tapping ? .reach : .wave
-            let hop = walking && frameCount % 2 == 0 ? scale : 0
-            Sprites.draw(layers: Sprites.visitor(visitLook, pose, alt: frameCount % 2 == 0), visitLook,
-                         left: visitorX, top: floorY - hop, scale: scale)
-        }
-
-        // Each tap makes my pet jump a little, with a "!" over its head.
-        Sprites.draw(myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
+        let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
+        let arrived = myX + (visitSide == 1 ? 19 : -19) * scale
+        let steps = Self.travelStep(visitTick)
+        let visitorX = start + (arrived - start) * CGFloat(steps) / 4
+        let walking = visitTick < 4 || visitTick > 18
+        let tapping = visiting && !walking && !outgoing && (mood == .studying || mood == .dozing)
+        let tap = tapping && frameCount % 2 == 0
+        if visiting { drawVisitor(visitLook, pose: walking ? .walk : tapping ? .reach : .wave, x: visitorX,
+                                 hop: walking && frameCount % 2 == 0 ? scale : 0, mirror: visitSide == 1) }
+        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
         drawNameplate(myName(), deskX: myX)
-        if tapping { Sprites.draw(layers: Sprites.reachLayers(down: tap), visitLook, left: visitorX, top: floorY, scale: scale) }
-
+        if tapping {
+            NSGraphicsContext.saveGraphicsState()
+            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+            Sprites.draw(layers: Sprites.reachLayers(down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        let destination = outgoingSide < 0 ? seatX : outgoingSide > 0 ? rightX : petSize.width - deskWidth / 2
+        let outX = myX + (destination - myX) * CGFloat(Self.travelStep(outgoingTick)) / 4
+        if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
+                                 hop: frameCount % 2 == 0 ? scale : 0, mirror: (destination < myX) != (outgoingTick > 18)) }
         let tip = floorY - 2
-        let mid = CGFloat(Sprites.dx + 16) * scale // over the person, not the middle of the desk
-        let narrow = deskWidth + 16 // with a neighbour, a bubble stays over its own desk
-        if visiting {
-            // Only the visitor talks, so its bubble can be wide.
-            drawBubble(visitText, cx: visitorX + mid, tipY: tip, maxWidth: petSize.width - 2, fill: PetWindow.visitYellow)
-        } else {
+        let mid = CGFloat(Sprites.dx + 16) * scale
+        let narrow = deskWidth + 16
+        if visiting { drawBubble(visitText, cx: visitorX + mid, tipY: tip, maxWidth: petSize.width - 2, fill: PetWindow.visitYellow) }
+        else if outgoing { drawBubble(outgoingText, cx: outX + mid, tipY: tip, maxWidth: petSize.width - 2, fill: PetWindow.visitYellow) }
+        else {
             var top = tip
-            if mood != .away {
-                top = drawBubble(bubbleText(), cx: myX + mid, tipY: tip, maxWidth: seat != nil ? narrow : petSize.width - 2, fill: .white)
+            if mood != .away { top = drawBubble(bubbleText(), cx: myX + mid, tipY: tip, maxWidth: narrow, fill: .white) }
+            for i in 0..<2 {
+                if let seat = seats[i] { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 10 ? "다녀올게요!" : seat.text,
+                                                    cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             }
-            if let seat { drawBubble(seat.text, cx: seatX + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             if mood != .away { drawBubble(newsText(), cx: myX + mid, tipY: top - 2, maxWidth: petSize.width - 2, fill: PetWindow.newsMint) }
         }
+    }
+
+    static func travelStep(_ tick: Int) -> Int { tick < 0 ? 0 : tick < 4 ? tick : tick <= 18 ? 4 : max(0, (24 - tick) * 4 / 6) }
+    private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {
+        NSGraphicsContext.saveGraphicsState()
+        if mirror { let t = NSAffineTransform(); t.translateX(by: x + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     /// Lines (split on "\n") in a rounded box whose tail points down at `cx`. Returns the
@@ -360,13 +410,10 @@ final class PetWindow: NSPanel {
             showMenu(event)
             return
         }
-        if mood == .away {
-            awayClicked()
-            return
-        }
-        if seatmate() != nil && p.y >= boardSpace && p.x >= seatX && p.x < seatX + deskWidth {
-            seatmateClicked()
-            return
+        if p.y >= boardSpace {
+            if seatmate() != nil && p.x >= seatX && p.x < seatX + deskWidth { seatmateClicked(); return }
+            if rightSeatmate() != nil && p.x >= rightX && p.x < rightX + deskWidth { rightSeatmateClicked(); return }
+            if mood == .away && p.x >= myX && p.x < myX + deskWidth { awayClicked(); return }
         }
         dragFrom = NSEvent.mouseLocation
         dragOrigin = frame.origin
@@ -402,16 +449,16 @@ final class PetWindow: NSPanel {
         let xy = Settings.get("position").split(separator: ",")
         guard xy.count == 2, let x = Double(xy[0]), let y = Double(xy[1]) else { return nil }
         // A spot on a screen that's no longer attached falls back to the default corner.
-        let spot = NSRect(x: x, y: y, width: petSize.width, height: petSize.height)
+        let spot = NSRect(x: x, y: y, width: frame.width, height: frame.height)
         guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(spot) }) else { return nil }
         // Pulled fully on screen: the window may have grown between versions, or the Dock moved.
         let area = screen.visibleFrame
-        return NSPoint(x: max(area.minX, min(x, area.maxX - petSize.width)), y: max(area.minY, min(y, area.maxY - petSize.height)))
+        return NSPoint(x: max(area.minX, min(x, area.maxX - frame.width)), y: max(area.minY, min(y, area.maxY - frame.height)))
     }
 
     private func defaultLocation() -> NSPoint {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return .zero }
-        return NSPoint(x: screen.visibleFrame.maxX - petSize.width - 8, y: screen.visibleFrame.minY)
+        return NSPoint(x: screen.visibleFrame.maxX - frame.width - 8, y: screen.visibleFrame.minY)
     }
 
     private func remember(_ key: String, _ value: String) {

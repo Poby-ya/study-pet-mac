@@ -32,5 +32,5 @@ jobs:
       - name: SIGTERM quits through the app (no crash report, process gone)
         run: |
           pkill -TERM -f "$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet"
-          sleep 2
+          for _ in {1..40}; do pgrep -f "$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet" >/dev/null || break; sleep 0.2; done
           if pgrep -f "$HOME/Applications/StudyPet.app/Contents/MacOS/StudyPet"; then echo "still running"; exit 1; fi

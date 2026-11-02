@@ -217,11 +217,11 @@ enum SelfTest {
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
         var board = Room.board(members, me: "me")
-        check(board.title == "지금 공부 중 · 2명" && board.lines == ["민지 · 수학 32분", "준혁 · 쉬는 중"],
+        check(board.title == "지금 공부 중 · 3명" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
               "board: everyone else at their desk, studying first, away and off left out: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
         board = Room.board(members, me: "me")
-        check(board.title == "지금 공부 중 · 4명" && board.lines.count == 4 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        check(board.title == "지금 공부 중 · 5명" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
         check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == Room.boardLines,
               "board: grows only up to boardLines")
 
