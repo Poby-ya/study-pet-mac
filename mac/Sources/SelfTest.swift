@@ -23,6 +23,7 @@ enum SelfTest {
         check(HelpWindow.sections().count == 5, "help: five offline sections are bundled")
         checkRecords()
         checkRecovery()
+        checkUpdater()
         checkRoom()
         checkSprites()
         if let invite { checkNetwork(invite, out) }
@@ -39,6 +40,11 @@ enum SelfTest {
         help.contentView?.layoutSubtreeIfNeeded()
         save(capture(help.contentView!), out, "help.png")
         help.close()
+        let settings = SettingsWindow(updater: Updater(), apply: {}, login: {})
+        settings.orderFront(nil)
+        settings.contentView?.layoutSubtreeIfNeeded()
+        save(capture(settings.contentView!), out, "settings.png")
+        settings.close()
         for count in [0, 1, 8] {
             let page = Planner(ranking: (0..<count).map { _ in Records.Rank(subject: "아주 긴 한글 과목 이름", month: 1234, total: 12345) }, anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
             save(capture(page.contentView!), out, "planner-\(count).png")
@@ -61,6 +67,35 @@ enum SelfTest {
         try? report.write(to: out.appendingPathComponent("selftest.txt"), atomically: true, encoding: .utf8)
         print(report)
         return failures.isEmpty ? 0 : 1
+    }
+
+    private static func checkUpdater() {
+        let hash = String(repeating: "a", count: 64)
+        let json = "{\"tag_name\":\"v1.2.3\",\"draft\":false,\"prerelease\":false,\"assets\":[{\"name\":\"StudyPet-mac.zip\",\"size\":123,\"digest\":\"sha256:\(hash)\",\"browser_download_url\":\"\(UpdateRelease.root)v1.2.3/StudyPet-mac.zip\"}]}"
+        let parsed = try? UpdateRelease.parse(Data(json.utf8))
+        check(parsed?.version == [1, 2, 3] && parsed?.hash == hash && parsed?.size == 123, "update: stable release metadata is read")
+        for bad in ["null", "{}", "{", json.replacingOccurrences(of: "v1.2.3", with: "v1.2.3-beta"),
+                    json.replacingOccurrences(of: "\"draft\":false", with: "\"draft\":true"),
+                    json.replacingOccurrences(of: "\"prerelease\":false", with: "\"prerelease\":true"),
+                    json.replacingOccurrences(of: "https://github.com/", with: "http://github.com/"),
+                    json.replacingOccurrences(of: "study-pet-releases/releases/download", with: "other-repo/releases/download"),
+                    json.replacingOccurrences(of: "sha256:", with: "sha512:"), json.replacingOccurrences(of: hash, with: "bad")] {
+            check((try? UpdateRelease.parse(Data(bad.utf8))) == nil, "update: invalid release was accepted")
+        }
+        let payload = Records.folder.appendingPathComponent("hash-fixture.txt")
+        try? Data("abc".utf8).write(to: payload)
+        check((try? Updater.hash(payload)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "update: SHA256 matches known bytes")
+        for mode in ["studying", "paused"] {
+            let raw = try? UpdateSession(state: mode, subject: "수학", seconds: 1234.567).encode()
+            let saved = raw.flatMap(UpdateSession.parse)
+            check(saved?.state == mode && saved?.subject == "수학" && saved?.seconds == 1234.567, "update: study/paused state retains elapsed time")
+        }
+        for bad in ["null", "{}", "{", "{\"state\":\"studying\",\"subject\":\"수학\",\"seconds\":-1}"] {
+            check(UpdateSession.parse(bad) == nil, "update: invalid resume state is ignored")
+        }
+        check(UpdateRedirects.allowed(URL(string: "https://release-assets.githubusercontent.com/file")!) &&
+              !UpdateRedirects.allowed(URL(string: "http://github.com/file")!) &&
+              !UpdateRedirects.allowed(URL(string: "https://github.com.evil.example/file")!), "update: redirects stay on HTTPS GitHub release hosts")
     }
 
     // ---- Records --------------------------------------------------------------------

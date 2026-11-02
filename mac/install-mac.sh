@@ -1,75 +1,118 @@
 #!/bin/bash
-# 공부 친구 — Mac 설치 (한 줄 설치). 같은 줄을 다시 붙여 넣으면 업데이트됩니다.
-#
-#   /bin/bash -c "$(curl -fsSL https://github.com/Poby-ya/study-pet-releases/releases/latest/download/install-mac.sh)"
-#
-# 터미널이 곧바로 받아서 설치하므로 인터넷에서 받은 파일에 붙는 격리 표시가 생기지 않고,
-# 그래서 "확인되지 않은 개발자" 경고 없이 열립니다 (PDF 필기와 같은 방식).
-# LF 줄바꿈이어야 합니다. CRLF면 macOS의 bash가 줄 끝의 \r까지 명령으로 읽습니다.
+# 공부 친구 설치. 앱 안에서는 같은 도우미가 검증된 파일을 설치하고 재실행합니다.
 set -euo pipefail
-
 CHANNEL="${STUDYPET_CHANNEL:-https://github.com/Poby-ya/study-pet-releases/releases/latest/download}"
-APPS_DIR="$HOME/Applications"
-APP="$APPS_DIR/StudyPet.app"
+APP="$HOME/Applications/StudyPet.app"
 WORK="$(/usr/bin/mktemp -d)"
-trap '/bin/rm -rf -- "$WORK"' EXIT
+MODE=manual
+NEXT=""
+BACKUP=""
+OLD_PID=""
+ERROR_FILE=""
+REPLACED=0
+REASON='설치를 완료하지 못했어요. 설정에서 다시 시도해 주세요.'
 
-title() { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
+title() { printf '\n%s\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
-fail() {
-  printf '\n\033[31m  설치하지 못했습니다: %s\033[0m\n' "$*" >&2
-  printf '\033[31m  이 터미널 창을 캡처해서 보내 주세요.\033[0m\n' >&2
-  exit 1
-}
+fail() { REASON="$*"; printf '\n설치하지 못했습니다: %s\n' "$*" >&2; exit 1; }
 fetch() { /usr/bin/curl --fail --location --silent --show-error --connect-timeout 20 --max-time 600 --output "$2" "$1"; }
+cleanup() {
+  result=$?
+  trap - EXIT
+  if [[ "$result" -ne 0 ]]; then
+    if [[ "$REPLACED" == 1 && -d "$BACKUP" ]]; then
+      /bin/rm -rf -- "$APP"
+      /bin/mv -- "$BACKUP" "$APP" || true
+    fi
+    if [[ "$MODE" == apply ]]; then
+      printf '%s\n' "$REASON" > "$ERROR_FILE" || true
+      if ! /bin/kill -0 "$OLD_PID" 2>/dev/null; then /usr/bin/open "$APP" || true; fi
+    fi
+  fi
+  if [[ "$MODE" != prepare || "$result" -ne 0 ]]; then
+    [[ -z "$NEXT" || ! -d "$NEXT" ]] || /bin/rm -rf -- "$NEXT"
+  fi
+  /bin/rm -rf -- "$WORK"
+  exit "$result"
+}
+trap cleanup EXIT
 
-[[ "$(/usr/bin/uname -s)" == "Darwin" ]] || fail '이 설치 명령은 Mac 전용입니다.'
+[[ "$(/usr/bin/uname -s)" == Darwin ]] || fail '이 설치 명령은 Mac 전용입니다.'
 major="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
-[[ "$major" -ge 13 ]] || fail "macOS 13(Ventura) 이상이 필요합니다. 지금은 $(/usr/bin/sw_vers -productVersion)입니다."
+[[ "$major" -ge 13 ]] || fail 'macOS 13(Ventura) 이상이 필요합니다.'
 
-title '공부 친구를 받는 중…'
-fetch "$CHANNEL/StudyPet-mac.zip" "$WORK/StudyPet-mac.zip" || fail '파일을 받지 못했습니다. 인터넷 연결을 확인해 주세요.'
-fetch "$CHANNEL/StudyPet-mac.zip.sha256" "$WORK/expected" || fail '확인용 파일을 받지 못했습니다.'
-[[ "$(/usr/bin/shasum -a 256 "$WORK/StudyPet-mac.zip" | /usr/bin/awk '{print $1}')" == "$(/usr/bin/tr -d '[:space:]' < "$WORK/expected")" ]] \
-  || fail '받은 파일이 손상되었습니다. 잠시 뒤 다시 시도해 주세요.'
-/usr/bin/ditto -x -k "$WORK/StudyPet-mac.zip" "$WORK/unpacked" || fail '압축을 풀지 못했습니다.'
-[[ -x "$WORK/unpacked/StudyPet.app/Contents/MacOS/StudyPet" ]] || fail '받은 파일에 앱이 없습니다.'
+if [[ "${1:-}" == --prepare-update || "${1:-}" == --apply-update ]]; then
+  [[ "$#" -ge 5 ]] || fail '업데이트 인수가 올바르지 않아요.'
+  ZIP="$2"
+  HASH="$3"
+  APP="$4"
+  [[ "$APP" == /*/StudyPet.app && ! -L "$APP" && "$ZIP" == /* && "$HASH" =~ ^[a-fA-F0-9]{64}$ ]] || fail '업데이트 경로가 올바르지 않아요.'
+  NEXT="$APP.update-${HASH:0:16}.app"
+  if [[ "$1" == --prepare-update ]]; then
+    MODE=prepare
+    EXPECTED_VERSION="$5"
+  else
+    [[ "$#" == 6 && "$5" =~ ^[1-9][0-9]*$ && "$6" == /* ]] || fail '업데이트 인수가 올바르지 않아요.'
+    MODE=apply
+    OLD_PID="$5"
+    ERROR_FILE="$6"
+    [[ -d "$NEXT" ]] || fail '준비한 업데이트 파일이 없어요. 다시 받아 주세요.'
+  fi
+  [[ -f "$ZIP" && "$(/usr/bin/shasum -a 256 "$ZIP" | /usr/bin/awk '{print $1}')" == "$HASH" ]] || fail '받은 파일이 손상되었습니다.'
+else
+  [[ "$#" == 0 ]] || fail '알 수 없는 설치 옵션입니다.'
+  title '공부 친구를 받는 중…'
+  ZIP="$WORK/StudyPet-mac.zip"
+  fetch "$CHANNEL/StudyPet-mac.zip" "$ZIP" || fail '파일을 받지 못했습니다. 인터넷 연결을 확인해 주세요.'
+  fetch "$CHANNEL/StudyPet-mac.zip.sha256" "$WORK/expected" || fail '확인용 파일을 받지 못했습니다.'
+  HASH="$(/usr/bin/tr -d '[:space:]' < "$WORK/expected")"
+  [[ "$HASH" =~ ^[a-fA-F0-9]{64}$ && "$(/usr/bin/shasum -a 256 "$ZIP" | /usr/bin/awk '{print $1}')" == "$HASH" ]] || fail '받은 파일이 손상되었습니다. 잠시 뒤 다시 시도해 주세요.'
+  NEXT="$APP.update-${HASH:0:16}.app"
+fi
 
-# Already running (an update): quit it first; quitting saves the open study segment.
-if /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then
+APPS_DIR="$(/usr/bin/dirname "$APP")"
+/bin/mkdir -p "$APPS_DIR"
+if [[ "$MODE" != apply ]]; then
+  /usr/bin/ditto -x -k "$ZIP" "$WORK/unpacked" || fail '압축을 풀지 못했습니다.'
+  [[ -x "$WORK/unpacked/StudyPet.app/Contents/MacOS/StudyPet" ]] || fail '받은 파일에 앱이 없습니다.'
+  /bin/rm -rf -- "$NEXT"
+  /usr/bin/ditto "$WORK/unpacked/StudyPet.app" "$NEXT" || fail '앱 폴더에 쓸 수 없습니다. 읽기 전용 디스크가 아닌 Applications 폴더에 설치해 주세요.'
+fi
+/usr/bin/codesign --verify --strict "$NEXT" || fail '앱 서명을 확인하지 못했습니다.'
+if [[ "$MODE" == prepare ]]; then
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$NEXT/Contents/Info.plist")" == "$EXPECTED_VERSION" ]] || fail '받은 앱의 버전이 맞지 않아요.'
+  exit 0
+fi
+
+if [[ "$MODE" == apply ]]; then
+  # The parent saves the study segment and exits normally. Never force it to quit.
+  for _ in {1..120}; do
+    /bin/kill -0 "$OLD_PID" 2>/dev/null || break
+    /bin/sleep 0.5
+  done
+  if /bin/kill -0 "$OLD_PID" 2>/dev/null; then fail '앱이 종료되지 않아 업데이트를 중단했어요.'; fi
+elif /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then
   note '실행 중인 공부 친구를 닫습니다. 공부하던 시간은 저장됩니다.'
-  # SIGTERM, which the app turns into a normal quit; AppleScript would ask for permission.
   /usr/bin/pkill -TERM -f "$APP/Contents/MacOS/StudyPet" || true
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for _ in {1..10}; do
     /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" || break
     /bin/sleep 0.5
   done
-  /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" && fail '앱이 아직 종료되지 않았습니다. 메뉴에서 종료한 뒤 다시 시도해 주세요.'
+  if /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then fail '앱이 아직 종료되지 않았습니다. 메뉴에서 종료한 뒤 다시 시도해 주세요.'; fi
 fi
 
 title '설치하는 중…'
-/bin/mkdir -p "$APPS_DIR"
-NEXT="$APPS_DIR/StudyPet.next.app"
-BACKUP="$APPS_DIR/StudyPet.previous.app"
-/bin/rm -rf -- "$NEXT"
-/usr/bin/ditto "$WORK/unpacked/StudyPet.app" "$NEXT" || fail "$APPS_DIR 에 넣지 못했습니다."
-/usr/bin/codesign --verify --strict "$NEXT" || fail '앱 서명을 확인하지 못했습니다.'
-/bin/rm -rf -- "$BACKUP"
-[[ ! -d "$APP" ]] || /bin/mv -- "$APP" "$BACKUP"
-if ! /bin/mv -- "$NEXT" "$APP"; then
-  [[ ! -d "$BACKUP" ]] || /bin/mv -- "$BACKUP" "$APP"
-  fail '앱을 교체하지 못해 이전 버전을 복원했습니다.'
-fi
+BACKUP="$APP.previous-$(/usr/bin/uuidgen).app"
+if [[ -d "$APP" ]]; then /bin/mv -- "$APP" "$BACKUP" || fail '기존 앱을 보관하지 못했습니다.'; REPLACED=1; fi
+/bin/mv -- "$NEXT" "$APP" || fail '앱을 교체하지 못해 이전 버전을 복원합니다.'
 /usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-if ! /usr/bin/open "$APP"; then
-  /bin/rm -rf -- "$APP"
-  [[ ! -d "$BACKUP" ]] || /bin/mv -- "$BACKUP" "$APP"
-  fail '앱을 열지 못해 이전 버전을 복원했습니다.'
-fi
-
+/usr/bin/open "$APP" || fail '앱을 열지 못해 이전 버전을 복원합니다.'
+/bin/sleep 2
+/usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" || fail '새 앱을 실행하지 못해 이전 버전을 복원합니다.'
+[[ ! -d "$BACKUP" ]] || /bin/rm -rf -- "$BACKUP"
+REPLACED=0
+[[ -z "$ERROR_FILE" ]] || /bin/rm -f -- "$ERROR_FILE"
 title '설치했어요!'
-note '화면 맨 위 오른쪽 메뉴 막대에 펫 얼굴이 생겼어요. 눌러서 메뉴를 열어요.'
+note '메뉴 막대의 펫 얼굴 → 설정에서 업데이트를 확인할 수 있어요.'
 note '⌃ control + ⌥ option + S : 공부 시작 / 일시정지'
 note '⌃ control + ⌥ option + X : 그만하기'
-note '친구 방에 들어가려면: 펫 얼굴 → 친구와 공부하기 → 초대 코드 넣기'
-note '업데이트할 때도 같은 한 줄을 다시 붙여 넣으면 돼요. 이 창은 닫아도 됩니다.'

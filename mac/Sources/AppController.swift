@@ -43,6 +43,10 @@ final class AppController: NSObject, NSMenuDelegate {
     private var planner: Planner?
     private var stats: StatsWindow?
     private var help: HelpWindow?
+    private var settingsWindow: SettingsWindow?
+    private var updateNotice: NSPanel?
+    private let updater = Updater()
+    private var updateCheck: Timer?
     private var pendingCommit: Segment?
     private var room: Room?
     private var members: [Member] = []
@@ -95,7 +99,13 @@ final class AppController: NSObject, NSMenuDelegate {
         workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
 
         safely("지난 기록 복구") { try Records.recoverOpen() }
+        restoreUpdateState()
         connect()
+        updater.found = { [weak self] in self?.showUpdateNotice($0) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.updater.check() }
+        let check = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.updater.check() }
+        RunLoop.main.add(check, forMode: .common)
+        updateCheck = check
     }
 
     private var nickname: String { Settings.get("name") }
@@ -532,6 +542,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let login = item("로그인할 때 자동 실행", #selector(toggleLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
+        menu.addItem(item("설정…", #selector(showSettings)))
         menu.addItem(item("종료", #selector(quit)))
     }
 
@@ -551,6 +562,70 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         if SMAppService.mainApp.status == .requiresApproval {
             alert("시스템 설정 → 일반 → 로그인 항목에서 '공부 친구'를 허용해 주세요.")
+        }
+    }
+
+    @objc private func showSettings() {
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindow(updater: updater, apply: { [weak self] in self?.installUpdate() }, login: { [weak self] in self?.toggleLogin() })
+        }
+        updateNotice?.orderOut(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        updater.check()
+    }
+
+    private func showUpdateNotice(_ tag: String) {
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 110), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.title = "공부 친구 업데이트"
+        panel.isReleasedWhenClosed = false
+        panel.level = .floating
+        let label = NSTextField(labelWithString: "새 버전 \(tag)이 나왔어요.")
+        label.frame = NSRect(x: 20, y: 65, width: 320, height: 22)
+        let button = NSButton(title: "설정에서 업데이트", target: self, action: #selector(showSettings))
+        button.frame = NSRect(x: 18, y: 18, width: 190, height: 32)
+        panel.contentView?.addSubview(label)
+        panel.contentView?.addSubview(button)
+        if let screen = NSScreen.main { panel.setFrameTopLeftPoint(NSPoint(x: screen.visibleFrame.maxX - 380, y: screen.visibleFrame.maxY - 20)) }
+        updateNotice = panel
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak panel] in panel?.orderOut(nil) }
+    }
+
+    private func installUpdate() {
+        Task { @MainActor in
+            do {
+                let prepared = try await updater.prepare()
+                let previous = state
+                guard closeSegment() else { state = .paused; pet.setMood(.dozing); updater.finish("공부 기록을 먼저 저장해야 해요."); return }
+                do {
+                    let saved = UpdateSession(state: previous == .studying ? "studying" : "paused", subject: subject, seconds: banked)
+                    try Settings.set("updateResume", previous == .off ? "" : saved.encode())
+                    try Updater.launch(prepared)
+                    NSApp.terminate(nil)
+                } catch {
+                    try? Settings.set("updateResume", "")
+                    if previous == .studying { resume() }
+                    throw error
+                }
+            } catch { updater.finish(error.localizedDescription) }
+        }
+    }
+
+    private func restoreUpdateState() {
+        let raw = Settings.get("updateResume")
+        guard !raw.isEmpty else { return }
+        safely("업데이트 상태 복구") {
+            try Settings.set("updateResume", "")
+            guard let saved = UpdateSession.parse(raw) else { return }
+            subject = saved.subject
+            banked = saved.seconds
+            state = saved.state == "studying" ? .studying : .paused
+            if state == .studying { openSegment() }
+            let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
+            RunLoop.main.add(timer, forMode: .common)
+            heartbeat = timer
+            pet.appear(state == .studying ? .studying : .dozing)
         }
     }
 

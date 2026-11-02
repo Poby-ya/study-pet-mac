@@ -54,6 +54,8 @@ jobs:
           if pgrep -f "$app"; then echo 'normal termination failed'; exit 1; fi
       - name: Install script syntax
         run: bash -n mac/install-mac.sh
+      - name: In-app updater and session restoration
+        run: bash mac/test-updater.sh
       - uses: actions/upload-artifact@v5
         if: always()
         with:
