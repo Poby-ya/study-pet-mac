@@ -14,13 +14,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: bash mac/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Firebase rules regression tests
+        run: npm ci --prefix tools && npm --prefix tools run test:rules
       - name: Self-test with the mock Firebase
         run: |
           node tools/mock-firebase.js > mock.log 2>&1 &
           sleep 1
           mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest" http://127.0.0.1:8790/rooms/selftestroom0000001
       - name: Self-test on Intel (Rosetta)
-        continue-on-error: true
         run: arch -x86_64 mac/build/StudyPet.app/Contents/MacOS/StudyPet --selftest "$PWD/selftest-intel"
       - name: Install script syntax
         run: bash -n mac/install-mac.sh

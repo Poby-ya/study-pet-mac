@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) { controller = AppController() }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { controller?.prepareQuit() == false ? .terminateCancel : .terminateNow }
+
     func applicationWillTerminate(_ notification: Notification) { controller?.shutDown() }
 }
 
@@ -40,6 +42,8 @@ final class AppController: NSObject, NSMenuDelegate {
     private var newsUntil = Date.distantPast
     private var planner: Planner?
     private var stats: StatsWindow?
+    private var help: HelpWindow?
+    private var pendingCommit: Segment?
     private var room: Room?
     private var members: [Member] = []
     private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
@@ -125,7 +129,8 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func start(_ picked: String) {
-        guard state == .off else { return }
+        guard state == .off, tryCommit() else { return }
+        do { try Records.recoverOpen() } catch { alert("지난 기록을 먼저 저장해야 해요.\n" + describe(error)); return }
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
         banked = 0
@@ -151,6 +156,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func resume() {
+        guard tryCommit() else { return }
         state = .studying
         openSegment()
         pet.setMood(.studying)
@@ -159,7 +165,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     @objc private func stop() {
         guard state != .off else { return }
-        closeSegment()
+        guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
         heartbeat?.invalidate()
         heartbeat = nil
         state = .off
@@ -183,16 +189,20 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     /// Writes the running segment to sessions.csv. Safe to call when nothing is running.
-    private func closeSegment() {
-        guard let start = segmentStart else { return }
-        let end = Date()
-        segmentStart = nil
-        banked += end.timeIntervalSince(start)
-        // If the append fails, open.txt stays behind and the next launch recovers it.
-        safely("기록 저장") {
-            try Records.append(Segment(start: start, end: end, subject: self.subject))
-            try Records.clearOpen()
+    @discardableResult private func closeSegment() -> Bool {
+        if let start = segmentStart {
+            let end = Date()
+            pendingCommit = Segment(start: start, end: end, subject: subject)
+            segmentStart = nil
+            banked += end.timeIntervalSince(start)
         }
+        return tryCommit()
+    }
+
+    private func tryCommit() -> Bool {
+        guard let segment = pendingCommit else { return true }
+        do { try Records.commit(segment); pendingCommit = nil; return true }
+        catch { alert("기록을 저장하지 못했어요. 다시 시작하거나 그만하기를 누르면 재시도해요.\n\n" + describe(error)); return false }
     }
 
     private var elapsed: TimeInterval { banked + (segmentStart.map { Date().timeIntervalSince($0) } ?? 0) }
@@ -235,12 +245,13 @@ final class AppController: NSObject, NSMenuDelegate {
         let auth = self.auth
         // The invite is the front door; the owner may have seated me in another room since.
         let seat = Settings.get("seat")
-        let joined = Room(invite: Invite.isRoomId(seat) ? invite.withRoom(seat) : invite, me: myId, token: { try await auth?.token() ?? "" })
+        let joined = Room(invite: Invite.isRoomId(seat) ? invite.withRoom(seat) : invite, me: myId, token: { [weak self] in
+            guard let self else { throw RoomError("연결이 종료됐어요.") }; return try await self.roomToken(auth)
+        })
         joined.moved = { [weak self, weak joined] moved in
             guard let self, self.room === joined else { return }
             self.safely("자리 저장") {
-                try Settings.set("seat", moved)
-                try Settings.set("seatmate", "") // the old room's seatmate isn't in the new one
+                try Settings.setMany(("seat", moved), ("seatmate", ""))
             }
             self.connect()
         }
@@ -260,6 +271,21 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         room = joined
         publish()
+    }
+
+    private func roomToken(_ current: Auth?) async throws -> String {
+        guard let current else { return "" }
+        let value = try await current.token()
+        let uid = await current.uid
+        let changed = await MainActor.run { () -> Bool in
+            guard self.auth === current, self.myId != uid else { return false }
+            self.safely("로그인 저장") { try Settings.set("pending", "1") }
+            self.alert("로그인 정보가 바뀌어 재승인이 필요해요. 초대 코드를 다시 넣어 주세요.")
+            self.connect()
+            return true
+        }
+        if changed { throw RoomError("재승인이 필요해요. 초대 코드를 다시 넣어 주세요.") }
+        return value
     }
 
     private func publish() {
@@ -305,6 +331,11 @@ final class AppController: NSObject, NSMenuDelegate {
         Task { @MainActor in
             do {
                 let (me, token) = try await self.signIn(invite)
+                if let seat = try await Room.resolve(invite, me: me, token: token) {
+                    try Settings.setMany(("room", invite.code), ("seat", seat), ("seatmate", ""), ("pending", ""))
+                    self.connect()
+                    return
+                }
                 try await Room.request(invite, me: me, token: token, [
                     "name": form.nickname, "realName": form.realName, "referrer": form.referrer,
                     "look": look.girl ? "girl" : "boy", "style": look.code, "at": Room.serverTime,
@@ -314,10 +345,7 @@ final class AppController: NSObject, NSMenuDelegate {
                 return
             }
             self.safely("방 저장") {
-                try Settings.set("room", invite.code)
-                try Settings.set("seat", "")
-                try Settings.set("seatmate", "")
-                try Settings.set("pending", "1")
+                try Settings.setMany(("room", invite.code), ("seat", ""), ("seatmate", ""), ("pending", "1"))
             }
             self.alert("가입 요청을 보냈어요. 방장이 승인하면 알려 드릴게요.")
             self.connect()
@@ -407,10 +435,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pendingCheck?.invalidate()
         pendingCheck = nil
         safely("방 나가기") {
-            try Settings.set("room", "")
-            try Settings.set("seat", "")
-            try Settings.set("seatmate", "")
-            try Settings.set("pending", "")
+                try Settings.setMany(("room", ""), ("seat", ""), ("seatmate", ""), ("pending", ""))
         }
     }
 
@@ -459,6 +484,7 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(stopItem)
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
+        menu.addItem(item("사용 설명서", #selector(showHelp)))
         menu.addItem(item(pet.look.girl ? "남학생으로 바꾸기" : "여학생으로 바꾸기", #selector(switchLook)))
         menu.addItem(.separator())
         menu.addItem(item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)))
@@ -529,6 +555,12 @@ final class AppController: NSObject, NSMenuDelegate {
         }
     }
 
+    @objc private func showHelp() {
+        if help == nil { help = HelpWindow() }
+        NSApp.activate(ignoringOtherApps: true)
+        help?.makeKeyAndOrderFront(nil)
+    }
+
     @objc private func showStats() {
         if let stats, stats.isVisible {
             NSApp.activate(ignoringOtherApps: true)
@@ -552,6 +584,8 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
 
     /// On quitting (from the menu, or when the Mac logs out or shuts down).
+    func prepareQuit() -> Bool { closeSegment() }
+
     func shutDown() {
         closeSegment()
         state = .off

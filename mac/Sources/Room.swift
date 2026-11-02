@@ -28,6 +28,7 @@ struct RoomError: Error {
     let message: String
     /// Firebase answered, and said no (as opposed to not answering at all).
     var refused = false
+    var invalidIdentity = false
     init(_ message: String, refused: Bool = false) {
         self.message = message
         self.refused = refused
@@ -68,19 +69,24 @@ struct Invite {
 
     // A real database needs sign-in, so a key; the local test server takes none.
     private static func keyFits(_ components: URLComponents, _ key: String) -> Bool {
-        key.isEmpty ? isLoopback(components) : matches(key, "^AIza[0-9A-Za-z_-]{30,45}$")
+        isLoopback(components) ? key.isEmpty : matches(key, "^AIza[0-9A-Za-z_-]{30,45}$")
     }
 
     private static func isLoopback(_ components: URLComponents) -> Bool {
         let host = components.host?.lowercased() ?? ""
-        return host == "localhost" || host.hasPrefix("127.")
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return host == "localhost" || host == "[::1]" || host == "::1" ||
+            (parts.count == 4 && parts[0] == "127" && parts.allSatisfy { Int($0).map { (0...255).contains($0) } ?? false })
     }
 
     /// https anywhere, or plain http on this machine; and the scheme://host[:port] part.
     private static func database(_ text: String) -> (URLComponents, String)? {
         guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = components.scheme?.lowercased(), let host = components.host?.lowercased(), !host.isEmpty,
-              scheme == "https" || (scheme == "http" && isLoopback(components)) else { return nil }
+              components.user == nil, components.password == nil, components.fragment == nil,
+              (scheme == "http" && isLoopback(components)) ||
+                (scheme == "https" && (components.port == nil || components.port == 443) &&
+                    (host.hasSuffix(".firebaseio.com") || host.hasSuffix(".firebasedatabase.app"))) else { return nil }
         let defaultPort = scheme == "https" ? 443 : 80
         let port = components.port.map { $0 == defaultPort ? "" : ":\($0)" } ?? ""
         return (components, "\(scheme)://\(host)\(port)")
@@ -122,7 +128,11 @@ actor Auth {
     func token() async throws -> String {
         if !idToken.isEmpty && Date() < expires { return idToken }
         if let pending { return try await pending.value }
-        let task = Task { try await self.renew() }
+        let saved = (uid, refreshToken, idToken, expires)
+        let task = Task<String, Error> {
+            do { return try await self.renew() }
+            catch { (self.uid, self.refreshToken, self.idToken, self.expires) = saved; throw error }
+        }
         pending = task
         defer { pending = nil }
         return try await task.value
@@ -139,7 +149,7 @@ actor Auth {
                 refreshToken = Auth.str(reply, "refresh_token")
                 uid = Auth.str(reply, "user_id")
                 seconds = Auth.str(reply, "expires_in")
-            } catch let error as RoomError where error.refused {
+            } catch let error as RoomError where error.invalidIdentity {
                 // Firebase turned the token down (another project's, or a deleted user): start over
                 // below. A plain network error propagates instead, so being offline never costs the uid.
                 refreshToken = ""
@@ -154,11 +164,11 @@ actor Auth {
             uid = Auth.str(reply, "localId")
             seconds = Auth.str(reply, "expiresIn")
         }
+        guard !uid.isEmpty, !idToken.isEmpty, !refreshToken.isEmpty else { throw RoomError("로그인 응답을 읽지 못했어요. 다시 시도해 주세요.") }
         // Renew five minutes early, so a token never runs out mid-request.
         expires = Date().addingTimeInterval(Double((Int(seconds) ?? 3600) - 300))
         if remember {
-            try Settings.set("uid", uid)
-            try Settings.set("refresh", refreshToken)
+            try Settings.setMany(("uid", uid), ("refresh", refreshToken))
         }
         return idToken
     }
@@ -171,7 +181,12 @@ actor Auth {
         let (data, response) = try await URLSession.shared.data(for: request)
         let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) { throw RoomError(explain(reply, status), refused: true) }
+        if !(200..<300).contains(status) {
+            var error = RoomError(explain(reply, status), refused: true)
+            let code = (reply["error"] as? [String: Any])?["message"] as? String ?? ""
+            error.invalidIdentity = ["INVALID_REFRESH_TOKEN", "TOKEN_EXPIRED", "USER_NOT_FOUND"].contains(code)
+            throw error
+        }
         return reply
     }
 
@@ -203,6 +218,11 @@ actor Auth {
 /// rooms/{room}/members/{uid}   = { name, look, style, state, subject, minutes, updated }
 /// rooms/{room}/pokes/{to}      = { from, name, look, style, message, at }
 /// requests/{room}/{uid}        = { name, realName, referrer, look, style, at }
+private final class NoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+}
+
 final class Room: @unchecked Sendable {
     enum Standing { case approved, waiting, rejected }
 
@@ -216,7 +236,7 @@ final class Room: @unchecked Sendable {
     private static let stream: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 120 // Firebase sends a keep-alive every 30 s
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
     }()
 
     private let invite: Invite
@@ -251,7 +271,7 @@ final class Room: @unchecked Sendable {
 
     private var roomPath: String { "rooms/" + invite.roomId }
 
-    func publish(_ status: [String: Any]) { write("PUT", "\(roomPath)/members/\(me)", status) }
+    func publish(_ status: [String: Any]) { write("PATCH", "", ["\(roomPath)/members/\(me)": status, "\(roomPath)/names/\(me)": status["name"] ?? ""]) }
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
 
@@ -270,7 +290,8 @@ final class Room: @unchecked Sendable {
         _ = done.wait(timeout: .now() + 2)
     }
 
-    func dispose() { listeners.forEach { $0.cancel() } }
+    private var disposed = false
+    func dispose() { disposed = true; listeners.forEach { $0.cancel() } }
 
     // ---- Before being in a room ----------------------------------------------------
 
@@ -288,6 +309,13 @@ final class Room: @unchecked Sendable {
         return try await call("GET", invite.url("requests/\(invite.roomId)/\(me)", token), nil) == "null" ? .rejected : .waiting
     }
 
+    static func resolve(_ invite: Invite, me: String, token: String) async throws -> String? {
+        let text = try await call("GET", invite.url("seats/\(me)", token), nil)
+        let seat = (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) as? String ?? invite.roomId
+        guard Invite.isRoomId(seat) else { return nil }
+        return try await call("GET", invite.url("rooms/\(seat)/approved/\(me)", token), nil) == "true" ? seat : nil
+    }
+
     static func json(_ value: Any) -> Data? { try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]) }
 
     /// One request; the body of the reply, or an error saying what went wrong.
@@ -299,7 +327,7 @@ final class Room: @unchecked Sendable {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Room.stream.data(for: request)
         let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if (200..<300).contains(status) { return text }
@@ -381,7 +409,7 @@ final class Room: @unchecked Sendable {
     private func applySeat(_ type: String, _ json: String) {
         guard let e = Room.event(json), e.path == "/", let seat = e.data as? String,
               seat != invite.roomId, Invite.isRoomId(seat) else { return }
-        DispatchQueue.main.async { self.moved?(seat) }
+        DispatchQueue.main.async { if !self.disposed { self.moved?(seat) } }
     }
 
     private func applyRoom(_ type: String, _ json: String) {
@@ -398,6 +426,7 @@ final class Room: @unchecked Sendable {
             lastPokeAt = 0
         }
         DispatchQueue.main.async {
+            if self.disposed { return }
             self.name = roomName
             self.changed?(members)
             if fresh, let poke { self.poked?(poke) }

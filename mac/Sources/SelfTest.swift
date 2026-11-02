@@ -20,7 +20,9 @@ enum SelfTest {
         Records.folder = out.appendingPathComponent("data")
         try? FileManager.default.removeItem(at: Records.folder)
 
+        check(HelpWindow.sections().count == 5, "help: five offline sections are bundled")
         checkRecords()
+        checkRecovery()
         checkRoom()
         checkSprites()
         if let invite { checkNetwork(invite, out) }
@@ -32,6 +34,12 @@ enum SelfTest {
                                         Records.Rank(subject: "알고리즘 문제풀이 백준", month: 30, total: 30)],
                               anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
         save(capture(planner.contentView!), out, "planner.png")
+        let help = HelpWindow()
+        save(capture(help.contentView!), out, "help.png")
+        for count in [0, 1, 8] {
+            let page = Planner(ranking: (0..<count).map { _ in Records.Rank(subject: "아주 긴 한글 과목 이름", month: 1234, total: 12345) }, anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
+            save(capture(page.contentView!), out, "planner-\(count).png")
+        }
         let today = Calendar.current.startOfDay(for: Date())
         func at(_ day: Int, _ hours: Double) -> Date { Calendar.current.date(byAdding: .day, value: day, to: today)!.addingTimeInterval(hours * 3600) }
         let stats = StatsWindow(segments: [
@@ -125,6 +133,20 @@ enum SelfTest {
 
     private static func json(_ text: String) -> Any? {
         Room.nonNull(try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed]))
+    }
+
+    private static func checkRecovery() {
+        let original = Records.folder
+        Records.folder = original.appendingPathComponent("recovery-" + UUID().uuidString)
+        defer { Records.folder = original }
+        let start = Date(timeIntervalSince1970: 1793581200)
+        do {
+            try Records.saveOpen(start: start, lastSeen: start.addingTimeInterval(900), subject: "복구")
+            try Records.append(Segment(start: start, end: start.addingTimeInterval(1200), subject: "복구"))
+            try Records.recoverOpen(); try Records.recoverOpen()
+            let rows = try Records.load()
+            check(rows.count == 1 && rows.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) } == 1200, "recovery: 20 minutes stays 20")
+        } catch { check(false, "recovery: " + describe(error)) }
     }
 
     private static func checkRoom() {

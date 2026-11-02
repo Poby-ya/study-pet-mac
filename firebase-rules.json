@@ -1,0 +1,133 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": "auth != null && data.child('approved').child(auth.uid).val() == true",
+        "owner": {
+          ".write": "auth != null && !data.exists() && newData.val() == auth.uid && $room.matches(/^[a-z0-9]{16,40}$/)"
+        },
+        "name": {
+          ".write": "auth != null && (newData.parent().child('owner').val() == auth.uid)",
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+        },
+        "approved": {
+          "$uid": {
+            ".read": "auth != null && auth.uid == $uid",
+            ".write": "auth != null && newData.parent().parent().child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid)",
+            ".validate": "newData.val() == true"
+          }
+        },
+        "members": {
+          "$uid": {
+            ".write": "auth != null && ((auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true && (!root.child('seats').child($uid).exists() || root.child('seats').child($uid).val() == $room)) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == auth.uid))",
+            ".validate": "newData.hasChildren(['name', 'look', 'state', 'subject', 'minutes', 'updated'])",
+            "name": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
+            },
+            "look": {
+              ".validate": "newData.val() == 'boy' || newData.val() == 'girl'"
+            },
+            "style": {
+              ".validate": "newData.isString() && newData.val().matches(/^[bg][0-9]{6}$/)"
+            },
+            "state": {
+              ".validate": "newData.val() == 'studying' || newData.val() == 'paused' || newData.val() == 'off'"
+            },
+            "subject": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "minutes": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10080"
+            },
+            "updated": {
+              ".validate": "newData.val() == now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "pokes": {
+          "$to": {
+            ".write": "auth != null && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
+            ".validate": "newData.hasChildren(['from', 'name', 'look', 'message', 'at']) && newData.child('from').val() == auth.uid",
+            "from": {
+              ".validate": "newData.isString()"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 12"
+            },
+            "look": {
+              ".validate": "newData.val() == 'boy' || newData.val() == 'girl'"
+            },
+            "style": {
+              ".validate": "newData.isString() && newData.val().matches(/^[bg][0-9]{6}$/)"
+            },
+            "message": {
+              ".validate": "newData.isString() && newData.val().length <= 20"
+            },
+            "at": {
+              ".validate": "newData.val() == now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "names": {
+          "$uid": {
+            ".write": "auth != null && (newData.parent().parent().child('owner').val() == auth.uid || (auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true && (!root.child('seats').child($uid).exists() || root.child('seats').child($uid).val() == $room)))",
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
+          }
+        }
+      }
+    },
+    "seats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && ((!newData.exists() && root.child('rooms').child(data.val()).child('owner').val() == auth.uid) || (newData.exists() && newData.parent().parent().child('rooms').child(newData.val()).child('owner').val() == auth.uid && (!data.exists() || root.child('rooms').child(data.val()).child('owner').val() == auth.uid)))",
+        ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{16,40}$/) && newData.parent().parent().child('rooms').child(newData.val()).child('approved').child($uid).val() == true"
+      }
+    },
+    "owned": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        "$room": {
+          ".write": "auth != null && auth.uid == $uid && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == auth.uid",
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "requests": {
+      "$room": {
+        ".read": "auth != null && root.child('rooms').child($room).child('owner').val() == auth.uid",
+        "$uid": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && (auth.uid == $uid || root.child('rooms').child($room).child('owner').val() == auth.uid)",
+          ".validate": "newData.hasChildren(['name', 'realName', 'referrer', 'look', 'at'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
+          },
+          "realName": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+          },
+          "referrer": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
+          },
+          "look": {
+            ".validate": "newData.val() == 'boy' || newData.val() == 'girl'"
+          },
+          "style": {
+            ".validate": "newData.isString() && newData.val().matches(/^[bg][0-9]{6}$/)"
+          },
+          "at": {
+            ".validate": "newData.val() == now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "database": { "rules": "firebase-rules.json" },
+  "emulators": { "database": { "port": 19000 }, "ui": { "enabled": false }, "singleProjectMode": true }
+}

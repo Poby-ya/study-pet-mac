@@ -48,15 +48,18 @@ enum Records {
 
     static func append(_ segment: Segment) throws {
         guard segment.end > segment.start else { return }
-        try files.createDirectory(at: folder, withIntermediateDirectories: true)
-        if !files.fileExists(atPath: sessionsURL.path) {
-            // The BOM is what makes Excel read the Korean subject names correctly.
-            try "\u{FEFF}start,end,subject\r\n".write(to: sessionsURL, atomically: true, encoding: .utf8)
-        }
-        let handle = try FileHandle(forWritingTo: sessionsURL)
-        defer { try? handle.close() }
-        _ = try handle.seekToEnd()
-        try handle.write(contentsOf: Data((format(segment) + "\r\n").utf8))
+        guard let normalized = parse(format(segment)), normalized.end > normalized.start else { return }
+        let existing = try load()
+        if existing.contains(where: { $0.subject == normalized.subject && $0.start <= normalized.start && $0.end >= normalized.end }) { return }
+        let old = files.fileExists(atPath: sessionsURL.path) ? try String(contentsOf: sessionsURL, encoding: .utf8) : "\u{FEFF}start,end,subject\r\n"
+        let separator = old.hasSuffix("\n") ? "" : "\r\n"
+        try (old + separator + format(normalized) + "\r\n").write(to: sessionsURL, atomically: true, encoding: .utf8)
+    }
+
+    static func commit(_ segment: Segment) throws {
+        try saveOpen(start: segment.start, lastSeen: segment.end, subject: segment.subject)
+        try append(segment)
+        try clearOpen()
     }
 
     /// Rewritten every minute while studying, so a crash or power cut loses at most a minute.
@@ -73,7 +76,8 @@ enum Records {
     static func recoverOpen() throws {
         guard files.fileExists(atPath: openURL.path) else { return }
         let text = try String(contentsOf: openURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
-        if let segment = parse(text) { try append(segment) }
+        guard let segment = parse(text) else { throw RoomError("복구 기록을 읽지 못했어요. open.txt를 보존했어요.") }
+        try append(segment)
         try files.removeItem(at: openURL)
     }
 
@@ -212,11 +216,15 @@ enum Settings {
     }
 
     /// Throws when the file can't be written; callers decide whether that matters.
-    static func set(_ key: String, _ value: String) throws {
+    static func set(_ key: String, _ value: String) throws { try setMany((key, value)) }
+
+    static func setMany(_ changes: (String, String)...) throws {
         lock.lock()
         defer { lock.unlock() }
-        values[key] = value
+        var next = values
+        for (key, value) in changes { next[key] = value }
         try FileManager.default.createDirectory(at: Records.folder, withIntermediateDirectories: true)
-        try values.map { $0.key + "=" + $0.value + "\n" }.joined().write(to: Records.settingsURL, atomically: true, encoding: .utf8)
+        try next.map { $0.key + "=" + $0.value + "\n" }.joined().write(to: Records.settingsURL, atomically: true, encoding: .utf8)
+        values = next
     }
 }

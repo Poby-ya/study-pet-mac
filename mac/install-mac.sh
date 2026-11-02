@@ -44,14 +44,28 @@ if /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet"; then
     /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" || break
     /bin/sleep 0.5
   done
+  /usr/bin/pgrep -qf "$APP/Contents/MacOS/StudyPet" && fail '앱이 아직 종료되지 않았습니다. 메뉴에서 종료한 뒤 다시 시도해 주세요.'
 fi
 
 title '설치하는 중…'
 /bin/mkdir -p "$APPS_DIR"
-/bin/rm -rf -- "$APP"
-/usr/bin/ditto "$WORK/unpacked/StudyPet.app" "$APP" || fail "$APPS_DIR 에 넣지 못했습니다."
+NEXT="$APPS_DIR/StudyPet.next.app"
+BACKUP="$APPS_DIR/StudyPet.previous.app"
+/bin/rm -rf -- "$NEXT"
+/usr/bin/ditto "$WORK/unpacked/StudyPet.app" "$NEXT" || fail "$APPS_DIR 에 넣지 못했습니다."
+/usr/bin/codesign --verify --strict "$NEXT" || fail '앱 서명을 확인하지 못했습니다.'
+/bin/rm -rf -- "$BACKUP"
+[[ ! -d "$APP" ]] || /bin/mv -- "$APP" "$BACKUP"
+if ! /bin/mv -- "$NEXT" "$APP"; then
+  [[ ! -d "$BACKUP" ]] || /bin/mv -- "$BACKUP" "$APP"
+  fail '앱을 교체하지 못해 이전 버전을 복원했습니다.'
+fi
 /usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-/usr/bin/open "$APP" || fail '앱을 열지 못했습니다.'
+if ! /usr/bin/open "$APP"; then
+  /bin/rm -rf -- "$APP"
+  [[ ! -d "$BACKUP" ]] || /bin/mv -- "$BACKUP" "$APP"
+  fail '앱을 열지 못해 이전 버전을 복원했습니다.'
+fi
 
 title '설치했어요!'
 note '화면 맨 위 오른쪽 메뉴 막대에 펫 얼굴이 생겼어요. 눌러서 메뉴를 열어요.'

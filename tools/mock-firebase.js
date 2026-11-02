@@ -9,6 +9,7 @@ const http = require('http');
 const port = Number(process.env.PORT || 8790);
 let root = null;
 const listeners = new Set();
+let failNext = "";
 
 const valueAt = (keys) => keys.reduce((node, key) => (node && typeof node === 'object' ? node[key] ?? null : null), root);
 
@@ -63,9 +64,13 @@ http.createServer((req, res) => {
   req.on('end', () => {
     res.setHeader('Content-Type', 'application/json');
     if (req.method === 'GET') return res.end(JSON.stringify(valueAt(keys)));
+    if (req.headers['x-test-fail'] === 'true') { res.statusCode = 503; return res.end(JSON.stringify({ error: 'test failure' })); }
+    if (keys.join('/') === '__test/fail-next') { failNext = body; return res.end('true'); }
+    if (failNext === req.method) { failNext = ''; res.statusCode = 503; return res.end(JSON.stringify({ error: 'injected failure' })); }
     const value = req.method === 'DELETE' ? null : resolve(JSON.parse(body || 'null'));
     if (req.method === 'PATCH') {
-      for (const [key, child] of Object.entries(value || {})) { setAt([...keys, key], child); notify([...keys, key]); }
+      const changed = Object.entries(value || {}).map(([key, child]) => { const path = [...keys, ...key.split('/')]; setAt(path, child); return path; });
+      for (const path of changed) notify(path);
     } else {
       setAt(keys, value);
       notify(keys);
