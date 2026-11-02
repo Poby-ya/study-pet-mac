@@ -404,7 +404,12 @@ enum SelfTest {
         view.layoutSubtreeIfNeeded()
         let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
         view.cacheDisplay(in: view.bounds, to: rep)
-        return rep
+        // Native content views are transparent; include the window's backing colour.
+        return render(view.bounds.size) {
+            NSColor.windowBackgroundColor.setFill()
+            NSRect(origin: .zero, size: view.bounds.size).fill()
+            rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
+        }
     }
 
     private static func save(_ rep: NSBitmapImageRep, _ out: URL, _ name: String) {
