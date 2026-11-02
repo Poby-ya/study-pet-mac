@@ -405,11 +405,13 @@ enum SelfTest {
         let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
         view.cacheDisplay(in: view.bounds, to: rep)
         // Native content views are transparent; include the window's backing colour.
-        return render(view.bounds.size) {
-            NSColor.windowBackgroundColor.setFill()
-            NSRect(origin: .zero, size: view.bounds.size).fill()
-            rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
-        }
+        let cg = CGContext(data: nil, width: rep.pixelsWide, height: rep.pixelsHigh, bitsPerComponent: 8, bytesPerRow: 0,
+                           space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let rect = CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
+        cg.setFillColor(NSColor.windowBackgroundColor.usingColorSpace(.deviceRGB)!.cgColor)
+        cg.fill(rect)
+        cg.draw(rep.cgImage!, in: rect)
+        return NSBitmapImageRep(cgImage: cg.makeImage()!)
     }
 
     private static func save(_ rep: NSBitmapImageRep, _ out: URL, _ name: String) {
