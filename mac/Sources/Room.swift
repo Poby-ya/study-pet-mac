@@ -193,6 +193,7 @@ actor Auth {
     /// Firebase's error codes, in words the person can act on.
     private static func explain(_ reply: [String: Any], _ status: Int) -> String {
         let code = (reply["error"] as? [String: Any])?["message"] as? String ?? ""
+        if code.contains("CONFIGURATION_NOT_FOUND") { return "Firebase Authentication을 먼저 시작하고 로그인 방법에서 익명을 켜 주세요." }
         if code.contains("OPERATION_NOT_ALLOWED") || code.contains("ADMIN_ONLY_OPERATION") {
             return "Firebase에서 익명 로그인이 꺼져 있어요. Authentication → 로그인 방법 → 익명을 켜 주세요."
         }
