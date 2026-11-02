@@ -55,11 +55,16 @@ struct Invite {
         guard let parsed = Invite.database(text) else { return nil }
         let (components, database) = parsed
         let segments = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).components(separatedBy: "/")
-        guard segments.count == 2, segments[0] == "rooms", matches(segments[1], "^[a-z0-9]{16,40}$") else { return nil }
+        guard segments.count == 2, segments[0] == "rooms", isRoomId(segments[1]) else { return nil }
         let key = (components.percentEncodedQuery ?? "").split(separator: "&").first { $0.hasPrefix("key=") }.map { String($0.dropFirst(4)) } ?? ""
         guard keyFits(components, key) else { return nil }
         return Invite(database: database, roomId: segments[1], key: key)
     }
+
+    /// Another room in the same database, e.g. the one the owner seated me in.
+    func withRoom(_ roomId: String) -> Invite { Invite(database: database, roomId: roomId, key: key) }
+
+    static func isRoomId(_ text: String) -> Bool { matches(text, "^[a-z0-9]{16,40}$") }
 
     // A real database needs sign-in, so a key; the local test server takes none.
     private static func keyFits(_ components: URLComponents, _ key: String) -> Bool {
@@ -191,6 +196,8 @@ actor Auth {
 /// carries the signed-in user's token. The Mac app only joins rooms: creating one and
 /// approving requests stay with the owner on Windows.
 ///
+/// seats/{uid}                  = the room that person sits in (the owner moves people)
+/// rooms/{room}/name            = the room's name, set by the owner
 /// rooms/{room}/owner           = owner's uid
 /// rooms/{room}/approved/{uid}  = true (written by the owner)
 /// rooms/{room}/members/{uid}   = { name, look, style, state, subject, minutes, updated }
@@ -224,6 +231,11 @@ final class Room: @unchecked Sendable {
     /// Called on the main thread with everyone in the room.
     var changed: (([Member]) -> Void)?
     var poked: ((Poke) -> Void)?
+    /// The owner has seated me in another room; reconnect there.
+    var moved: ((String) -> Void)?
+
+    /// The room's name as the owner set it; "" until known. Main thread.
+    private(set) var name = ""
 
     /// Why the last request failed, or "" while things work. Main thread.
     private(set) var error = ""
@@ -234,6 +246,7 @@ final class Room: @unchecked Sendable {
         self.me = me
         self.token = token
         listeners.append(Task.detached { [weak self] in await self?.listen(self?.roomPath ?? "") { self?.applyRoom($0, $1) } })
+        listeners.append(Task.detached { [weak self] in await self?.listen("seats/" + me) { self?.applySeat($0, $1) } })
     }
 
     private var roomPath: String { "rooms/" + invite.roomId }
@@ -363,9 +376,18 @@ final class Room: @unchecked Sendable {
         return (e["path"] as? String ?? "/", nonNull(e["data"]))
     }
 
+    /// seats/{me}: the room the owner has me sitting in. Being moved out also takes my
+    /// approval in the old room away, so its stream gets a "cancel"; that's expected.
+    private func applySeat(_ type: String, _ json: String) {
+        guard let e = Room.event(json), e.path == "/", let seat = e.data as? String,
+              seat != invite.roomId, Invite.isRoomId(seat) else { return }
+        DispatchQueue.main.async { self.moved?(seat) }
+    }
+
     private func applyRoom(_ type: String, _ json: String) {
         guard let e = Room.event(json) else { return }
         tree = Room.applyEvent(tree, type, e.path, e.data)
+        let roomName = Room.str(tree, "name")
         let members = Room.members(tree)
         let poke = Room.pokeFor(tree, me)
         let fresh = poke != nil && lastPokeAt >= 0 && poke!.at > lastPokeAt
@@ -376,6 +398,7 @@ final class Room: @unchecked Sendable {
             lastPokeAt = 0
         }
         DispatchQueue.main.async {
+            self.name = roomName
             self.changed?(members)
             if fresh, let poke { self.poked?(poke) }
         }

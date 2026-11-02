@@ -64,7 +64,10 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
-            if self.room != nil { return Room.board(self.members, me: self.myId) }
+            if let room = self.room {
+                let board = Room.board(self.members, me: self.myId)
+                return (room.name.isEmpty ? board.title : "\(room.name) · \(board.title)", board.lines)
+            }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
         }
         pet.seatmateClicked = { [unowned self] in self.pokeSeatmate() }
@@ -230,7 +233,17 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         if nickname.isEmpty || myId.isEmpty { return }
         let auth = self.auth
-        let joined = Room(invite: invite, me: myId, token: { try await auth?.token() ?? "" })
+        // The invite is the front door; the owner may have seated me in another room since.
+        let seat = Settings.get("seat")
+        let joined = Room(invite: Invite.isRoomId(seat) ? invite.withRoom(seat) : invite, me: myId, token: { try await auth?.token() ?? "" })
+        joined.moved = { [weak self, weak joined] moved in
+            guard let self, self.room === joined else { return }
+            self.safely("자리 저장") {
+                try Settings.set("seat", moved)
+                try Settings.set("seatmate", "") // the old room's seatmate isn't in the new one
+            }
+            self.connect()
+        }
         joined.changed = { [weak self, weak joined] list in
             guard let self, self.room === joined else { return }
             let started = Room.newlyStarted(before: self.members, after: list, me: self.myId)
@@ -302,6 +315,7 @@ final class AppController: NSObject, NSMenuDelegate {
             }
             self.safely("방 저장") {
                 try Settings.set("room", invite.code)
+                try Settings.set("seat", "")
                 try Settings.set("seatmate", "")
                 try Settings.set("pending", "1")
             }
@@ -394,6 +408,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pendingCheck = nil
         safely("방 나가기") {
             try Settings.set("room", "")
+            try Settings.set("seat", "")
             try Settings.set("seatmate", "")
             try Settings.set("pending", "")
         }

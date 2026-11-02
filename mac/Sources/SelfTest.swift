@@ -296,6 +296,17 @@ enum SelfTest {
         check(waitFor { pokeAtA != nil }, "network: A should be poked (B: \(b.error))")
         check(pokeAtA?.from == friend && pokeAtA?.message == "일어나 !" && pokeAtA?.look.code == "b120310", "network: the poke arrives intact")
 
+        // What the Windows owner does on naming the room and moving the friend to another one.
+        ownerWrites("PUT", "rooms/\(invite.roomId)/name", "1반")
+        check(waitFor { b.name == "1반" }, "network: the room's name arrives (\(b.name))")
+        var movedTo: [String] = []
+        b.moved = { movedTo.append($0) }
+        let other = Room.randomId(20)
+        ownerWrites("PUT", "seats/\(friend)", invite.roomId) // seated where I already am: stay
+        ownerWrites("PUT", "seats/\(friend)", other)
+        check(waitFor { movedTo == [other] }, "network: being seated in another room is noticed, once: \(movedTo)")
+        check(Invite.parse(invite.code)?.withRoom(other).code == "\(invite.database)/rooms/\(other)", "invite: same database, other room")
+
         // The room as the Mac app wrote it, with one poke left waiting, for the Windows app to read.
         b.poke("macselftest0", ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": "화이팅 !", "at": Room.serverTime])
         b.flush()
