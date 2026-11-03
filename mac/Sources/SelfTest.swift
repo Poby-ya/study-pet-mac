@@ -25,6 +25,7 @@ enum SelfTest {
         checkRecovery()
         checkUpdater()
         checkPetControls(out)
+        checkPresentation(out)
         checkRoom()
         checkSprites()
         if let invite { checkNetwork(invite, out); checkManyRooms(invite) }
@@ -35,6 +36,8 @@ enum SelfTest {
                                         Records.Rank(subject: "수학", month: 95, total: 20 * 60),
                                         Records.Rank(subject: "알고리즘 문제풀이 백준", month: 30, total: 30)],
                               anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
+        let area = NSScreen.main!.visibleFrame
+        check(abs(planner.frame.maxX - area.maxX) < 1 && abs(planner.frame.minY - area.minY) < 1, "planner: docks bottom-right above Dock")
         save(capture(planner.contentView!), out, "planner.png")
         let help = HelpWindow()
         help.orderFront(nil)
@@ -80,7 +83,9 @@ enum SelfTest {
             Sprites.drawButterfly(left: 10, top: 8, scale: 4, folded: false)
             Sprites.drawButterfly(left: 78, top: 8, scale: 3, folded: true)
         }, out, "butterfly.png")
-        check([0, 2, 4, 18, 21, 24].map(PetWindow.travelStep) == [0, 2, 4, 4, 2, 0], "visit: walk out, greet and return")
+        check([0.0, 2, 4, 18, 21, 24].map(PetWindow.travelProgress) == [0, 0.5, 1, 1, 0.5, 0], "visit: walk out, greet and return")
+        let motion = (0...30).map { PetWindow.travelProgress(Double($0) * 4 / 30) }
+        check(Set(motion).count == 31 && zip(motion, motion.dropFirst()).allSatisfy { $1 > $0 && $1 - $0 < 0.06 }, "motion: thirty smooth monotonic positions per second")
         let mixed = (0..<100).map { _ in Look.random(girl: Bool.random()) }
         check(mixed.contains(where: \.girl) && mixed.contains(where: { !$0.girl }), "look: random decoration includes all genders")
         let pet = PetWindow()
@@ -128,12 +133,50 @@ enum SelfTest {
         pet.orderOut(nil)
         for direction in [-1, 1, 0] {
             for tick in [2, 8, 21] {
-                pet.preview(.studying, frame: tick, outgoingTick: tick, outgoingDirection: direction)
+                pet.preview(.studying, frame: tick, outgoingTick: Double(tick), outgoingDirection: direction)
                 save(render(petSize) { pet.paint() }, out, "outgoing-\(direction)-\(tick).png")
             }
         }
         pet.preview(.leaving, frame: 4)
         save(render(petSize) { pet.paint() }, out, "farewell.png")
+        pet.close()
+    }
+
+    private static func checkPresentation(_ out: URL) {
+        let pet = PetWindow()
+        pet.myName = { "지우" }
+        pet.bubbleText = { "영어\n23분째 공부 중" }
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: true, dozing: false, text: "영어\n공부 시작!") }
+        pet.setDisplaySize(100)
+        pet.preview(.away, frame: 2)
+        let empty = render(pet.canvasSize) { pet.paint() }
+        func lowerPixels(_ rep: NSBitmapImageRep) -> [UInt8] {
+            Array(UnsafeBufferPointer(start: rep.bitmapData!.advanced(by: (rep.pixelsHigh - 40) * rep.bytesPerRow), count: 40 * rep.bytesPerRow))
+        }
+        for side in [-1, 1, 0] {
+            for time in [2.0, 8, 21] {
+                pet.preview(.away, frame: 2, visitTick: time, friend: Look.parse("g213402", girl: true), friendText: "민지 : 화이팅!", incomingDirection: side)
+                let incoming = render(pet.canvasSize) { pet.paint() }
+                save(incoming, out, "behind-incoming-\(side)-\(Int(time)).png")
+                pet.preview(.away, frame: 2, outgoingTick: time, outgoingDirection: side)
+                let outgoing = render(pet.canvasSize) { pet.paint() }
+                check(lowerPixels(empty) == lowerPixels(incoming) && lowerPixels(empty) == lowerPixels(outgoing), "visit: bodies stay behind all desks at \(side)/\(time)")
+            }
+        }
+        pet.setUpdateAvailable(true)
+        pet.advanceAnimation(3600)
+        check(pet.updateText == PetWindow.updateMessage, "update: announcement persists until update is installed")
+        pet.preview(.studying, frame: 0)
+        save(render(pet.canvasSize) { pet.paint() }, out, "update-bubble.png")
+        pet.minimizeScene()
+        pet.setUpdateAvailable(false)
+        pet.setUpdateAvailable(true)
+        check(pet.minimized && !pet.isVisible, "update: hidden classroom stays hidden")
+        pet.restoreScene()
+        check(pet.updateText == PetWindow.updateMessage, "update: announcement returns on restore")
+        pet.setUpdateAvailable(false)
+        check(pet.updateText.isEmpty, "update: current version clears announcement")
         pet.close()
     }
 
@@ -551,7 +594,7 @@ enum SelfTest {
 
         var shots: [NSBitmapImageRep] = []
         func shot(_ mood: PetWindow.Mood, frame: Int = 0, visitTick: Int = -1, friend: Look = minji, friendText: String = "") {
-            pet.preview(mood, frame: frame, visitTick: visitTick, friend: friend, friendText: friendText)
+            pet.preview(mood, frame: frame, visitTick: Double(visitTick), friend: friend, friendText: friendText)
             shots.append(render(petSize) { pet.paint() })
         }
 

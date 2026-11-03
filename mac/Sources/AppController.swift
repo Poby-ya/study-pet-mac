@@ -6,7 +6,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: AppController?
     private var terminating = false
 
-    func applicationDidFinishLaunching(_ notification: Notification) { controller = AppController() }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        controller = AppController()
+        controller?.openPlanner(onlyWhenIdle: true)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        controller?.openPlanner()
+        return true
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if terminating { return .terminateLater }
@@ -57,7 +65,6 @@ final class AppController: NSObject, NSMenuDelegate {
     private var stats: StatsWindow?
     private var help: HelpWindow?
     private var settingsWindow: SettingsWindow?
-    private var updateNotice: NSPanel?
     private let updater = Updater()
     private var updateCheck: Timer?
     private var pendingCommit: Segment?
@@ -119,6 +126,7 @@ final class AppController: NSObject, NSMenuDelegate {
         restoreUpdateState()
         connect()
         updater.found = { [weak self] in self?.showUpdateNotice($0) }
+        updater.availabilityChanged = { [weak self] in self?.pet.setUpdateAvailable($0) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.updater.check() }
         let check = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.updater.check() }
         RunLoop.main.add(check, forMode: .common)
@@ -157,7 +165,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let month = Calendar.current.dateInterval(of: .month, for: Date())!.start
         safely("기록 읽기") { ranking = try Records.ranking(Records.load(), hidden: Records.hidden(), monthStart: month, count: 8) }
         let page = Planner(ranking: ranking, anchor: pet.frame)
-        page.picked = { [weak self] in self?.start($0) }
+        page.picked = { [weak self] in self?.pickSubject($0) }
         page.removed = { [weak self] removed, alsoRecords in
             self?.safely("과목 지우기") {
                 try Records.hide(removed)
@@ -166,6 +174,10 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         planner = page
         page.present()
+    }
+
+    func openPlanner(onlyWhenIdle: Bool = false) {
+        if !onlyWhenIdle || state == .off { showPlanner() }
     }
 
     private func start(_ picked: String) {
@@ -180,6 +192,19 @@ final class AppController: NSObject, NSMenuDelegate {
         RunLoop.main.add(timer, forMode: .common)
         heartbeat = timer
         pet.appear(.studying)
+        publish()
+    }
+
+    private func pickSubject(_ picked: String) {
+        if quitting { return }
+        if state == .off { start(picked); return }
+        if subject == picked { return }
+        guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
+        safely("과목 목록 저장") { try Records.unhide(picked) }
+        subject = picked
+        banked = 0
+        if state == .studying { openSegment() }
+        pet.setMood(state == .studying ? .studying : .dozing)
         publish()
     }
 
@@ -532,6 +557,9 @@ final class AppController: NSObject, NSMenuDelegate {
         toggleItem.keyEquivalent = "s"
         toggleItem.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(toggleItem)
+        let changeItem = item("공부 과목 변경…", #selector(changeSubject))
+        changeItem.isEnabled = state != .off && !quitting
+        menu.addItem(changeItem)
         let stopItem = item("그만하기", #selector(stop))
         stopItem.keyEquivalent = "x"
         stopItem.keyEquivalentModifierMask = [.control, .option]
@@ -626,28 +654,16 @@ final class AppController: NSObject, NSMenuDelegate {
         if settingsWindow == nil {
             settingsWindow = SettingsWindow(updater: updater, apply: { [weak self] in self?.installUpdate() }, login: { [weak self] in self?.toggleLogin() }, resize: { [weak self] in self?.pet.setDisplaySize($0) })
         }
-        updateNotice?.orderOut(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
         updater.check()
     }
 
     private func showUpdateNotice(_ tag: String) {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 110), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.title = "공부 친구 업데이트"
-        panel.isReleasedWhenClosed = false
-        panel.level = .floating
-        let label = NSTextField(labelWithString: "새 버전 \(tag)이 나왔어요.")
-        label.frame = NSRect(x: 20, y: 65, width: 320, height: 22)
-        let button = NSButton(title: "설정에서 업데이트", target: self, action: #selector(showSettings))
-        button.frame = NSRect(x: 18, y: 18, width: 190, height: 32)
-        panel.contentView?.addSubview(label)
-        panel.contentView?.addSubview(button)
-        if let screen = NSScreen.main { panel.setFrameTopLeftPoint(NSPoint(x: screen.visibleFrame.maxX - 380, y: screen.visibleFrame.maxY - 20)) }
-        updateNotice = panel
-        panel.orderFrontRegardless()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak panel] in panel?.orderOut(nil) }
+        statusItem.button?.toolTip = "공부 친구 · 새 버전 \(tag) · 설정 → 업데이트"
     }
+
+    @objc private func changeSubject() { showPlanner() }
 
     private func installUpdate() {
         Task { @MainActor in
@@ -719,6 +735,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     func beginFarewell() -> Bool {
         quitting = true
+        pet.setUpdateAvailable(false)
         guard state != .off, pet.isVisible else { return false }
         state = .off
         farewell = "다녀올게요!"

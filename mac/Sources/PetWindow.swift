@@ -6,7 +6,7 @@ private let deskWidth = CGFloat(Sprites.width) * scale
 private let boardLine: CGFloat = 20
 // Room for the tallest chalkboard; a shorter one leaves the top of the window empty.
 private let boardSpace = 48 + CGFloat(Room.boardLines) * boardLine
-private let bubbleArea: CGFloat = 92 // a two-line bubble, and a one-line news bubble above it
+private let bubbleArea: CGFloat = 112 // room for an update reminder above a visitor's bubble
 private let floorY = boardSpace + bubbleArea // top of the desks' grid
 let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites.height) * scale + 10)
 
@@ -17,7 +17,7 @@ let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites
 /// It starts bottom-right above the Dock; drag it anywhere and it remembers the spot.
 final class PetWindow: NSPanel {
     /// Away: my desk is empty, shown only while a friend visits.
-    enum Mood { case studying, dozing, leaving, away }
+    enum Mood { case studying, dozing, leaving, away, notifying }
 
     /// What the seatmate desk shows. Not here: an empty desk with their nameplate.
     struct Seat {
@@ -41,22 +41,23 @@ final class PetWindow: NSPanel {
     private static let plateTop = Sprites.color(0x7A563E)
     private static let plateText = Sprites.color(0xFFE9B8)
 
-    private static let visitTicks = 24 // six seconds at four frames a second
-
     private var timer: Timer?
+    private var lastStepSeconds = 0.0, animationSeconds = 0.0, moodSeconds = 0.0
+    private var updateAvailable = false
+    static let updateMessage = "새로운 업데이트가 나왔대요!\n우클릭 → 설정에 있어요!"
     private var mood = Mood.away
     private var frameCount = 0  // always counts, for animations that don't restart with the mood
     private var tick = 0        // restarts with each mood
     private var fading = false
-    private var visitTick = -1  // -1: nobody visiting
+    private var visitTick = -1.0 // four units per second, with fractional travel
     private var visitLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
     private var visitText = ""
     private var visitSide = 0
-    private var outgoingTick = -1
+    private var outgoingTick = -1.0
     private var outgoingSide = 0
     private var outgoingText = ""
     private var previousSeats: [Seat?] = [nil, nil]
-    private var leavingTicks = [-1, -1]
+    private var leavingTicks = [-1.0, -1.0]
     private(set) var sizePercent = [50, 75, 100, 125, 150].contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
     private var dragFrom: NSPoint?
     private var dragOrigin = NSPoint.zero
@@ -131,6 +132,7 @@ final class PetWindow: NSPanel {
         let area = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(origin: .zero, size: petSize)
         let factor = min(CGFloat(sizePercent) / 100, min(area.width / canvasSize.width, area.height / canvasSize.height))
         let size = NSSize(width: canvasSize.width * factor, height: canvasSize.height * factor)
+        if frame.size == size && contentView?.bounds.size == canvasSize { return }
         let old = frame
         let x = old.minX - area.minX < area.maxX - old.maxX ? old.minX : old.maxX - size.width
         if frame.size != size { setContentSize(size) }
@@ -158,6 +160,7 @@ final class PetWindow: NSPanel {
         mood = newMood
         minimized = false
         tick = 0
+        moodSeconds = 0
         fading = false
         alphaValue = 0.25
         redraw()
@@ -167,7 +170,8 @@ final class PetWindow: NSPanel {
 
     private func startAnimation() {
         if timer == nil {
-            let t = Timer(timeInterval: 0.25, target: self, selector: #selector(step), userInfo: nil, repeats: true)
+            lastStepSeconds = ProcessInfo.processInfo.systemUptime
+            let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(step), userInfo: nil, repeats: true)
             RunLoop.main.add(t, forMode: .common)
             timer = t
         }
@@ -176,7 +180,20 @@ final class PetWindow: NSPanel {
     func setMood(_ newMood: Mood) {
         mood = newMood
         tick = 0
+        moodSeconds = 0
         redraw()
+    }
+
+    func setUpdateAvailable(_ available: Bool) {
+        if updateAvailable == available { return }
+        updateAvailable = available
+        if available && !minimized && (!isVisible || mood == .leaving || mood == .away) { appear(.notifying) }
+        else if !available && mood == .notifying { timer?.invalidate(); timer = nil; mood = .away; orderOut(nil) }
+        else { redraw() }
+    }
+
+    var updateText: String {
+        updateAvailable && (mood == .studying || mood == .dozing || mood == .notifying) ? Self.updateMessage : ""
     }
 
     /// Stand up, wave for about two seconds, fade out, hide.
@@ -205,46 +222,58 @@ final class PetWindow: NSPanel {
     }
 
     /// For the self-test: one moment of the animation, set up without showing the window.
-    func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Int = -1,
-                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Int = -1, outgoingDirection: Int = 0) {
+    func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Double = -1,
+                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1) {
         mood = atMood
         frameCount = atFrame
         tick = atFrame
+        animationSeconds = Double(atFrame) / 4; moodSeconds = animationSeconds
         visitTick = atVisitTick
         visitLook = friend
         visitText = friendText
-        visitSide = -1
+        visitSide = incomingDirection
         outgoingTick = atOutgoingTick; outgoingSide = outgoingDirection; outgoingText = "민지에게\n화이팅 !"
         fitDesks()
     }
 
     @objc private func step() {
-        frameCount += 1
-        tick += 1
-        for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 10 { leavingTicks[i] += 1 } }
-        if outgoingTick >= 0 { outgoingTick += 1; if outgoingTick > PetWindow.visitTicks { outgoingTick = -1; if mood == .away { fading = true } } }
+        let now = ProcessInfo.processInfo.systemUptime
+        let seconds = now - lastStepSeconds
+        lastStepSeconds = now
+        advanceAnimation(seconds)
+    }
+
+    func advanceAnimation(_ seconds: Double) {
+        if minimized { return }
+        let beforeFrame = frameCount
+        animationSeconds += seconds; moodSeconds += seconds
+        frameCount = Int(animationSeconds * 4); tick = Int(moodSeconds * 4)
+        for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 10 { leavingTicks[i] += seconds * 4 } }
+        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > 24 { outgoingTick = -1; if mood == .away { fading = true } } }
         if visitTick >= 0 {
-            visitTick += 1
-            if visitTick > PetWindow.visitTicks {
+            visitTick += seconds * 4
+            if visitTick > 24 {
                 visitTick = -1
                 if mood == .away { fading = true }
             }
         }
-        if mood == .leaving && tick > 8 { fading = true }
+        if mood == .leaving && moodSeconds >= 2 { fading = true }
 
         if fading {
-            if alphaValue <= 0.26 {
+            alphaValue = max(0, alphaValue - seconds * 4 / 3)
+            if alphaValue == 0 {
+                if updateAvailable { appear(.notifying); return }
                 timer?.invalidate()
                 timer = nil
                 fading = false
                 orderOut(nil)
                 return
             }
-            alphaValue -= 0.25
         } else if alphaValue < 1 {
-            alphaValue = min(1, alphaValue + 0.25)
+            alphaValue = min(1, alphaValue + seconds * 4)
         }
-        redraw()
+        let moving = (visitTick >= 0 && (visitTick < 4 || visitTick > 18)) || (outgoingTick >= 0 && (outgoingTick < 4 || outgoingTick > 18)) || moment == 3 || moment == 6
+        if frameCount != beforeFrame || moving || fading || alphaValue < 1 { redraw() }
     }
 
     private func redraw() { fitDesks(); contentView?.needsDisplay = true }
@@ -274,7 +303,7 @@ final class PetWindow: NSPanel {
             return tick % 20 == 19 ? .blink : tick / 2 % 2 == 0 ? .writeA : .writeB
         case .dozing: return tick / 3 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
-        case .leaving: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
+        case .leaving, .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
         }
     }
 
@@ -292,33 +321,14 @@ final class PetWindow: NSPanel {
         let seats = [seatmate(), rightSeatmate()]
         let visiting = visitTick >= 0
         let outgoing = outgoingTick >= 0
-        for i in 0..<2 {
-            guard let seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
-            if let before = previousSeats[i], before.name == seat.name && before.here && !seat.here { leavingTicks[i] = 0 }
-            if seat.here { leavingTicks[i] = -1 }
-            previousSeats[i] = seat
-            let gone = visiting && visitSide == (i == 0 ? -1 : 1)
-            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
-                ? (leavingTicks[i] < 2 ? .stand : leavingTicks[i] % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
-            let x = i == 0 ? seatX : rightX
-            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
-            drawNameplate(seat.name, deskX: x)
-            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
-        }
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
         let arrived = myX + (visitSide == 1 ? 19 : -19) * scale
-        let steps = Self.travelStep(visitTick)
-        let visitorX = start + (arrived - start) * CGFloat(steps) / 4
+        let visitorX = start + (arrived - start) * CGFloat(Self.travelProgress(visitTick))
         let walking = visitTick < 4 || visitTick > 18
         let tapping = visiting && !walking && !outgoing && (mood == .studying || mood == .dozing)
         let tap = tapping && frameCount % 2 == 0
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : tapping ? .reach : .wave, x: visitorX,
-                                 hop: walking && frameCount % 2 == 0 ? scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
-        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
-        drawNameplate(myName(), deskX: myX)
-        if mood == .away && !outgoing { drawAwaySign(myX) }
-        if moment == 3 { drawButterfly() }
-        if moment == 6 { drawHearts() }
+                                 hop: walking ? CGFloat(abs(sin(visitTick * .pi))) * scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
         if tapping {
             NSGraphicsContext.saveGraphicsState()
             if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
@@ -326,17 +336,38 @@ final class PetWindow: NSPanel {
             NSGraphicsContext.restoreGraphicsState()
         }
         let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
-        let outX = myX + (destination - myX) * CGFloat(Self.travelStep(outgoingTick)) / 4
+        let outX = myX + (destination - myX) * CGFloat(Self.travelProgress(outgoingTick))
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
-                                 hop: frameCount % 2 == 0 ? scale : 0, mirror: (destination < myX) != (outgoingTick > 18)) }
+                                 hop: CGFloat(abs(sin(outgoingTick * .pi))) * scale, mirror: (destination < myX) != (outgoingTick > 18)) }
+        // All desks and seated pets cover the visitors walking behind them.
+        for i in 0..<2 {
+            guard let seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
+            if let before = previousSeats[i], before.name == seat.name && before.here && !seat.here { leavingTicks[i] = 0 }
+            if seat.here { leavingTicks[i] = -1 }
+            previousSeats[i] = seat
+            let gone = visiting && visitSide == (i == 0 ? -1 : 1)
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
+                ? (leavingTicks[i] < 2 ? .stand : Int(leavingTicks[i]) % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
+            let x = i == 0 ? seatX : rightX
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
+            drawNameplate(seat.name, deskX: x)
+            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
+        }
+        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
+        drawNameplate(myName(), deskX: myX)
+        if mood == .away && !outgoing { drawAwaySign(myX) }
+        if moment == 3 { drawButterfly() }
+        if moment == 6 { drawHearts() }
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = deskWidth + 16
-        if visiting { drawBubble(visitText, cx: visitorX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
-        else if outgoing { drawBubble(outgoingText, cx: outX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
+        if visiting || outgoing {
+            let top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
+            if !updateText.isEmpty { drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
+        }
         else {
             var top = tip
-            if mood != .away { top = drawBubble(moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: narrow, fill: .white) }
+            if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
                 if let seat = seats[i], seat.here || (leavingTicks[i] >= 0 && leavingTicks[i] < 10) { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 10 ? "다녀올게요!" : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
@@ -345,7 +376,10 @@ final class PetWindow: NSPanel {
         }
     }
 
-    static func travelStep(_ tick: Int) -> Int { tick < 0 ? 0 : tick < 4 ? tick : tick <= 18 ? 4 : max(0, (24 - tick) * 4 / 6) }
+    static func travelProgress(_ tick: Double) -> Double {
+        let t = tick < 0 ? 0 : tick < 4 ? tick / 4 : tick <= 18 ? 1 : max(0, (24 - tick) / 6)
+        return t * t * (3 - 2 * t)
+    }
 
     private func drawAwaySign(_ x: CGFloat) {
         let face = NSRect(x: x + 12 * scale, y: floorY + 16 * scale, width: 25 * scale, height: 10 * scale)
@@ -358,21 +392,23 @@ final class PetWindow: NSPanel {
 
     private func drawButterfly() {
         let small = scale / 2
-        let x = myX + deskWidth - 4 - 17 * small - (CGFloat(sin(Double(momentFrame) / 4)) + 1) * 6
-        let y = floorY - 16 + CGFloat(cos(Double(momentFrame) / 3)) * 5
+        let phase = (moodSeconds * 4).truncatingRemainder(dividingBy: 360) - 336
+        let x = myX + deskWidth - 4 - 17 * small - (CGFloat(sin(phase / 4)) + 1) * 6
+        let y = floorY - 16 + CGFloat(cos(phase / 3)) * 5
         Sprites.drawButterfly(left: x, top: y, scale: small, folded: frameCount % 4 >= 2)
     }
 
     private func drawHearts() {
         let small = scale / 2
         for i in 0..<2 {
-            let t = momentFrame - i * 8
+            let t = (moodSeconds * 4).truncatingRemainder(dividingBy: 360) - 336 - Double(i * 8)
             if t < 0 || t > 16 { continue }
             Sprites.drawHeart(left: myX + deskWidth - 32 + CGFloat(i) * 12, top: floorY - 6 - CGFloat(t) * small, scale: small)
         }
     }
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {
         NSGraphicsContext.saveGraphicsState()
+        NSRect(x: 0, y: 0, width: canvasSize.width, height: floorY + 27 * scale).clip()
         if mirror { let t = NSAffineTransform(); t.translateX(by: x + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
         Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
@@ -384,7 +420,7 @@ final class PetWindow: NSPanel {
     private func drawBubble(_ text: String, cx: CGFloat, tipY: CGFloat, maxWidth: CGFloat, fill: NSColor) -> CGFloat {
         if text.isEmpty { return tipY }
         let lines = text.components(separatedBy: "\n")
-        let font = NSFont.boldSystemFont(ofSize: 13)
+        let font = NSFont.boldSystemFont(ofSize: text == Self.updateMessage ? 12 : 13)
         let lineHeight: CGFloat = 17
         let w = min(maxWidth, (lines.map { textWidth($0, font) }.max() ?? 0) + 22)
         let h = CGFloat(lines.count) * lineHeight + 10

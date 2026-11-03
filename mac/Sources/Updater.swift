@@ -50,6 +50,7 @@ final class Updater {
     private(set) var installing = false
     private(set) var status = "새 버전을 자동으로 확인합니다."
     var changed: (() -> Void)?
+    var availabilityChanged: ((Bool) -> Void)?
     var found: ((String) -> Void)?
     var available: Bool { release.map { (UpdateRelease.version(Self.current) ?? [0, 0, 0]).lexicographicallyPrecedes($0.version) } ?? false }
 
@@ -72,6 +73,7 @@ final class Updater {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw RoomError("릴리스를 확인하지 못했어요.") }
                 release = try UpdateRelease.parse(data)
+                availabilityChanged?(available)
                 status = available ? "새 버전 \(release!.tag)을 설치할 수 있어요." : "최신 버전을 사용하고 있어요."
                 if available, Settings.get("updateNotified") != release!.tag {
                     try Settings.set("updateNotified", release!.tag)

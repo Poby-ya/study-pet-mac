@@ -119,9 +119,8 @@ final class Planner: NSPanel {
             rows.addSubview(remove)
         }
 
-        // Bottom-right corner on the pet's, kept inside the screen.
-        setFrameOrigin(NSPoint(x: max(area.minX, min(anchor.maxX - width, area.maxX - width)),
-                               y: max(area.minY, min(anchor.minY, area.maxY - height))))
+        // Bottom-right of this monitor, above the Dock.
+        setFrameOrigin(NSPoint(x: area.maxX - width, y: area.minY))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
