@@ -528,7 +528,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let toggleItem = item(state == .studying ? "일시정지" : state == .paused ? "다시 시작" : "공부 시작", #selector(toggle))
+        let toggleItem = item(pet.minimized ? "다시 보이기" : state == .studying ? "일시정지" : state == .paused ? "다시 시작" : "공부 시작", #selector(toggle))
         toggleItem.keyEquivalent = "s"
         toggleItem.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(toggleItem)
@@ -537,9 +537,11 @@ final class AppController: NSObject, NSMenuDelegate {
         stopItem.keyEquivalentModifierMask = [.control, .option]
         stopItem.isEnabled = state != .off
         menu.addItem(stopItem)
-        let minimize = item(pet.minimized ? "다시 보이기 (시간은 계속 기록 중)" : "최소화 (시간은 계속 기록)", #selector(toggleMinimized))
-        minimize.isEnabled = pet.isVisible || pet.minimized
-        menu.addItem(minimize)
+        if !pet.minimized {
+            let minimize = item("최소화 (공부 상태 유지)", #selector(toggleMinimized))
+            minimize.isEnabled = pet.isVisible
+            menu.addItem(minimize)
+        }
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
