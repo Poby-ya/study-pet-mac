@@ -552,7 +552,7 @@ final class Room: @unchecked Sendable {
         if !here { return "자리 비움" }
         let time = Records.duration(Double(m.minutes))
         let subject = m.subject.isEmpty ? "공부" : m.subject
-        if m.state == "paused" { return "\(subject) · \(time)\n쿨쿨… 쉬는 중" }
+        if m.state == "paused" { return "\(subject) · \(time)\n잠깐 쉬는 중" }
         return m.minutes < 1 ? subject + "\n공부 시작!" : "\(subject)\n\(time)째 공부 중"
     }
 

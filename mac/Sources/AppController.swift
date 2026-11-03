@@ -284,7 +284,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         switch state {
         case .studying: return elapsed < 60 ? "\(subject)\n공부 시작!" : "\(subject)\n\(Records.duration(elapsed / 60))째 공부 중"
-        case .paused: return "\(subject) · \(Records.duration(elapsed / 60))\n쿨쿨… 쉬는 중"
+        case .paused: return "\(subject) · \(Records.duration(elapsed / 60))\n잠깐 쉬는 중"
         case .off: return farewell
         }
     }

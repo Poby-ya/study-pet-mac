@@ -44,7 +44,7 @@ final class PetWindow: NSPanel {
     private var timer: Timer?
     private var lastStepSeconds = 0.0, animationSeconds = 0.0, moodSeconds = 0.0
     private var updateAvailable = false
-    static let updateMessage = "새로운 업데이트가 나왔대요!\n우클릭 → 설정에 있어요!"
+    static let updateMessage = "새 버전이 나왔어요\n우클릭 → 설정에서 받아요"
     private var mood = Mood.away
     private var frameCount = 0  // always counts, for animations that don't restart with the mood
     private var tick = 0        // restarts with each mood
@@ -272,45 +272,89 @@ final class PetWindow: NSPanel {
         } else if alphaValue < 1 {
             alphaValue = min(1, alphaValue + seconds * 4)
         }
-        let moving = (visitTick >= 0 && (visitTick < 4 || visitTick > 18)) || (outgoingTick >= 0 && (outgoingTick < 4 || outgoingTick > 18)) || moment == 3 || moment == 6
+        let seatEffects = [seatmate(), rightSeatmate()].contains { seat in seat.map { [3, 6].contains(seatMoment($0)) } ?? false }
+        let moving = (visitTick >= 0 && (visitTick < 4 || visitTick > 18)) || (outgoingTick >= 0 && (outgoingTick < 4 || outgoingTick > 18)) || moment == 3 || moment == 6 || seatEffects
         if frameCount != beforeFrame || moving || fading || alphaValue < 1 { redraw() }
     }
 
     private func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
-    static func studyMoment(_ ticks: Int) -> Int { ticks % 360 >= 336 ? ticks / 360 % 6 + 1 : 0 }
-    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
-    private var momentFrame: Int { tick % 360 - 336 }
-    private var momentText: String {
+    static let moments = 11
+
+    /// Every 90 seconds of study a 6-second moment plays: a stretch, a dropped pencil, a
+    /// butterfly and so on, 1...moments, or 0 for none. Seatmates get their own `seed`, so
+    /// they act at other times and in another order. The same as the Windows app.
+    static func studyMoment(_ ticks: Int, seed: Int = 0) -> Int {
+        let t = ticks + seed * 97
+        return t % 360 >= 336 ? (t / 360 + seed) % moments + 1 : 0
+    }
+
+    private static func momentPhase(_ ticks: Double, _ seed: Int) -> Double {
+        (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 360) - 336
+    }
+
+    private static func writing(_ ticks: Int) -> Sprites.Pose {
+        ticks % 20 == 19 ? .blink : ticks / 2 % 2 == 0 ? .writeA : .writeB
+    }
+
+    /// One frame (0...23) of a moment.
+    static func momentPose(_ moment: Int, _ f: Int, _ ticks: Int) -> Sprites.Pose {
         switch moment {
-        case 1: return "으쌰, 기지개!"
-        case 2: return momentFrame < 16 ? "앗, 내 연필!" : "찾았다! 다시 집중 ♪"
-        case 3: return "나비도 응원하러 왔나 봐 ♪"
-        case 4: return "호록, 따뜻해…"
-        case 5: return "한 장 더 넘겼다!"
-        case 6: return "오늘도 잘하고 있어 ♡"
+        case 1: return f < 2 || (f >= 10 && f < 12) ? .stretchHalf : f < 4 ? .stretchUp : f < 10 ? (f / 2 % 2 == 0 ? .stretchLeft : .stretchRight) : .content
+        case 2: return f < 3 ? .oops : f < 14 ? .pickUp : f < 18 ? .found : writing(ticks)
+        case 3: return f >= 12 && f < 20 ? .content : .lookUp
+        case 4: return f >= 3 && f < 12 ? .teaSip : f < 16 ? .teaHold : .content
+        case 5: return f < 16 && f % 4 < 2 ? .turnPage : writing(ticks)
+        case 6: return f < 16 && f / 2 % 2 == 0 ? .cheer : .content
+        case 7: return f >= 2 && f < 12 ? .yawn : f < 14 ? .blink : writing(ticks)
+        case 8: return f < 4 ? .nodA : f < 8 ? .nodB : f < 12 ? .nodC : f < 15 ? .startle : writing(ticks)
+        case 9: return f < 16 ? (f / 2 % 2 == 0 ? .munchA : .munchB) : .content
+        case 10: return f < 12 ? .think : f < 15 ? .idea : f % 2 == 0 ? .writeA : .writeB
+        default: return f < 16 ? [Sprites.Pose.spinA, .spinB, .spinC, .spinD][f % 4] : .content
+        }
+    }
+
+    static func momentLine(_ moment: Int, _ f: Int) -> String {
+        switch moment {
+        case 1: return "으쌰, 기지개 한 번"
+        case 2: return f < 14 ? "앗, 연필 떨어졌다" : "찾았다"
+        case 3: return "어, 나비다"
+        case 4: return "차 한 모금"
+        case 5: return "다음 장으로"
+        case 6: return "오늘 꽤 했다"
+        case 7: return "하암…"
+        case 8: return f < 12 ? "꾸벅…" : "앗, 안 졸았어"
+        case 9: return "당 충전 중"
+        case 10: return f < 12 ? "음… 이게 뭐더라" : "아, 알겠다"
+        case 11: return "펜 한 바퀴"
         default: return ""
         }
     }
 
+    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
+    private var momentFrame: Int { tick % 360 - 336 }
+    private var momentText: String { Self.momentLine(moment, momentFrame) }
+
     private var myPose: Sprites.Pose {
         switch mood {
-        case .studying:
-            if moment == 1 { return momentFrame % 4 < 2 ? .stretchA : .stretchB }
-            if moment == 2 && momentFrame < 16 { return .pickUp }
-            if moment == 4 { return momentFrame / 4 % 2 == 0 ? .teaA : .teaB }
-            if moment == 5 && momentFrame % 4 < 2 { return .turnPage }
-            return tick % 20 == 19 ? .blink : tick / 2 % 2 == 0 ? .writeA : .writeB
+        case .studying: return moment > 0 ? Self.momentPose(moment, momentFrame, tick) : Self.writing(tick)
         case .dozing: return tick / 3 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving, .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
         }
     }
 
+    /// A seatmate's own moments, keyed by name so each friend keeps to their own rhythm.
+    private static func seatSeed(_ seat: Seat) -> Int { 1 + seat.name.utf16.reduce(0) { $0 + Int($1) } % 211 }
+
+    private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Self.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
+
     // Offset by a frame, so the two pets don't move in lockstep.
     private func seatPose(_ seat: Seat) -> Sprites.Pose {
         if !seat.here { return .empty }
         if seat.dozing { return (frameCount + 1) / 3 % 2 == 0 ? .dozeA : .dozeB }
+        let moment = seatMoment(seat)
+        if moment > 0 { return Self.momentPose(moment, (frameCount + Self.seatSeed(seat) * 97) % 360 - 336, frameCount + 1) }
         return (frameCount + 1) / 2 % 2 == 0 ? .writeA : .writeB
     }
 
@@ -332,7 +376,7 @@ final class PetWindow: NSPanel {
         if tapping {
             NSGraphicsContext.saveGraphicsState()
             if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-            Sprites.draw(layers: Sprites.reachLayers(down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
+            Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
         let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
@@ -340,6 +384,7 @@ final class PetWindow: NSPanel {
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
                                  hop: CGFloat(abs(sin(outgoingTick * .pi))) * scale, mirror: (destination < myX) != (outgoingTick > 18)) }
         // All desks and seated pets cover the visitors walking behind them.
+        var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
         for i in 0..<2 {
             guard let seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
             if let before = previousSeats[i], before.name == seat.name && before.here && !seat.here { leavingTicks[i] = 0 }
@@ -350,14 +395,14 @@ final class PetWindow: NSPanel {
                 ? (leavingTicks[i] < 2 ? .stand : Int(leavingTicks[i]) % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
+            if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
         }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
         drawNameplate(myName(), deskX: myX)
         if mood == .away && !outgoing { drawAwaySign(myX) }
-        if moment == 3 { drawButterfly() }
-        if moment == 6 { drawHearts() }
+        effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = deskWidth + 16
@@ -373,6 +418,11 @@ final class PetWindow: NSPanel {
                                                     cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             }
             if mood != .away { drawBubble(newsText(), cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
+        }
+        // Over the bubbles, so a bubble never hides them.
+        for effect in effects {
+            if effect.moment == 3 { drawButterfly(effect.x, effect.phase) }
+            if effect.moment == 6 { drawHearts(effect.x, effect.phase) }
         }
     }
 
@@ -390,20 +440,34 @@ final class PetWindow: NSPanel {
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.3 * scale), color: PetWindow.ink, in: face)
     }
 
-    private func drawButterfly() {
+    /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its
+    /// wings mostly shut, and flies off up and away from phase 20.
+    private func drawButterfly(_ deskX: CGFloat, _ phase: Double) {
         let small = scale / 2
-        let phase = (moodSeconds * 4).truncatingRemainder(dividingBy: 360) - 336
-        let x = myX + deskWidth - 4 - 17 * small - (CGFloat(sin(phase / 4)) + 1) * 6
-        let y = floorY - 16 + CGFloat(cos(phase / 3)) * 5
-        Sprites.drawButterfly(left: x, top: y, scale: small, folded: frameCount % 4 >= 2)
+        var x = deskX + 26 * scale - 8.5 * small, y = floorY + 7 * scale - 12 * small
+        var folded = Int(phase * 2) % 2 == 0
+        if phase < 12 {
+            let away = CGFloat(1 - phase / 12)
+            x += away * 16 * scale
+            y -= away * (6 + 2 * CGFloat(sin(phase * 1.6))) * scale
+        } else if phase < 20 {
+            folded = Int(phase) % 4 != 0
+        } else {
+            let gone = CGFloat((phase - 20) / 4)
+            x += gone * 14 * scale
+            y -= gone * 12 * scale
+        }
+        Sprites.drawButterfly(left: x, top: y, scale: small, folded: folded)
     }
 
-    private func drawHearts() {
+    /// Little hearts rising one after another beside the head.
+    private func drawHearts(_ deskX: CGFloat, _ phase: Double) {
         let small = scale / 2
-        for i in 0..<2 {
-            let t = (moodSeconds * 4).truncatingRemainder(dividingBy: 360) - 336 - Double(i * 8)
-            if t < 0 || t > 16 { continue }
-            Sprites.drawHeart(left: myX + deskWidth - 32 + CGFloat(i) * 12, top: floorY - 6 - CGFloat(t) * small, scale: small)
+        for i in 0..<4 {
+            let t = phase - Double(i * 5)
+            if t < 0 || t > 10 { continue }
+            Sprites.drawHeart(left: deskX + CGFloat(36 + i % 2 * 3) * scale + CGFloat(sin(t * 1.2)) * small,
+                              top: floorY + 20 * scale - CGFloat(t * 1.8) * scale, scale: small)
         }
     }
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {

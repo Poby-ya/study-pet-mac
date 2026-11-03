@@ -2,11 +2,11 @@ import AppKit
 
 /// One pet's appearance, the same code as Look in the Windows app's Sprites.cs: gender,
 /// then one digit each for hairstyle, hair colour, top, top colour, bottoms and ribbon
-/// colour ("g213402").
+/// colour ("g213402"). An older version reads each digit modulo its own, smaller counts.
 struct Look: Equatable {
-    static let hairStyles = 3
-    static let hairColors = 4
-    static let tops = 4        // hoodie, sweater, cardigan, striped tee
+    static let hairStyles = 5
+    static let hairColors = 5
+    static let tops = 6        // hoodie, sweater, cardigan, striped tee, uniform, heart sweater
     static let topColors = 10
     static let bottoms = 8     // 0-3 trousers, 4-7 skirt (girls only)
     static let ribbons = 6
@@ -47,7 +47,6 @@ struct Look: Equatable {
              .random(in: 0..<topColors), .random(in: 0..<(girl ? bottoms : 4)), .random(in: 0..<ribbons))
     }
 }
-
 /// The pets as pixel art written in text, the same grids and colours as the Windows app:
 /// one character is one pixel ('.' is transparent). Fixed colours come from `palette`;
 /// hair (h H), top (A a C), bottoms (J) and ribbon (R) come from the pet's Look. A pose
@@ -60,11 +59,19 @@ enum Sprites {
     /// desk top free for the nameplate (cols 1..16).
     static let dx = 10
 
-    enum Pose: CaseIterable { case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, stretchA, stretchB, pickUp, teaA, teaB, turnPage }
+    enum Pose: CaseIterable {
+        case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty
+        case stretchHalf, stretchUp, stretchLeft, stretchRight, content, oops, pickUp, found, lookUp
+        case teaHold, teaSip, turnPage, cheer, yawn, nodA, nodB, nodC, startle, munchA, munchB
+        case think, idea, spinA, spinB, spinC, spinD
+    }
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
-    enum Visiting { case walk, wave, reach }
+    enum Visiting: CaseIterable { case walk, wave, reach }
+
+    private enum Eyes { case open, closed, happy, up }
+    private enum Mouth { case small, open, smile }
 
     struct Layer {
         let grid: [String]
@@ -89,12 +96,12 @@ enum Sprites {
         "e": color(0x2B222A), // eyes
         "w": color(0xFFFFFF),
         "m": color(0xD06A6A), // mouth
-        "l": color(0xECBA88), // desk top
+        "l": color(0xECBA88), // desk top, cookie
         "d": color(0xC98B5A), // desk edge
-        "D": color(0xA86E42), // desk front
+        "D": color(0xA86E42), // desk front, chocolate chips
         "b": color(0xFFFBF0), // pages
         "B": color(0xF07C7C), // book cover
-        "p": color(0xFFD14A), // pencil, the "!"
+        "p": color(0xFFD14A), // pencil, the "!" and "?"
         "r": color(0xFF8FB1), // eraser
         "z": color(0x6A8CE8), // Zzz
         "f": color(0xA17999), // butterfly outline
@@ -106,8 +113,8 @@ enum Sprites {
         "n": color(0x775B78), // tiny body
     ]
 
-    // (base, shine): dark brown, black, light brown, ash
-    private static let hairColorSet = [(0x5A3E36, 0x8A6352), (0x2E2A33, 0x555060), (0x8B5E3C, 0xB8865C), (0x6E6259, 0x9A8D82)]
+    // (base, shine): dark brown, black, light brown, auburn, honey
+    private static let hairColorSet = [(0x5A3E36, 0x8A6352), (0x2E2A33, 0x555060), (0x8B5E3C, 0xB8865C), (0x8E452F, 0xBC6C4E), (0xD09C52, 0xEEC884)]
 
     // (main, shade, accent): blue, mint, pink, yellow, grey, lavender, navy, beige, red, olive
     private static let topColorSet = [
@@ -125,17 +132,33 @@ enum Sprites {
 
     // ---- Heads ----------------------------------------------------------------------
 
-    // The face below the hair line is the same for everyone.
-    private static let face = [
-        "khsssssssssssssshk",
-        "khssewssssssewsshk",
-        "khsseesssssseesshk",
-        "khsccsssmmsssccshk",
-        "khsssssssssssssshk",
-        ".kssssssssssssssk.",
-        "..kksssssssssskk..",
-        "....kkkkkkkkkk....",
-    ]
+    /// The face below the hair line, the same for everyone apart from the expression.
+    private static func face(_ eyes: Eyes, _ mouth: Mouth) -> [String] {
+        let rows = [
+            "khsssssssssssssshk",
+            "khsssssssssssssshk",
+            "khsssssssssssssshk",
+            "khsccssssssssccshk",
+            "khsssssssssssssshk",
+            ".kssssssssssssssk.",
+            "..kksssssssssskk..",
+            "....kkkkkkkkkk....",
+        ]
+        let marks: [(Int, Int, String)]
+        switch eyes {
+        case .open: marks = [(1, 4, "ew"), (1, 12, "ew"), (2, 4, "ee"), (2, 12, "ee")]
+        case .closed: marks = [(2, 4, "ee"), (2, 12, "ee")]
+        case .happy: marks = [(1, 4, "ee"), (1, 12, "ee"), (2, 3, "e"), (2, 6, "e"), (2, 11, "e"), (2, 14, "e")]
+        case .up: marks = [(0, 4, "ew"), (0, 12, "ew"), (1, 4, "ee"), (1, 12, "ee")]
+        }
+        let lips: [(Int, Int, String)]
+        switch mouth {
+        case .small: lips = [(3, 8, "mm")]
+        case .open: lips = [(3, 8, "ee"), (4, 8, "mm")]
+        case .smile: lips = [(3, 7, "m"), (3, 10, "m"), (4, 8, "mm")]
+        }
+        return put(rows, marks + lips)
+    }
 
     private static let boyTops: [[String]] = [
         [ // cowlick and an M-shaped fringe
@@ -174,25 +197,43 @@ enum Sprites {
             "khhhhhhhhhhhhhhhhk",
             "khhsssssssssssshhk",
         ],
+        [ // spiky
+            "...kk...kk...kk...",
+            "..khhkkkhhkkkhhk..",
+            ".khhhhhhhhhhhhhhk.",
+            ".khhHHhhhhhhhhhhk.",
+            ".khHHhhhhhhhhhhhk.",
+            ".khhhhhhhhhhhhhhk.",
+            "khhhhhhhhhhhhhhhhk",
+            "khhhhhhhhhhhhhhhhk",
+            "khhhhhhhhhhhhhhhhk",
+            "khhsshhhsshhhsshhk",
+        ],
+        [ // curly
+            "..................",
+            "...kk.kk..kk.kk...",
+            "..khhkhhkkhhkhhk..",
+            ".khhHhhhhhhhhHhhk.",
+            ".khHhhHhhhhHhhHhk.",
+            "khhhhhhhhhhhhhhhhk",
+            "khhHhhhHhhHhhhHhhk",
+            "khhhhhhhhhhhhhhhhk",
+            "khhhhhhhhhhhhhhhhk",
+            "khhshhsshhsshhshhk",
+        ],
     ]
 
-    // Long: M fringe without the cowlick; bob: straight bangs; pigtails: M fringe.
-    private static let girlTops: [[String]] = [
-        [r(".", 18), r(".", 18)] + boyTops[0].dropFirst(2),
-        boyTops[2],
-        [r(".", 18), r(".", 18)] + boyTops[0].dropFirst(2),
-    ]
+    private static let bare = [r(".", 18), r(".", 18)] + boyTops[0].dropFirst(2)
 
-    private static func head(_ top: [String], closedEyes: Bool) -> [String] {
-        let head = top + face
-        return closedEyes ? withRows(head, [(11, "khsssssssssssssshk"), (12, "khsseesssssseesshk")]) : head
-    }
+    // Long: M fringe; bob: straight bangs; pigtails; two buns; side ponytail.
+    private static let girlTops: [[String]] = [bare, boyTops[2], bare, boyTops[2], boyTops[1]]
 
     // Long hair falls past the shoulders; a bob stops at the chin; pigtails flare out
     // with a hair tie in the ribbon colour.
     private static let longLeft = [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", ".khk", "..kk"]
     private static let bobLeft = [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "kkhk", ".kkk"]
     private static let pigtailLeft = ["....k", "...kh", "..kRR", ".khhk", "khhhk", "khhhk", "khhhk", "khhk.", ".kk.."]
+    private static let bun = [".kkkk.", "khhHhk", "khhhhk", "kRRRRk"]
 
     private static let bow = [
         "kk...kk",
@@ -204,13 +245,17 @@ enum Sprites {
 
     private static let hairpin = ["kkkk", "kRRk", "kkkk"]
 
-    private static func headLayers(_ look: Look, closedEyes: Bool, _ x: Int, _ y: Int) -> [Layer] {
-        if !look.girl { return [Layer(head(boyTops[look.hair], closedEyes: closedEyes), x, y)] }
-        let h = head(girlTops[look.hair], closedEyes: closedEyes)
+    /// Hair hanging behind the face, then the head itself with anything worn on it.
+    private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int) -> (back: [Layer], front: [Layer]) {
+        let tops = look.girl ? girlTops : boyTops
+        let head = Layer(tops[look.hair] + face(eyes, mouth), x, y)
+        if !look.girl { return ([], [head]) }
         switch look.hair {
-        case 0: return [Layer(longLeft, x - 3, y + 7), Layer(mirror(longLeft), x + 17, y + 7), Layer(h, x, y), Layer(bow, x + 11, y + 1)]
-        case 1: return [Layer(bobLeft, x - 3, y + 7), Layer(mirror(bobLeft), x + 17, y + 7), Layer(h, x, y), Layer(hairpin, x + 13, y + 7)]
-        default: return [Layer(pigtailLeft, x - 4, y + 9), Layer(mirror(pigtailLeft), x + 17, y + 9), Layer(h, x, y)]
+        case 0: return ([Layer(longLeft, x - 3, y + 7), Layer(mirror(longLeft), x + 17, y + 7)], [head, Layer(bow, x + 11, y + 1)])
+        case 1: return ([Layer(bobLeft, x - 3, y + 7), Layer(mirror(bobLeft), x + 17, y + 7)], [head, Layer(hairpin, x + 13, y + 7)])
+        case 2: return ([Layer(pigtailLeft, x - 4, y + 9), Layer(mirror(pigtailLeft), x + 17, y + 9)], [head])
+        case 3: return ([Layer(bun, x, y), Layer(bun, x + 12, y)], [head])
+        default: return ([Layer(mirror(pigtailLeft), x + 16, y + 4)], [head])
         }
     }
 
@@ -267,7 +312,8 @@ enum Sprites {
     ]
 
     /// Paints the top's pattern onto a body: hoodie strings, a sweater collar, a cardigan
-    /// over a shirt, or stripes. Only the main colour 'A' is painted over.
+    /// over a shirt, stripes, a blazer with a tie, or a heart. Only the main colour 'A'
+    /// is painted over.
     private static func dress(_ body: [String], _ top: Int) -> [String] {
         var rows = body.map { Array($0) }
         func paint(_ row: Int, _ col: Int, _ c: Character) {
@@ -293,20 +339,100 @@ enum Sprites {
                 paint(row, 8, "a")
                 paint(row, 11, "a")
             }
-        default: // striped tee
+        case 3: // striped tee
             for row in stride(from: 2, through: 7, by: 2) {
                 for col in 2...17 { paint(row, col, "C") }
+            }
+        case 4: // blazer over a white shirt and a tie in the ribbon colour
+            for row in 1...3 {
+                paint(row, 7 + row - 1, "a")
+                paint(row, 12 - row + 1, "a")
+            }
+            for col in 8...11 { paint(1, col, "w") }
+            paint(2, 8, "w"); paint(2, 11, "w")
+            for row in 1...5 {
+                paint(row, 9, "R")
+                paint(row, 10, "R")
+            }
+        default: // sweater with a heart on the chest
+            for col in 7...12 { paint(1, col, "a") }
+            for (row, from, to) in [(2, 7, 8), (2, 11, 12), (3, 7, 12), (4, 8, 11), (5, 9, 10)] {
+                for col in from...to { paint(row, col, "C") }
             }
         }
         return rows.map { String($0) }
     }
 
-    private static func body(_ look: Look, sitting: Bool, rightArmUp: Bool) -> [String] {
+    /// A body with either hanging arm taken off, for poses that draw that arm themselves.
+    private static func body(_ look: Look, sitting: Bool, leftArm: Bool = false, rightArm: Bool = false) -> [String] {
         let shape = sitting ? sittingBody : look.skirt ? Array(standingBody.prefix(8)) + skirtRows : standingBody
-        let body = dress(shape, look.top)
-        if !rightArmUp { return body }
-        // The raised arm is drawn separately; take the hanging one off the right side.
-        return body.enumerated().map { i, row in (3...7).contains(i) ? String(row.prefix(15)) + "....." : row }
+        return dress(shape, look.top).enumerated().map { i, row in
+            if i < 3 || i > 7 { return row }
+            let cells = Array(row)
+            let left = leftArm ? "....." + String(cells[5..<15]) : String(cells[0..<15])
+            return left + (rightArm ? "....." : String(cells[15...]))
+        }
+    }
+
+    /// Legs; a walking step lifts one foot by taking a row out of that leg.
+    private static func legs(_ look: Look, lifted: Int) -> [String] {
+        let legs = look.skirt ? bareLegs : trousers
+        if lifted == 0 { return legs }
+        let from = lifted == 1 ? 0 : 10
+        return legs.enumerated().map { i, row in
+            let source = Array(i == 0 ? row : i + 1 < legs.count ? legs[i + 1] : r(".", 20))
+            let cells = Array(row)
+            return String(cells[0..<from]) + String(source[from..<(from + 10)]) + String(cells[(from + 10)...])
+        }
+    }
+
+    private struct Cell: Hashable { let x: Int, y: Int }
+
+    /// An arm or a pencil along a path of joints: every point stamps a size×size block
+    /// (the last one `tip`) and the whole gets a one-pixel outline, except next to an
+    /// arm's first point, where it grows out of the body.
+    private static func stroke(_ path: [(Int, Int)], size: Int, fill: (Int, Int) -> Character, tip: Character, rooted: Bool) -> Layer {
+        var points = [path[0]]
+        for i in 1..<path.count {
+            let (x0, y0) = path[i - 1], (x1, y1) = path[i]
+            let n = max(abs(x1 - x0), abs(y1 - y0))
+            if n == 0 { continue }
+            for s in 1...n {
+                points.append((x0 + Int(floor(Double((x1 - x0) * s) / Double(n) + 0.5)), y0 + Int(floor(Double((y1 - y0) * s) / Double(n) + 0.5))))
+            }
+        }
+        var cells: [Cell: Character] = [:]
+        for (i, p) in points.enumerated() {
+            for dy in 0..<size {
+                for dx in 0..<size { cells[Cell(x: p.0 + dx, y: p.1 + dy)] = i == points.count - 1 ? tip : fill(i, points.count) }
+            }
+        }
+        let root = points[0]
+        func atRoot(_ c: Cell) -> Bool { rooted && c.x >= root.0 - 1 && c.x <= root.0 + size && c.y >= root.1 - 1 && c.y <= root.1 + size }
+        for c in Array(cells.keys) {
+            for near in [Cell(x: c.x - 1, y: c.y), Cell(x: c.x + 1, y: c.y), Cell(x: c.x, y: c.y - 1), Cell(x: c.x, y: c.y + 1)] {
+                if cells[near] == nil && !atRoot(near) { cells[near] = "k" }
+            }
+        }
+        let xs = cells.keys.map(\.x), ys = cells.keys.map(\.y)
+        let left = xs.min()!, top = ys.min()!
+        let grid = (top...ys.max()!).map { y in String((left...xs.max()!).map { x in cells[Cell(x: x, y: y)] ?? "." }) }
+        return Layer(grid, left, top)
+    }
+
+    /// An arm from the shoulder to a hand, the sleeve patterned like the top.
+    private static func arm(_ look: Look, _ path: (Int, Int)...) -> Layer {
+        stroke(path, size: 2, fill: { i, count in
+            switch look.top {
+            case 1: return i >= count - 3 ? "a" : "A"  // sweater cuff
+            case 3: return i % 2 == 0 ? "C" : "A"      // stripes
+            default: return "A"
+            }
+        }, tip: "s", rooted: true)
+    }
+
+    private static func pencil(_ path: (Int, Int)...) -> Layer {
+        stroke(path, size: 1, fill: { i, _ in i == 0 ? "r" : "p" }, tip: "k", rooted: false)
     }
 
     // ---- Props ----------------------------------------------------------------------
@@ -341,36 +467,15 @@ enum Sprites {
         "..kk.",
     ]
 
-    private static let waveArmA = [
-        ".....kk..",
-        "....kssk.",
-        "....kssk.",
-        ".....kk..",
-        ".....kAk.",
-        ".....kAk.",
-        ".....kAk.",
-        "....kAAk.",
-        "...kAAk..",
-        "..kAAk...",
-        ".kAAk....",
-    ]
-
-    private static let waveArmB = withRows(waveArmA, [(0, "......kk."), (1, ".....kssk"), (2, ".....kssk"), (3, "......kk.")])
-
-    // An arm held out to the right, the hand resting on someone's shoulder.
-    private static let reachArm = [
-        "kkkkkkkk.kk.",
-        "AAAAAAAAkssk",
-        "AAAAAAAAkssk",
-        "kkkkkkkk.kk.",
-    ]
-
     private static let zBig = ["zzzz", "..z.", ".z..", "zzzz"]
     private static let zSmall = ["zzz", ".z.", "zzz"]
 
-    // Pops over the head of a pet being tapped awake.
+    // Pops over the head of a pet being tapped awake, or one that just had an idea.
     private static let exclaim = [".k.", "kpk", "kpk", "kpk", ".k.", "kpk", ".k."]
+    private static let question = [".kkk.", "kpppk", "kkkpk", ".kppk", ".kpkk", "..k..", ".kpk.", "..k.."]
     private static let teacup = [".kkkk...", "kwwwwkk.", "kwuuukwk", "kwuuukk.", ".kkkk..."]
+    private static let cookie = [".kkk.", "klDlk", "kDllk", "kllDk", ".kkk."]
+    private static let bitten = [".kk..", "klDk.", "kDllk", "kllDk", ".kkk."]
     private static let turningPage = ["......bk......", ".....bbk......", "kkkkkbbkkkkkkk", "kbbbbbkkbbbbbk", "kBBBBBBBBBBBBk"]
     static let heart = [".ff.ff.", "fFFfFFf", "fFFFFFf", ".fFFFf.", "..fFf..", "...f..."]
 
@@ -393,11 +498,12 @@ enum Sprites {
     /// Every grid a look can use, for the self-test.
     static func grids(_ look: Look) -> [[String]] {
         var all: [[String]] = []
-        for closed in [false, true] { all += headLayers(look, closedEyes: closed, 0, 0).map(\.grid) }
-        for sitting in [false, true] {
-            for armUp in [false, true] { all.append(body(look, sitting: sitting, rightArmUp: armUp)) }
+        for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
+        for pose in Visiting.allCases {
+            for alt in [false, true] { all += visitor(look, pose, alt: alt).map(\.grid) }
         }
-        return all + [trousers, bareLegs, desk, book, hand, pencilHand, waveArmA, waveArmB, reachArm, zBig, zSmall, exclaim, butterfly(false), butterfly(true), teacup, turningPage, heart]
+        all += reachLayers(look, down: true).map(\.grid)
+        return all + [butterfly(false), butterfly(true), heart]
     }
 
     static func isKnownColor(_ c: Character) -> Bool { c == "." || palette[c] != nil || "hHAaCJR".contains(c) }
@@ -413,72 +519,171 @@ enum Sprites {
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool) -> [Layer] {
         if pose == .pickUp {
-            var bent = [Layer(body(look, sitting: true, rightArmUp: false), 6, 22)]
-            bent += headLayers(look, closedEyes: false, 10, 12)
-            bent.append(Layer(pencilHand, 28, 30))
-            var shifted = shift(bent)
+            let (back, head) = headLayers(look, .open, .small, 10, 12)
+            var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
             shifted.insert(Layer(desk, 0, 27), at: 1)
             return shifted
         }
-        let stretching = pose == .stretchA || pose == .stretchB
-        let standing = pose == .stand || pose == .waveA || pose == .waveB
-        let waving = pose == .waveA || pose == .waveB
-        let dozing = pose == .dozeA || pose == .dozeB
-        let headY = standing ? 0 : pose == .dozeA ? 10 : pose == .dozeB ? 11 : stretching ? 2 : 4
-        var person = [Layer(body(look, sitting: !standing, rightArmUp: waving || stretching), 6, standing ? 16 : dozing ? 22 : 20)]
-
-        if dozing {
+        if pose == .dozeA || pose == .dozeB {
             // Head down on the desk, so the desk goes underneath it.
-            person.append(Layer(book, 9, 24))
-            person += headLayers(look, closedEyes: true, 7, headY)
+            let (back, head) = headLayers(look, .closed, .small, 7, pose == .dozeA ? 10 : 11)
+            var resting = [Layer(body(look, sitting: true), 6, 22), Layer(book, 9, 24)] + back + head
             if alert {
-                person.append(Layer(exclaim, 26, 1))
+                resting.append(Layer(exclaim, 26, 1))
             } else if pose == .dozeA {
-                person.append(Layer(zBig, 26, 4))
+                resting.append(Layer(zBig, 26, 4))
             } else {
-                person.append(Layer(zSmall, 24, 7))
-                person.append(Layer(zBig, 27, 1))
+                resting.append(Layer(zSmall, 24, 7))
+                resting.append(Layer(zBig, 27, 1))
             }
-            var shifted = shift(person)
+            var shifted = shift(resting)
             shifted.insert(Layer(desk, 0, 27), at: 1) // after the body, before the head resting on it
             return shifted
         }
 
-        person += headLayers(look, closedEyes: pose == .blink, 7, headY)
-        var front = [Layer(pose == .turnPage ? turningPage : book, 9, pose == .turnPage ? 22 : 24)]
-        if stretching {
-            let arm = pose == .stretchA ? waveArmA : waveArmB
-            front.append(Layer(arm, 20, 5))
-            front.append(Layer(arm.map { String($0.reversed()) }, 2, 5))
-        } else if waving {
-            front.append(Layer(pose == .waveA ? waveArmA : waveArmB, 20, 7))
-        } else if pose == .teaA || pose == .teaB {
-            front.append(Layer(hand, 7, 24))
-            front.append(Layer(hand, 20, pose == .teaA ? 21 : 20))
-            front.append(Layer(teacup, 20, pose == .teaA ? 17 : 16))
-        } else if !standing {
-            front.append(Layer(hand, 7, 24))
-            front.append(Layer(pencilHand, pose == .writeB ? 18 : 19, 22))
+        let standing = pose == .stand || pose == .waveA || pose == .waveB
+        var eyes = Eyes.open
+        var mouth = Mouth.small
+        var headY = standing ? 0 : 4
+        var sway = 0, rise = 0
+        var leftArm = false, rightArm = false
+        var bookLayer = Layer(book, 9, 24)
+        var leftHand: Layer? = standing ? nil : Layer(hand, 7, 24)
+        var rightHand: Layer? = standing ? nil : Layer(pencilHand, 19, 22)
+        var behind: [Layer] = [] // between the hair and the face
+        var front: [Layer] = []  // in front of the face
+        var mark: [String]? = alert ? exclaim : nil
+
+        switch pose {
+        case .writeB:
+            rightHand = Layer(pencilHand, 18, 22)
+        case .blink:
+            eyes = .closed
+        case .waveA, .waveB:
+            mouth = .smile
+            rightArm = true
+            behind.append(arm(look, (21, 18), (25, 15), pose == .waveA ? (26, 8) : (28, 9)))
+        case .stretchHalf:
+            leftArm = true; rightArm = true
+            leftHand = nil; rightHand = nil
+            eyes = .closed
+            behind.append(arm(look, (21, 22), (25, 20), (27, 15)))
+            behind.append(arm(look, (9, 22), (5, 20), (3, 15)))
+        case .stretchUp, .stretchLeft, .stretchRight:
+            leftArm = true; rightArm = true
+            leftHand = nil; rightHand = nil
+            eyes = .happy
+            mouth = .open
+            rise = 1
+            sway = pose == .stretchLeft ? -1 : pose == .stretchRight ? 1 : 0
+            behind.append(arm(look, (21, 22), (24, 18), (25, 9), (16, 2)))
+            behind.append(arm(look, (9, 22), (6, 18), (5, 9), (14, 2)))
+        case .content:
+            eyes = .happy
+            mouth = .smile
+        case .oops:
+            mouth = .open
+            rightHand = Layer(hand, 20, 24)
+            front.append(pencil((27, 30), (31, 33)))
+        case .found:
+            eyes = .happy
+            mouth = .smile
+            rightArm = true
+            rightHand = nil
+            behind.append(pencil((27, 9), (27, 15)))
+            behind.append(arm(look, (21, 22), (25, 20), (26, 15)))
+        case .lookUp:
+            eyes = .up
+            headY = 3
+        case .teaHold:
+            rightHand = nil
+            front.append(Layer(teacup, 20, 18))
+            front.append(Layer(hand, 20, 22))
+        case .teaSip:
+            eyes = .closed
+            rightHand = nil
+            front.append(Layer(teacup, 14, 16))
+            front.append(Layer(hand, 15, 20))
+        case .turnPage:
+            bookLayer = Layer(turningPage, 9, 22)
+        case .cheer:
+            eyes = .happy
+            mouth = .smile
+            rightArm = true
+            rightHand = nil
+            behind.append(arm(look, (21, 22), (25, 20), (25, 15)))
+        case .yawn:
+            eyes = .closed
+            mouth = .open
+            leftArm = true
+            leftHand = nil
+            front.append(arm(look, (9, 22), (11, 20), (12, 18)))
+        case .nodA, .nodB, .nodC:
+            eyes = .closed
+            headY = pose == .nodA ? 5 : pose == .nodB ? 6 : 8
+        case .startle:
+            mouth = .open
+            rise = 1
+            mark = exclaim
+        case .munchA, .munchB:
+            eyes = .happy
+            mouth = pose == .munchA ? .open : .small
+            leftArm = true
+            leftHand = nil
+            front.append(pose == .munchA ? Layer(cookie, 10, 15) : Layer(bitten, 10, 16))
+            front.append(arm(look, (9, 22), (10, 21), (11, 19)))
+        case .think:
+            eyes = .up
+            rightArm = true
+            rightHand = nil
+            front.append(pencil((26, 13), (25, 17)))
+            front.append(arm(look, (21, 22), (24, 21), (24, 18)))
+            mark = question
+        case .idea:
+            eyes = .happy
+            mouth = .smile
+            mark = exclaim
+        case .spinA, .spinB, .spinC, .spinD:
+            rightHand = Layer(hand, 19, 23)
+            switch pose {
+            case .spinA: front.append(pencil((21, 20), (21, 24)))
+            case .spinB: front.append(pencil((23, 20), (19, 24)))
+            case .spinC: front.append(pencil((23, 22), (19, 22)))
+            default: front.append(pencil((23, 24), (19, 20)))
+            }
+        default:
+            break
         }
-        if alert { front.append(Layer(exclaim, 26, 1)) }
+
+        let (hairBack, faceLayers) = headLayers(look, eyes, mouth, 7, headY)
+        let person = [Layer(body(look, sitting: !standing, leftArm: leftArm, rightArm: rightArm), 6, standing ? 16 : 20)] + hairBack + behind + faceLayers
+        var onDesk: [Layer] = []
+        if let left = leftHand { onDesk.append(left) }
+        if let right = rightHand { onDesk.append(right) }
+        onDesk += front
+        if let mark = mark { onDesk.append(Layer(mark, mark == question ? 28 : 26, 1)) }
+        func move(_ l: Layer) -> Layer { Layer(l.grid, l.x + sway, l.y - rise) }
         // Person, then the desk in front of their lap, then what lies on the desk.
-        return shift(person) + [Layer(desk, 0, 27)] + shift(front)
+        return shift(person.map(move)) + [Layer(desk, 0, 27)] + shift([bookLayer] + onDesk.map(move))
     }
 
     /// A friend standing up, with legs since no desk hides them.
     static func visitor(_ look: Look, _ pose: Visiting, alt: Bool) -> [Layer] {
+        let walking = pose == .walk
+        let (back, head) = headLayers(look, .open, walking ? .small : .smile, 7, 0)
         var layers = [
-            Layer(body(look, sitting: false, rightArmUp: pose != .walk), 6, 16),
-            Layer(look.skirt ? bareLegs : trousers, 6, 27),
-        ]
-        layers += headLayers(look, closedEyes: false, 7, 0)
-        if pose == .wave { layers.append(Layer(alt ? waveArmA : waveArmB, 20, 7)) }
-        return shift(layers)
+            Layer(body(look, sitting: false, rightArm: !walking), 6, 16),
+            Layer(legs(look, lifted: walking ? (alt ? 1 : 2) : 0), 6, 27),
+        ] + back
+        if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
+        return shift(layers + head)
     }
 
     /// The visitor's arm reaching right to a shoulder; drawn after the pet it taps.
     /// `down` is the tap, the other frame the hand lifted.
-    static func reachLayers(down: Bool) -> [Layer] { shift([Layer(reachArm, 19, down ? 19 : 18)]) }
+    static func reachLayers(_ look: Look, down: Bool) -> [Layer] {
+        shift([arm(look, (21, 18), (24, down ? 21 : 20), (29, down ? 21 : 20))])
+    }
 
     private static func shift(_ layers: [Layer]) -> [Layer] { layers.map { Layer($0.grid, $0.x + dx, $0.y) } }
 
@@ -488,43 +693,55 @@ enum Sprites {
 
     /// The face alone, for the menu bar icon.
     static func face(_ look: Look) -> NSImage {
-        let layers = headLayers(look, closedEyes: false, 3, 2)
+        let (back, head) = headLayers(look, .open, .small, 3, 2)
         return NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
-            Sprites.draw(layers: layers, look, left: 0, top: 0, scale: 0.75)
+            Sprites.draw(layers: back + head, look, left: 0, top: 0, scale: 0.75)
             return true
         }
     }
 
-    static let sheetColumns = max(Pose.allCases.count, 6)
+    static let sheetColumns = 12
+    private static let poseRows = (Pose.allCases.count + sheetColumns - 1) / sheetColumns
 
     static func sheetSize(scale: CGFloat) -> NSSize {
-        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat(5 * height) * scale)
+        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 3) * height) * scale)
     }
 
-    /// For eyeballing the art, laid out exactly like the Windows app's Sheet: two looks
-    /// through every pose, then a dozen looks, then visitors walking, waving and reaching.
+    /// For eyeballing the art, laid out exactly like the Windows app's Sheet, twelve to a
+    /// row: a boy and a girl through every pose, two dozen looks covering every hairstyle,
+    /// colour and top, then visitors.
     static func drawSheet(scale: CGFloat) {
-        let w = CGFloat(width) * scale, h = CGFloat(height) * scale
         color(0xF4F5F7).setFill()
         NSRect(origin: .zero, size: sheetSize(scale: scale)).fill()
         let boy = Look(girl: false, 0, 0, 0, 0, 0, 0)
-        let girl = Look(girl: true, 0, 0, 2, 2, 5, 0)
+        let girl = Look(girl: true, 0, 0, 3, 2, 5, 0)
+        func at(_ cell: Int) -> (CGFloat, CGFloat) {
+            (CGFloat(cell % sheetColumns * width) * scale, CGFloat(cell / sheetColumns * height) * scale)
+        }
         for (i, pose) in Pose.allCases.enumerated() {
-            draw(pose, boy, left: CGFloat(i) * w, top: 0, scale: scale)
-            draw(pose, girl, left: CGFloat(i) * w, top: h, scale: scale)
+            let (bx, by) = at(i)
+            draw(pose, boy, left: bx, top: by, scale: scale)
+            let (gx, gy) = at(poseRows * sheetColumns + i)
+            draw(pose, girl, left: gx, top: gy, scale: scale)
         }
         for i in 0..<(2 * sheetColumns) {
-            // Every hairstyle and top, spread over colours.
-            let look = Look(girl: i % 2 == 1, i / 2 % 3, i % 4, i % 4, (i * 3) % 10, i % 8, i % 6)
-            draw(.writeA, look, left: CGFloat(i % sheetColumns) * w, top: CGFloat(2 + i / sheetColumns) * h, scale: scale)
+            let look = Look(girl: i % 2 == 1, i / 2 % Look.hairStyles, i % Look.hairColors, i % Look.tops, (i * 3) % 10, i % 8, i % 6)
+            let (x, y) = at(2 * poseRows * sheetColumns + i)
+            draw(.writeA, look, left: x, top: y, scale: scale)
         }
-        let row = 4 * h
-        draw(layers: visitor(boy, .walk, alt: true), boy, left: 0, top: row, scale: scale)
-        draw(layers: visitor(girl, .wave, alt: true), girl, left: w, top: row, scale: scale)
-        draw(layers: visitor(girl, .wave, alt: false), girl, left: 2 * w, top: row, scale: scale)
-        draw(layers: visitor(boy, .reach, alt: true), boy, left: 3 * w, top: row, scale: scale)
-        draw(layers: reachLayers(down: true), boy, left: 3 * w, top: row, scale: scale)
-        draw(.writeA, girl, left: 4 * w, top: row, scale: scale, alert: true, lift: 1)
+        let row = (2 * poseRows + 2) * sheetColumns
+        let cells: [([Layer], Look)] = [
+            (visitor(boy, .walk, alt: true), boy),
+            (visitor(boy, .walk, alt: false), boy),
+            (visitor(girl, .wave, alt: true), girl),
+            (visitor(girl, .wave, alt: false), girl),
+            (visitor(girl, .reach, alt: true) + reachLayers(girl, down: true), girl),
+            (compose(.writeA, girl, alert: true, lift: 1), girl),
+        ]
+        for (i, cell) in cells.enumerated() {
+            let (x, y) = at(row + i)
+            draw(layers: cell.0, cell.1, left: x, top: y, scale: scale)
+        }
     }
 
     static func draw(layers: [Layer], _ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat) {
@@ -556,10 +773,12 @@ enum Sprites {
         context?.shouldAntialias = antialias
     }
 
-    private static func withRows(_ grid: [String], _ rows: [(Int, String)]) -> [String] {
-        var copy = grid
-        for (row, text) in rows { copy[row] = text }
-        return copy
+    private static func put(_ grid: [String], _ marks: [(Int, Int, String)]) -> [String] {
+        var copy = grid.map { Array($0) }
+        for (row, col, text) in marks {
+            for (i, c) in text.enumerated() { copy[row][col + i] = c }
+        }
+        return copy.map { String($0) }
     }
 
     private static func mirror(_ grid: [String]) -> [String] { grid.map { String($0.reversed()) } }

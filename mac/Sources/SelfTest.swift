@@ -76,8 +76,11 @@ enum SelfTest {
     private static func checkPetControls(_ out: URL) {
         check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
-        check([335, 336, 359, 360, 696, 1056, 1080].map(PetWindow.studyMoment) == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
-        check([1416, 1776, 2136, 2496].map(PetWindow.studyMoment) == [4, 5, 6, 1], "moments: tea, turning pages and hearts complete the cycle")
+        check([335, 336, 359, 360, 696, 1056, 1080].map { PetWindow.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
+        check([1416, 1776, 2136, 2496, 3936, 4296].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 1], "moments: all eleven play before the cycle repeats")
+        check((0..<3600).filter { PetWindow.studyMoment($0, seed: 37) > 0 }.count == 240 && !(0..<3600).allSatisfy { PetWindow.studyMoment($0, seed: 37) == PetWindow.studyMoment($0) },
+              "moments: a seatmate acts as often as me, on their own schedule")
+        check((1...PetWindow.moments).allSatisfy { m in !PetWindow.momentLine(m, 0).isEmpty }, "moments: every moment has a line")
         save(render(NSSize(width: 136, height: 64)) {
             Sprites.color(0xFFFDF4).setFill(); NSRect(x: 0, y: 0, width: 136, height: 64).fill()
             Sprites.drawButterfly(left: 10, top: 8, scale: 4, folded: false)
@@ -92,7 +95,7 @@ enum SelfTest {
         pet.myName = { "지우" }
         pet.bubbleText = { "영어\n23분째 공부 중" }
         pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
-        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: true, dozing: true, text: "국어 · 5분\n쿨쿨… 쉬는 중") }
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: true, dozing: true, text: "국어 · 5분\n잠깐 쉬는 중") }
         for percent in [50, 75, 100, 125, 150] {
             pet.setDisplaySize(percent)
             pet.preview(.studying, frame: 0)
@@ -120,7 +123,9 @@ enum SelfTest {
         pet.preview(.studying, frame: 0)
         save(render(pet.canvasSize) { pet.paint() }, out, "two-seats-right-away.png")
         check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
-        for at in [336, 338, 696, 714, 1056, 1058, 1060, 1416, 1420, 1776, 1778, 2140, 2146] {
+        // A few frames of each moment, with both seatmates mid-moment too.
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
+        for at in (0..<PetWindow.moments).flatMap({ m in [4, 14].map { m * 360 + 336 + $0 } }) {
             pet.preview(.studying, frame: at)
             save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
         }
@@ -394,7 +399,7 @@ enum SelfTest {
 
         let latest = Room.latest(members)
         check(Room.seatText(members[1], here: Room.isHere(members[1], latest)) == "수학\n32분째 공부 중", "seat: studying text")
-        check(Room.seatText(members[2], here: Room.isHere(members[2], latest)) == "공부 · 1시간 5분\n쿨쿨… 쉬는 중", "seat: paused text")
+        check(Room.seatText(members[2], here: Room.isHere(members[2], latest)) == "공부 · 1시간 5분\n잠깐 쉬는 중", "seat: paused text")
         check(Room.seatText(members[4], here: Room.isHere(members[4], latest)) == "자리 비움", "seat: gone quiet reads as away")
         check(Room.pokeMessage(members[1], here: true) == "화이팅 !" && Room.pokeMessage(members[2], here: true) == "일어나 !" &&
               Room.pokeMessage(members[3], here: Room.isHere(members[3], latest)) == "같이 공부하자 !", "poke: message follows their state")
@@ -416,20 +421,22 @@ enum SelfTest {
         let id = Room.randomId(12)
         check(id.count == 12 && id.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber) }, "id: 12 lowercase letters and digits")
         check(Room.cleanName(" 민\t지 ") == "민지" && Room.cleanName(String(repeating: "가", count: 20)).count == Room.maxNameLength, "name: cleaned and cut")
-        check(Look.parse("g213402", girl: false).code == "g213402" && Look.parse("b219999", girl: false).code == "b211913",
+        check(Look.parse("g213402", girl: false).code == "g213402" && Look.parse("b219999", girl: false).code == "b213913",
               "look: codes round-trip; boys' bottoms fold to trousers")
         check(Look.parse("nonsense", girl: true) == Look(girl: true, 0, 0, 2, 2, 0, 0), "look: a bad code is the plain look")
     }
 
     private static func checkSprites() {
-        for i in 0..<12 {
-            let look = Look(girl: i % 2 == 1, i / 2 % 3, i % 4, i % 4, (i * 3) % 10, i % 8, i % 6)
+        for i in 0..<24 {
+            let look = Look(girl: i % 2 == 1, i / 2 % Look.hairStyles, i % Look.hairColors, i % Look.tops, (i * 3) % 10, i % 8, i % 6)
             for grid in Sprites.grids(look) {
                 check(grid.allSatisfy { $0.count == grid[0].count }, "sprite: ragged grid starting \(grid[0])")
                 check(grid.allSatisfy { $0.allSatisfy(Sprites.isKnownColor) }, "sprite: unknown colour in grid starting \(grid[0])")
             }
             for pose in Sprites.Pose.allCases {
-                for layer in Sprites.compose(pose, look, alert: true) + Sprites.compose(pose, look) {
+                // Moments stop while a visitor taps, so only writing and dozing pets jump.
+                let tapped = [Sprites.Pose.writeA, .writeB, .blink, .dozeA, .dozeB].contains(pose)
+                for layer in Sprites.compose(pose, look, alert: tapped, lift: tapped ? 1 : 0) + Sprites.compose(pose, look) {
                     check(layer.x >= 0 && layer.y >= 0 && layer.x + layer.grid[0].count <= Sprites.width && layer.y + layer.grid.count <= Sprites.height,
                           "sprite: \(pose) (\(look.code)) has a layer off the canvas at \(layer.x),\(layer.y)")
                 }
@@ -610,7 +617,7 @@ enum SelfTest {
         shot(.studying)
         // Background hidden: dozing, then the seatmate walking over and tapping (hand down).
         news = ""
-        mine = "영어 · 23분\n쿨쿨… 쉬는 중"
+        mine = "영어 · 23분\n잠깐 쉬는 중"
         seat = PetWindow.Seat(name: "민지", look: minji, here: true, dozing: false, text: "수학\n32분째 공부 중")
         board = nil
         shot(.dozing, frame: 1, visitTick: 2, friendText: "민지 : 일어나 !")
