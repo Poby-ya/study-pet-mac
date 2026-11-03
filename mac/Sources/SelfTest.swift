@@ -71,6 +71,9 @@ enum SelfTest {
     }
 
     private static func checkPetControls(_ out: URL) {
+        check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
+        check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
+        check([335, 336, 359, 360, 696, 1056, 1080].map(PetWindow.studyMoment) == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
         check([0, 2, 4, 18, 21, 24].map(PetWindow.travelStep) == [0, 2, 4, 4, 2, 0], "visit: walk out, greet and return")
         let mixed = (0..<100).map { _ in Look.random(girl: Bool.random()) }
         check(mixed.contains(where: \.girl) && mixed.contains(where: { !$0.girl }), "look: random decoration includes all genders")
@@ -86,6 +89,37 @@ enum SelfTest {
             save(capture(pet.contentView!), out, "three-seats-\(percent).png")
             check(pet.sizePercent == percent && pet.frame.width <= (NSScreen.main?.visibleFrame.width ?? 10000) && pet.frame.height <= (NSScreen.main?.visibleFrame.height ?? 10000), "size: three seats fit screen at \(percent)")
         }
+        let threeWidth = pet.frame.width
+        let area = NSScreen.main!.visibleFrame
+        pet.setFrameOrigin(NSPoint(x: area.maxX - pet.frame.width, y: area.minY))
+        pet.rightSeatmate = { nil }
+        pet.preview(.studying, frame: 0)
+        save(render(pet.canvasSize) { pet.paint() }, out, "two-seats-left.png")
+        let twoWidth = pet.frame.width
+        check(twoWidth < threeWidth && abs(pet.frame.maxX - area.maxX) < 1, "layout: removing right desk shrinks window at right screen edge")
+        pet.seatmate = { nil }
+        pet.board = { ("공부방 · 1/2 ↻", ["지우 · 영어 23분"]) }
+        pet.preview(.studying, frame: 0)
+        save(render(pet.canvasSize) { pet.paint() }, out, "one-seat-board.png")
+        check(pet.frame.width < twoWidth && abs(pet.frame.maxX - area.maxX) < 1, "layout: one desk uses its own width")
+        check((0..<Int(pet.canvasSize.height)).contains { pet.hitBoard(NSPoint(x: pet.canvasSize.width / 2, y: CGFloat($0))) } && !pet.hitBoard(.zero), "board: visible chalkboard responds to clicks")
+        pet.board = { nil }
+        check(!(0..<Int(pet.canvasSize.height)).contains { pet.hitBoard(NSPoint(x: pet.canvasSize.width / 2, y: CGFloat($0))) }, "board: hidden background cannot switch rooms")
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: mixed[0], here: false, dozing: false, text: "자리 비움") }
+        pet.preview(.studying, frame: 0)
+        save(render(pet.canvasSize) { pet.paint() }, out, "two-seats-right-away.png")
+        check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
+        for at in [336, 338, 696, 714, 1056, 1060] {
+            pet.preview(.studying, frame: at)
+            save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
+        }
+        pet.appear(.studying)
+        pet.minimizeScene()
+        pet.visit(mixed[0], text: "화이팅!", side: 0)
+        check(pet.minimized && !pet.isVisible, "minimize: incoming visitor does not uncover the scene")
+        pet.restoreScene()
+        check(!pet.minimized && pet.isVisible, "minimize: scene can be restored")
+        pet.orderOut(nil)
         for direction in [-1, 1, 0] {
             for tick in [2, 8, 21] {
                 pet.preview(.studying, frame: tick, outgoingTick: tick, outgoingDirection: direction)
@@ -128,11 +162,18 @@ enum SelfTest {
             check(b.boardMembers.contains { $0.id == owner }, "multi-room: the owner appears in all rooms")
         }
         check(Set(seen.map(\.id)).count == seen.count, "multi-room: shared members are deduplicated")
+        let selected = b.selected
+        try? b.next()
+        check(b.selected != selected && b.boardMembers.contains { $0.id == friend && $0.minutes == 17 }, "board: cycling retains elapsed minutes")
+        try? b.next()
+        check(b.selected == selected, "board: last room wraps to first")
         try? b.select(invite.roomId)
         b.poke(other, ["from": friend, "name": "친구", "look": "boy", "message": "같이 공부하자 !", "at": Room.serverTime])
         check(waitFor { received }, "multi-room: poke reaches another room's member while viewing the first board")
         patch(["access/\(friend)/\(invite.roomId)": NSNull(), "rooms/\(invite.roomId)/approved/\(friend)": NSNull(), "rooms/\(invite.roomId)/members/\(friend)": NSNull(), "rooms/\(invite.roomId)/names/\(friend)": NSNull()])
         check(waitFor { b.choices.count == 1 && b.selected == second }, "multi-room: revoked room disappears and selection falls back")
+        try? b.next()
+        check(b.selected == second, "board: single room keeps its selection")
         a.leave(); b.leave(); c.leave(); a.flush(); b.flush(); c.flush()
         a.dispose(); b.dispose(); c.dispose()
     }

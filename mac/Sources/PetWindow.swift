@@ -9,10 +9,6 @@ private let boardSpace = 48 + CGFloat(Room.boardLines) * boardLine
 private let bubbleArea: CGFloat = 92 // a two-line bubble, and a one-line news bubble above it
 private let floorY = boardSpace + bubbleArea // top of the desks' grid
 let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites.height) * scale + 10)
-private let myX = (petSize.width - deskWidth) / 2
-// The gap keeps two neighbouring bubbles from running into each other.
-private let seatX = myX - deskWidth - 22
-private let rightX = myX + deskWidth + 22
 
 /// A little classroom, drawn like the Windows app's PetWindow.cs: my desk in the centre
 /// and pinned friends on the left and right, each with a nameplate and a speech bubble, and
@@ -65,6 +61,15 @@ final class PetWindow: NSPanel {
     private var dragFrom: NSPoint?
     private var dragOrigin = NSPoint.zero
     private var dragged = false
+    private var hasLeft = false, hasRight = false
+    private(set) var minimized = false
+    var canvasSize: NSSize {
+        let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
+        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 24, height: petSize.height)
+    }
+    private var myX: CGFloat { hasLeft ? 12 + deskWidth + 22 : 12 }
+    private var seatX: CGFloat { myX - deskWidth - 22 }
+    private var rightX: CGFloat { myX + deskWidth + 22 }
 
     /// Read on every frame, so the minutes tick over without anyone pushing updates.
     var bubbleText: () -> String = { "" }
@@ -80,6 +85,7 @@ final class PetWindow: NSPanel {
     var rightSeatmateClicked: () -> Void = {}
     var awayClicked: () -> Void = {}
     var petClicked: () -> Void = {}
+    var boardClicked: () -> Void = {}
     var contextMenu: NSMenu?
 
     var look: Look {
@@ -117,23 +123,49 @@ final class PetWindow: NSPanel {
     func setDisplaySize(_ percent: Int) {
         guard [50, 75, 100, 125, 150].contains(percent) else { return }
         sizePercent = percent
-        let area = (screen ?? NSScreen.main)?.visibleFrame.size ?? petSize
-        let factor = min(CGFloat(percent) / 100, min(area.width / petSize.width, area.height / petSize.height))
-        let size = NSSize(width: petSize.width * factor, height: petSize.height * factor)
-        setContentSize(size)
-        contentView?.frame = NSRect(origin: .zero, size: size)
-        contentView?.bounds = NSRect(origin: .zero, size: petSize)
-        setFrameOrigin(savedLocation() ?? defaultLocation())
         redraw()
+    }
+
+    private func fitDesks() {
+        hasLeft = seatmate() != nil; hasRight = rightSeatmate() != nil
+        let area = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(origin: .zero, size: petSize)
+        let factor = min(CGFloat(sizePercent) / 100, min(area.width / canvasSize.width, area.height / canvasSize.height))
+        let size = NSSize(width: canvasSize.width * factor, height: canvasSize.height * factor)
+        let old = frame
+        let x = old.minX - area.minX < area.maxX - old.maxX ? old.minX : old.maxX - size.width
+        if frame.size != size { setContentSize(size) }
+        contentView?.frame = NSRect(origin: .zero, size: size)
+        contentView?.bounds = NSRect(origin: .zero, size: canvasSize)
+        setFrameOrigin(NSPoint(x: max(area.minX, min(x, area.maxX - size.width)), y: max(area.minY, min(old.minY, area.maxY - size.height))))
+    }
+
+    func minimizeScene() {
+        minimized = true
+        timer?.invalidate(); timer = nil
+        visitTick = -1; outgoingTick = -1
+        orderOut(nil)
+    }
+
+    func restoreScene() {
+        guard minimized else { return }
+        minimized = false
+        guard mood != .leaving && mood != .away else { return }
+        fading = false; alphaValue = 1
+        redraw(); orderFrontRegardless(); startAnimation()
     }
 
     func appear(_ newMood: Mood) {
         mood = newMood
+        minimized = false
         tick = 0
         fading = false
         alphaValue = 0.25
         redraw()
         orderFrontRegardless()
+        startAnimation()
+    }
+
+    private func startAnimation() {
         if timer == nil {
             let t = Timer(timeInterval: 0.25, target: self, selector: #selector(step), userInfo: nil, repeats: true)
             RunLoop.main.add(t, forMode: .common)
@@ -153,6 +185,7 @@ final class PetWindow: NSPanel {
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
     func visit(_ friend: Look, text: String, fromSeatmate: Bool) {
+        if minimized { return }
         visitLook = friend
         visitText = text
         visitSide = fromSeatmate ? -1 : 0
@@ -166,6 +199,7 @@ final class PetWindow: NSPanel {
     }
 
     func goVisit(_ name: String, message: String, side: Int) {
+        if minimized { return }
         outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message
         if !isVisible { appear(.away) }
     }
@@ -181,6 +215,7 @@ final class PetWindow: NSPanel {
         visitText = friendText
         visitSide = -1
         outgoingTick = atOutgoingTick; outgoingSide = outgoingDirection; outgoingText = "민지에게\n화이팅 !"
+        fitDesks()
     }
 
     @objc private func step() {
@@ -212,11 +247,26 @@ final class PetWindow: NSPanel {
         redraw()
     }
 
-    private func redraw() { contentView?.needsDisplay = true }
+    private func redraw() { fitDesks(); contentView?.needsDisplay = true }
+
+    static func studyMoment(_ ticks: Int) -> Int { ticks % 360 >= 336 ? ticks / 360 % 3 + 1 : 0 }
+    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
+    private var momentFrame: Int { tick % 360 - 336 }
+    private var momentText: String {
+        switch moment {
+        case 1: return "으쌰, 기지개!"
+        case 2: return momentFrame < 16 ? "앗, 내 연필!" : "찾았다! 다시 집중 ♪"
+        case 3: return "나비도 응원하러 왔나 봐 ♪"
+        default: return ""
+        }
+    }
 
     private var myPose: Sprites.Pose {
         switch mood {
-        case .studying: return tick % 20 == 19 ? .blink : tick / 2 % 2 == 0 ? .writeA : .writeB
+        case .studying:
+            if moment == 1 { return momentFrame % 4 < 2 ? .stretchA : .stretchB }
+            if moment == 2 && momentFrame < 16 { return .pickUp }
+            return tick % 20 == 19 ? .blink : tick / 2 % 2 == 0 ? .writeA : .writeB
         case .dozing: return tick / 3 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
@@ -248,6 +298,7 @@ final class PetWindow: NSPanel {
             let x = i == 0 ? seatX : rightX
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
             drawNameplate(seat.name, deskX: x)
+            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
         }
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
         let arrived = myX + (visitSide == 1 ? 19 : -19) * scale
@@ -260,33 +311,53 @@ final class PetWindow: NSPanel {
                                  hop: walking && frameCount % 2 == 0 ? scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
         drawNameplate(myName(), deskX: myX)
+        if mood == .away && !outgoing { drawAwaySign(myX) }
+        if moment == 3 { drawButterfly() }
         if tapping {
             NSGraphicsContext.saveGraphicsState()
             if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
             Sprites.draw(layers: Sprites.reachLayers(down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
-        let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : petSize.width - deskWidth / 2
+        let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Self.travelStep(outgoingTick)) / 4
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
                                  hop: frameCount % 2 == 0 ? scale : 0, mirror: (destination < myX) != (outgoingTick > 18)) }
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = deskWidth + 16
-        if visiting { drawBubble(visitText, cx: visitorX + mid, tipY: tip, maxWidth: petSize.width - 2, fill: PetWindow.visitYellow) }
-        else if outgoing { drawBubble(outgoingText, cx: outX + mid, tipY: tip, maxWidth: petSize.width - 2, fill: PetWindow.visitYellow) }
+        if visiting { drawBubble(visitText, cx: visitorX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
+        else if outgoing { drawBubble(outgoingText, cx: outX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
         else {
             var top = tip
-            if mood != .away { top = drawBubble(bubbleText(), cx: myX + mid, tipY: tip, maxWidth: narrow, fill: .white) }
+            if mood != .away { top = drawBubble(moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             for i in 0..<2 {
-                if let seat = seats[i] { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 10 ? "다녀올게요!" : seat.text,
+                if let seat = seats[i], seat.here || (leavingTicks[i] >= 0 && leavingTicks[i] < 10) { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 10 ? "다녀올게요!" : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             }
-            if mood != .away { drawBubble(newsText(), cx: myX + mid, tipY: top - 2, maxWidth: petSize.width - 2, fill: PetWindow.newsMint) }
+            if mood != .away { drawBubble(newsText(), cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
     }
 
     static func travelStep(_ tick: Int) -> Int { tick < 0 ? 0 : tick < 4 ? tick : tick <= 18 ? 4 : max(0, (24 - tick) * 4 / 6) }
+
+    private func drawAwaySign(_ x: CGFloat) {
+        let face = NSRect(x: x + 12 * scale, y: floorY + 16 * scale, width: 25 * scale, height: 10 * scale)
+        Sprites.color(0xFFF1B8).setFill(); face.fill()
+        PetWindow.wood.setStroke()
+        let edge = NSBezierPath(rect: face); edge.lineWidth = scale / 2; edge.stroke()
+        let base = NSBezierPath(); base.move(to: NSPoint(x: face.minX - scale, y: face.maxY)); base.line(to: NSPoint(x: face.maxX + scale, y: face.maxY)); base.lineWidth = scale / 2; base.stroke()
+        drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.3 * scale), color: PetWindow.ink, in: face)
+    }
+
+    private func drawButterfly() {
+        let x = myX + deskWidth / 2 + CGFloat(sin(Double(momentFrame) / 4)) * 12 * scale
+        let y = floorY + (7 + CGFloat(cos(Double(momentFrame) / 3)) * 3) * scale
+        let wing = frameCount % 2 == 0 ? 3 * scale : scale
+        Sprites.color(0xF5A9C0).setFill(); NSBezierPath(ovalIn: NSRect(x: x - wing, y: y - scale, width: wing, height: 3 * scale)).fill()
+        Sprites.color(0xF7D774).setFill(); NSBezierPath(ovalIn: NSRect(x: x + scale, y: y - scale, width: wing, height: 3 * scale)).fill()
+        NSColor.brown.setFill(); NSRect(x: x, y: y, width: scale, height: 3 * scale).fill()
+    }
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {
         NSGraphicsContext.saveGraphicsState()
         if mirror { let t = NSAffineTransform(); t.translateX(by: x + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
@@ -305,7 +376,7 @@ final class PetWindow: NSPanel {
         let w = min(maxWidth, (lines.map { textWidth($0, font) }.max() ?? 0) + 22)
         let h = CGFloat(lines.count) * lineHeight + 10
         let tailHeight: CGFloat = 6
-        let left = max(1, min(cx - w / 2, petSize.width - 1 - w))
+        let left = max(1, min(cx - w / 2, canvasSize.width - 1 - w))
         let box = NSRect(x: left, y: tipY - tailHeight - h, width: w, height: h)
         let radius = min(h / 2, 12)
 
@@ -353,7 +424,7 @@ final class PetWindow: NSPanel {
         let shownLines = CGFloat(max(1, lines.count))
         let boardBottom = boardSpace - 6
         let boardTop = boardBottom - (30 + shownLines * boardLine + 8)
-        let card = NSRect(x: 2, y: boardTop - 14, width: petSize.width - 4, height: petSize.height - 2 - (boardTop - 14))
+        let card = NSRect(x: 2, y: boardTop - 14, width: canvasSize.width - 4, height: canvasSize.height - 2 - (boardTop - 14))
 
         let cardPath = NSBezierPath(roundedRect: card, xRadius: 14, yRadius: 14)
         PetWindow.wall.setFill()
@@ -382,7 +453,7 @@ final class PetWindow: NSPanel {
         Sprites.color(0xC9B89A).setStroke()
         cardPath.stroke()
 
-        let frame = NSRect(x: 18, y: boardTop, width: petSize.width - 36, height: boardBottom - boardTop)
+        let frame = NSRect(x: 18, y: boardTop, width: canvasSize.width - 36, height: boardBottom - boardTop)
         let slate = frame.insetBy(dx: 5, dy: 5)
         PetWindow.wood.setFill()
         NSBezierPath(roundedRect: frame, xRadius: 4, yRadius: 4).fill()
@@ -435,7 +506,15 @@ final class PetWindow: NSPanel {
             return
         }
         // It didn't move, so it was a click; on my own pet that pauses or resumes.
+        if hitBoard(p) { boardClicked(); return }
         if p.y >= boardSpace && p.x >= myX && p.x < myX + deskWidth { petClicked() }
+    }
+
+    func hitBoard(_ p: NSPoint) -> Bool {
+        guard let board = board() else { return false }
+        let bottom = boardSpace - 6
+        let top = bottom - (30 + CGFloat(max(1, board.lines.count)) * boardLine + 8)
+        return NSRect(x: 18, y: top, width: canvasSize.width - 36, height: bottom - top).contains(p)
     }
 
     fileprivate func showMenu(_ event: NSEvent) {

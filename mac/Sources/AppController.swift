@@ -83,11 +83,13 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.seatmate = { [unowned self] in self.seatView("seatmate") }
         pet.rightSeatmate = { [unowned self] in self.seatView("seatmateRight") }
         pet.myName = { Settings.get("name") }
+        pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next() } }
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
                 let board = Room.board(room.boardMembers, me: self.myId)
+                if room.choices.count > 1 { return ("\(room.name) · \((room.choices.firstIndex { $0.id == room.selected } ?? 0) + 1)/\(room.choices.count) ↻", board.lines) }
                 return (room.name.isEmpty ? board.title : "\(room.name) · \(board.title)", board.lines)
             }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
@@ -127,11 +129,22 @@ final class AppController: NSObject, NSMenuDelegate {
 
     @objc private func toggle() {
         if quitting { return }
+        if pet.minimized { restoreView(); return }
         switch state {
         case .studying: pause()
         case .paused: resume()
         case .off: showPlanner()
         }
+    }
+
+    private func restoreView() {
+        if quitting { return }
+        pet.restoreScene()
+        if state == .off { showPlanner() }
+    }
+
+    @objc private func toggleMinimized() {
+        if pet.minimized { restoreView() } else { pet.minimizeScene() }
     }
 
     private func showPlanner() {
@@ -237,6 +250,10 @@ final class AppController: NSObject, NSMenuDelegate {
     private var elapsed: TimeInterval { banked + (segmentStart.map { Date().timeIntervalSince($0) } ?? 0) }
 
     private func bubble() -> String {
+        if state == .studying {
+            let cheer = StudyCheer.text(elapsed)
+            if !cheer.isEmpty { return cheer }
+        }
         switch state {
         case .studying: return elapsed < 60 ? "\(subject)\n공부 시작!" : "\(subject)\n\(Records.duration(elapsed / 60))째 공부 중"
         case .paused: return "\(subject) · \(Records.duration(elapsed / 60))\n쿨쿨… 쉬는 중"
@@ -520,6 +537,9 @@ final class AppController: NSObject, NSMenuDelegate {
         stopItem.keyEquivalentModifierMask = [.control, .option]
         stopItem.isEnabled = state != .off
         menu.addItem(stopItem)
+        let minimize = item(pet.minimized ? "다시 보이기 (시간은 계속 기록 중)" : "최소화 (시간은 계속 기록)", #selector(toggleMinimized))
+        minimize.isEnabled = pet.isVisible || pet.minimized
+        menu.addItem(minimize)
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))

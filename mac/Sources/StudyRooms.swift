@@ -15,7 +15,7 @@ final class StudyRooms {
     var changed: (([Member]) -> Void)?
     var poked: ((Poke) -> Void)?
     var choices: [(id: String, name: String)] {
-        channels.map { (id: $0.key, name: $0.value.name.isEmpty ? "방 · " + String($0.key.suffix(4)) : $0.value.name) }.sorted { $0.name < $1.name }
+        channels.map { (id: $0.key, name: $0.value.name.isEmpty ? "방 · " + String($0.key.suffix(4)) : $0.value.name) }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
     }
     var name: String { channels[selected]?.name ?? "" }
     var error: String { setupError.isEmpty ? channels.values.first(where: { !$0.error.isEmpty })?.error ?? "" : setupError }
@@ -87,6 +87,10 @@ final class StudyRooms {
         guard channels[id] != nil else { return }
         try Settings.set("viewRoom", id); selected = id
         changed?(Self.merge(Array(snapshots.values)))
+    }
+    func next() throws {
+        let list = choices
+        if list.count > 1 { try select(list[((list.firstIndex { $0.id == selected } ?? -1) + 1) % list.count].id) }
     }
     func publish(_ value: [String: Any]) { status = value; channels.values.forEach { $0.publish(value) } }
     func poke(_ to: String, _ value: [String: Any]) {

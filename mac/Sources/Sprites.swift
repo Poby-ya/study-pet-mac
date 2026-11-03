@@ -60,7 +60,7 @@ enum Sprites {
     /// desk top free for the nameplate (cols 1..16).
     static let dx = 10
 
-    enum Pose: CaseIterable { case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty }
+    enum Pose: CaseIterable { case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, stretchA, stretchB, pickUp }
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
@@ -388,11 +388,20 @@ enum Sprites {
     }
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool) -> [Layer] {
+        if pose == .pickUp {
+            var bent = [Layer(body(look, sitting: true, rightArmUp: false), 6, 22)]
+            bent += headLayers(look, closedEyes: false, 10, 12)
+            bent.append(Layer(pencilHand, 28, 30))
+            var shifted = shift(bent)
+            shifted.insert(Layer(desk, 0, 27), at: 1)
+            return shifted
+        }
+        let stretching = pose == .stretchA || pose == .stretchB
         let standing = pose == .stand || pose == .waveA || pose == .waveB
         let waving = pose == .waveA || pose == .waveB
         let dozing = pose == .dozeA || pose == .dozeB
-        let headY = standing ? 0 : pose == .dozeA ? 10 : pose == .dozeB ? 11 : 4
-        var person = [Layer(body(look, sitting: !standing, rightArmUp: waving), 6, standing ? 16 : dozing ? 22 : 20)]
+        let headY = standing ? 0 : pose == .dozeA ? 10 : pose == .dozeB ? 11 : stretching ? 2 : 4
+        var person = [Layer(body(look, sitting: !standing, rightArmUp: waving || stretching), 6, standing ? 16 : dozing ? 22 : 20)]
 
         if dozing {
             // Head down on the desk, so the desk goes underneath it.
@@ -413,7 +422,11 @@ enum Sprites {
 
         person += headLayers(look, closedEyes: pose == .blink, 7, headY)
         var front = [Layer(book, 9, 24)]
-        if waving {
+        if stretching {
+            let arm = pose == .stretchA ? waveArmA : waveArmB
+            front.append(Layer(arm, 20, 5))
+            front.append(Layer(arm.map { String($0.reversed()) }, 2, 5))
+        } else if waving {
             front.append(Layer(pose == .waveA ? waveArmA : waveArmB, 20, 7))
         } else if !standing {
             front.append(Layer(hand, 7, 24))
