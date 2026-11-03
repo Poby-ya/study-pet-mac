@@ -126,7 +126,10 @@ final class AppController: NSObject, NSMenuDelegate {
         restoreUpdateState()
         connect()
         updater.found = { [weak self] in self?.showUpdateNotice($0) }
-        updater.availabilityChanged = { [weak self] in self?.pet.setUpdateAvailable($0) }
+        updater.availabilityChanged = { [weak self] available in
+            self?.pet.setUpdateAvailable(available)
+            if self?.planner?.isVisible == true { self?.planner?.orderFront(nil) }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.updater.check() }
         let check = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.updater.check() }
         RunLoop.main.add(check, forMode: .common)
