@@ -201,18 +201,14 @@ final class PetWindow: NSPanel {
 
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
-    func visit(_ friend: Look, text: String, fromSeatmate: Bool) {
+    /// `side` is where they come from: -1 the left seat, 1 the right, 0 from outside.
+    func visit(_ friend: Look, text: String, side: Int) {
         if minimized { return }
         visitLook = friend
         visitText = text
-        visitSide = fromSeatmate ? -1 : 0
+        visitSide = side
         visitTick = 0
         if !isVisible || fading || mood == .leaving { appear(.away) }
-    }
-
-    func visit(_ friend: Look, text: String, side: Int) {
-        visit(friend, text: text, fromSeatmate: side != 0)
-        visitSide = side
     }
 
     func goVisit(_ name: String, message: String, side: Int) {
