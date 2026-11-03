@@ -74,6 +74,12 @@ enum SelfTest {
         check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
         check([335, 336, 359, 360, 696, 1056, 1080].map(PetWindow.studyMoment) == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
+        check([1416, 1776, 2136, 2496].map(PetWindow.studyMoment) == [4, 5, 6, 1], "moments: tea, turning pages and hearts complete the cycle")
+        save(render(NSSize(width: 136, height: 64)) {
+            Sprites.color(0xFFFDF4).setFill(); NSRect(x: 0, y: 0, width: 136, height: 64).fill()
+            Sprites.drawButterfly(left: 10, top: 8, scale: 4, folded: false)
+            Sprites.drawButterfly(left: 78, top: 8, scale: 3, folded: true)
+        }, out, "butterfly.png")
         check([0, 2, 4, 18, 21, 24].map(PetWindow.travelStep) == [0, 2, 4, 4, 2, 0], "visit: walk out, greet and return")
         let mixed = (0..<100).map { _ in Look.random(girl: Bool.random()) }
         check(mixed.contains(where: \.girl) && mixed.contains(where: { !$0.girl }), "look: random decoration includes all genders")
@@ -109,7 +115,7 @@ enum SelfTest {
         pet.preview(.studying, frame: 0)
         save(render(pet.canvasSize) { pet.paint() }, out, "two-seats-right-away.png")
         check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
-        for at in [336, 338, 696, 714, 1056, 1060] {
+        for at in [336, 338, 696, 714, 1056, 1058, 1060, 1416, 1420, 1776, 1778, 2140, 2146] {
             pet.preview(.studying, frame: at)
             save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
         }

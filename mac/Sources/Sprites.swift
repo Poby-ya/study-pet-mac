@@ -60,7 +60,7 @@ enum Sprites {
     /// desk top free for the nameplate (cols 1..16).
     static let dx = 10
 
-    enum Pose: CaseIterable { case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, stretchA, stretchB, pickUp }
+    enum Pose: CaseIterable { case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, stretchA, stretchB, pickUp, teaA, teaB, turnPage }
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
@@ -97,6 +97,13 @@ enum Sprites {
         "p": color(0xFFD14A), // pencil, the "!"
         "r": color(0xFF8FB1), // eraser
         "z": color(0x6A8CE8), // Zzz
+        "f": color(0xA17999), // butterfly outline
+        "F": color(0xF6BED7), // rose wings
+        "q": color(0xDF95BC),
+        "v": color(0xD3C3F1), // lilac wings
+        "V": color(0xB29BDB),
+        "u": color(0xFFF8E9), // wing highlights
+        "n": color(0x775B78), // tiny body
     ]
 
     // (base, shine): dark brown, black, light brown, ash
@@ -363,6 +370,23 @@ enum Sprites {
 
     // Pops over the head of a pet being tapped awake.
     private static let exclaim = [".k.", "kpk", "kpk", "kpk", ".k.", "kpk", ".k."]
+    private static let teacup = [".kkkk...", "kwwwwkk.", "kwuuukwk", "kwuuukk.", ".kkkk..."]
+    private static let turningPage = ["......bk......", ".....bbk......", "kkkkkbbkkkkkkk", "kbbbbbkkbbbbbk", "kBBBBBBBBBBBBk"]
+    static let heart = [".ff.ff.", "fFFfFFf", "fFFFFFf", ".fFFFf.", "..fFf..", "...f..."]
+
+    static func butterfly(_ folded: Bool) -> [String] {
+        let half = folded
+            ? [".....f..", "......f.", "......ff", ".....fFf", "....fFuf", "....fFFf", ".....fqf", "......ff", ".....fVf", ".....fvf", "......ff", "........"]
+            : [".....f..", "......f.", "..fff..f", ".fFFFf..", "fFuFFFf.", "fFuuFFff", ".fFqqFff", "..fqqfff", "..fVvvff", "..fvuvf.", "...fvvf.", "....ff.."]
+        return half.enumerated().map { i, row in row + (i < 2 ? "." : "n") + String(row.reversed()) }
+    }
+
+    static func drawButterfly(left: CGFloat, top: CGFloat, scale: CGFloat, folded: Bool) {
+        draw(layers: [Layer(butterfly(folded), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
+    }
+    static func drawHeart(left: CGFloat, top: CGFloat, scale: CGFloat) {
+        draw(layers: [Layer(heart, 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
+    }
 
     // ---- Composing poses ------------------------------------------------------------
 
@@ -373,7 +397,7 @@ enum Sprites {
         for sitting in [false, true] {
             for armUp in [false, true] { all.append(body(look, sitting: sitting, rightArmUp: armUp)) }
         }
-        return all + [trousers, bareLegs, desk, book, hand, pencilHand, waveArmA, waveArmB, reachArm, zBig, zSmall, exclaim]
+        return all + [trousers, bareLegs, desk, book, hand, pencilHand, waveArmA, waveArmB, reachArm, zBig, zSmall, exclaim, butterfly(false), butterfly(true), teacup, turningPage, heart]
     }
 
     static func isKnownColor(_ c: Character) -> Bool { c == "." || palette[c] != nil || "hHAaCJR".contains(c) }
@@ -421,13 +445,17 @@ enum Sprites {
         }
 
         person += headLayers(look, closedEyes: pose == .blink, 7, headY)
-        var front = [Layer(book, 9, 24)]
+        var front = [Layer(pose == .turnPage ? turningPage : book, 9, pose == .turnPage ? 22 : 24)]
         if stretching {
             let arm = pose == .stretchA ? waveArmA : waveArmB
             front.append(Layer(arm, 20, 5))
             front.append(Layer(arm.map { String($0.reversed()) }, 2, 5))
         } else if waving {
             front.append(Layer(pose == .waveA ? waveArmA : waveArmB, 20, 7))
+        } else if pose == .teaA || pose == .teaB {
+            front.append(Layer(hand, 7, 24))
+            front.append(Layer(hand, 20, pose == .teaA ? 21 : 20))
+            front.append(Layer(teacup, 20, pose == .teaA ? 17 : 16))
         } else if !standing {
             front.append(Layer(hand, 7, 24))
             front.append(Layer(pencilHand, pose == .writeB ? 18 : 19, 22))

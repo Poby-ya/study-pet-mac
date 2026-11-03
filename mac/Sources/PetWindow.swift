@@ -249,7 +249,7 @@ final class PetWindow: NSPanel {
 
     private func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
-    static func studyMoment(_ ticks: Int) -> Int { ticks % 360 >= 336 ? ticks / 360 % 3 + 1 : 0 }
+    static func studyMoment(_ ticks: Int) -> Int { ticks % 360 >= 336 ? ticks / 360 % 6 + 1 : 0 }
     private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
     private var momentFrame: Int { tick % 360 - 336 }
     private var momentText: String {
@@ -257,6 +257,9 @@ final class PetWindow: NSPanel {
         case 1: return "으쌰, 기지개!"
         case 2: return momentFrame < 16 ? "앗, 내 연필!" : "찾았다! 다시 집중 ♪"
         case 3: return "나비도 응원하러 왔나 봐 ♪"
+        case 4: return "호록, 따뜻해…"
+        case 5: return "한 장 더 넘겼다!"
+        case 6: return "오늘도 잘하고 있어 ♡"
         default: return ""
         }
     }
@@ -266,6 +269,8 @@ final class PetWindow: NSPanel {
         case .studying:
             if moment == 1 { return momentFrame % 4 < 2 ? .stretchA : .stretchB }
             if moment == 2 && momentFrame < 16 { return .pickUp }
+            if moment == 4 { return momentFrame / 4 % 2 == 0 ? .teaA : .teaB }
+            if moment == 5 && momentFrame % 4 < 2 { return .turnPage }
             return tick % 20 == 19 ? .blink : tick / 2 % 2 == 0 ? .writeA : .writeB
         case .dozing: return tick / 3 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
@@ -313,6 +318,7 @@ final class PetWindow: NSPanel {
         drawNameplate(myName(), deskX: myX)
         if mood == .away && !outgoing { drawAwaySign(myX) }
         if moment == 3 { drawButterfly() }
+        if moment == 6 { drawHearts() }
         if tapping {
             NSGraphicsContext.saveGraphicsState()
             if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
@@ -351,12 +357,19 @@ final class PetWindow: NSPanel {
     }
 
     private func drawButterfly() {
-        let x = myX + deskWidth / 2 + CGFloat(sin(Double(momentFrame) / 4)) * 12 * scale
-        let y = floorY + (7 + CGFloat(cos(Double(momentFrame) / 3)) * 3) * scale
-        let wing = frameCount % 2 == 0 ? 3 * scale : scale
-        Sprites.color(0xF5A9C0).setFill(); NSBezierPath(ovalIn: NSRect(x: x - wing, y: y - scale, width: wing, height: 3 * scale)).fill()
-        Sprites.color(0xF7D774).setFill(); NSBezierPath(ovalIn: NSRect(x: x + scale, y: y - scale, width: wing, height: 3 * scale)).fill()
-        NSColor.brown.setFill(); NSRect(x: x, y: y, width: scale, height: 3 * scale).fill()
+        let small = scale / 2
+        let x = myX + deskWidth - 4 - 17 * small - (CGFloat(sin(Double(momentFrame) / 4)) + 1) * 6
+        let y = floorY - 16 + CGFloat(cos(Double(momentFrame) / 3)) * 5
+        Sprites.drawButterfly(left: x, top: y, scale: small, folded: frameCount % 4 >= 2)
+    }
+
+    private func drawHearts() {
+        let small = scale / 2
+        for i in 0..<2 {
+            let t = momentFrame - i * 8
+            if t < 0 || t > 16 { continue }
+            Sprites.drawHeart(left: myX + deskWidth - 32 + CGFloat(i) * 12, top: floorY - 6 - CGFloat(t) * small, scale: small)
+        }
     }
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {
         NSGraphicsContext.saveGraphicsState()
