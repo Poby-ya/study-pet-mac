@@ -120,7 +120,7 @@ enum Sprites {
         "g": color(0x6CC08A), // soju bottle
         "G": color(0x489866), // soju cap, bottle shade
         "Y": color(0xFFE27A), // lit bulb
-        "L": color(0xFFF4C8), // lamp glow
+        "L": color(0xFFE58A), // lamp light
         "Q": color(0xC6E8FF), // laptop screen light
         "j": color(0xE6F5FF), // its fainter edge
         "1": color(0x2E3A66), // night sky
@@ -534,7 +534,7 @@ enum Sprites {
         var all: [[String]] = []
         for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
         all += drinkArt.dropFirst()
-        all += [lampOff, lampOn, beam, laptopOpen, screenLight, laptopShut] + bags + bigStickers + smallStickers
+        all += [lampOff, lampOn, beam, pool, laptopOpen, screenLight, laptopShut] + bags + bigStickers + smallStickers
         for sky in 0..<4 { for season in 0..<4 { all.append(windowGrid(40, 30, sky: sky, season: season)) } }
         for pose in Visiting.allCases {
             for alt in [false, true] {
@@ -561,6 +561,7 @@ enum Sprites {
         layers.insert(contentsOf: (d.lit ? [Layer(beam, 1, 16)] : []) + [Layer(d.lit ? lampOn : lampOff, 1, 11)], at: 0)
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
+        if d.lit { layers.insert(Layer(pool, 3, 28), at: at) }
         let big = d.seed % bigStickers.count
         layers.insert(contentsOf: [
             Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
@@ -589,7 +590,18 @@ enum Sprites {
         "...kkk........", "..k...kkk.....", "..k....kwk....", "..k...kwwwkk..", "..k....kwwwik.", "..k....kwwik..", "..k.....kwk...", "..k.....kk....",
         "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", ".kkk..........", "kwwwk.........",
     ]
-    private static let lampOn = lampOff.map { $0.replacingOccurrences(of: "i", with: "Y") }
+    // Lit, the inside of the shade's mouth glows too, so it reads at a glance.
+    private static let lampOn = lampOff.enumerated().map { y, row -> String in
+        switch y {
+        case 3: return "..k...kwwYkk.."
+        case 4: return "..k....kwYYYk."
+        case 5: return "..k....kYYYk.."
+        case 6: return "..k.....kYk..."
+        default: return row
+        }
+    }
+    // Where the light lands: the desk top under the lamp.
+    private static let pool = ["LLLLLLLLLLLLLL"]
     private static let beam = ["............LL...", "...........LLLL..", "..........LLLLLL.", ".........LLLLLLLL", ".........LLLLLLLL", "........LLLLLLLLL"]
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
