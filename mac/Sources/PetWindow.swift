@@ -697,11 +697,11 @@ final class PetWindow: NSPanel {
     }
 
     private var windowScene: Int {
-        if let s = Int(Settings.get("windowScene")), (0..<3).contains(s) { return s }
+        if let s = Int(Settings.get("windowScene")), (0..<6).contains(s) { return s }
         let date = Calendar.current.dateComponents([.hour, .minute], from: clock())
-        return ((Calendar.current.ordinality(of: .day, in: .year, for: clock()) ?? 1) + (date.hour ?? 0) * 2 + (date.minute ?? 0) / 30) % 3
+        return ((Calendar.current.ordinality(of: .day, in: .year, for: clock()) ?? 1) + (date.hour ?? 0) * 2 + (date.minute ?? 0) / 30) % 6
     }
-    func nextWindowScene() { remember("windowScene", String((windowScene + 1) % 3)); redraw() }
+    func nextWindowScene() { remember("windowScene", String((windowScene + 1) % 6)); redraw() }
 
     // ---- Mouse ----------------------------------------------------------------------
 

@@ -27,8 +27,8 @@ enum SelfTest {
         friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") != FriendInteractions.updateNotice, "friend: legacy version never guessed")
         check(Sprites.maskLaptop(["ssss"], x: 0, y: 0, lid: Sprites.Layer([".kk."], 0, 0)) == ["s..s"], "laptop: lid masks hands")
         check(Sprites.heldDrink(.mug, tilted: false).count != Sprites.heldDrink(.mug, tilted: true).count, "tea: cup tips")
-        save(render(NSSize(width: 480, height: 306)) {
-            for scene in 0..<3 { for season in 0..<4 {
+        save(render(NSSize(width: 480, height: 612)) {
+            for scene in 0..<6 { for season in 0..<4 {
                 let grid = Sprites.windowGrid(40,34,sky: 2,season: season,scene: scene)
                 check(grid.count == 34 && grid.allSatisfy { $0.count == 40 }, "window: valid variant")
                 if scene > 0 { check(grid != Sprites.windowGrid(40,34,sky: 2,season: season), "window: different scene") }

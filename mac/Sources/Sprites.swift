@@ -139,6 +139,8 @@ enum Sprites {
         "3": color(0x9ED3F6), // day
         "4": color(0xF4A36C), // sunset
         "5": color(0x9BD8A6), // sunlit leaves
+        "6": color(0x65ABC4), "7": color(0x91AFC3), "8": color(0x73A78E), "9": color(0xBBB5CF), "0": color(0xF4D6A4),
+        "S": color(0xC4E4F3), "T": color(0xCB8270), "U": color(0x966468), "W": color(0xFAD98B), "L": color(0xB5CE93), "N": color(0xEBCDB1),
         "X": color(0x9AA0AA), // laptop hinge and base
     ]
 
@@ -714,6 +716,20 @@ enum Sprites {
             stamp([".pp.", "pppp", "pppp", ".pp."], w - 9, 3, sky == 1 ? "Y" : "p")
         }
 
+        func box(_ x0: Int,_ y0: Int,_ width: Int,_ height: Int,_ c: Character) { guard width > 0 && height > 0 else { return }; for y in y0..<(y0+height) { for x in x0..<(x0+width) { put(x,y,c) } } }
+        func art(_ image: [String],_ x0: Int,_ y0: Int) { for (y,row) in image.enumerated() { for (x,c) in row.enumerated() where c != "." { put(x0+x,y0+y,c) } } }
+        let grass: Character = season == 3 ? "b" : season == 2 ? "y" : "L"
+        let leaf: Character = season == 0 ? "F" : season == 1 ? "g" : season == 2 ? "T" : "8"
+        func tree(_ cx: Int,_ bottom: Int,_ r: Int) {
+            box(cx,bottom-r-2,1,r+3,"o")
+            for y in -r...r { for x in -r...r {
+                if x*x+y*y <= r*r+1 && (abs(x)+abs(y)<r || (x*7+y*3+50)%4 != 0) {
+                    let c: Character = season == 3 && y < -r/3 ? "w" : (x+y < -r/2 || (x*3+y*5+100)%11 == 0) ? (season == 3 ? "i" : season == 0 ? "b" : season == 1 ? "5" : "p") : leaf
+                    put(cx+x,bottom-r-3+y,c)
+                }
+            } }
+        }
+        if sky == 2 { for y in (h/3)..<(h-2) { for x in 1..<(w-1) where grid[y][x] == "3" { put(x,y,"S") } } }
         if scene == 0 {
         // The tree: a trunk up from the sill, its crown in the season's colours, high up
         // in the corner where speech bubbles and heads don't hide it.
@@ -757,28 +773,48 @@ enum Sprites {
         if season == 2 { put(w - 5, h - 3, "t"); put(w - 4, h - 3, "y"); put(w - 4, h - 4, "p") }
         if season == 3 { for i in 1...4 { put(w - 1 - i, h - 2 - i, "i"); put(w - 2 - i, h - 2 - i, "w") } }
         } else if scene == 1 {
+            for x in 1..<(w-1) { let ridge = h/2 + Int((sin(Double(x)*0.18)*2).rounded(.toNearestOrEven)); for y in ridge..<(h-2) { put(x,y,grass) } }
+            for y in (h/2)..<(h-2) { let center = w/2 + Int((sin(Double(y)*0.24)*3).rounded(.toNearestOrEven)); let width = 1+(y-h/2)/5; box(center-width,y,width*2+1,1,season == 3 ? "i" : "0") }
+            let fence = h*2/3; box(1,fence,w-2,1,"b"); for x in stride(from:2,to:w-1,by:4) { box(x,fence-1,1,4,"w") }
+            for i in 0..<(w*h/55) { let x = 2+(i*13+7)%(w-4); let y = h/2+2+(i*7+3)%max(1,h/2-5); if abs(x-w/2)>4 { put(x,y,"8"); put(x,y-1,season == 0 ? "r" : season == 1 ? "p" : season == 2 ? "t" : "w"); put(x+1,y-1,season == 0 ? "F" : season == 1 ? "b" : season == 2 ? "y" : "i") } }
+            tree(w/5,h/2+3,max(3,min(w/8,h/5))); tree(w-6,h/2+4,3)
+            art(["kkk","D.D","DDD"],w-8,h-7)
+        } else if scene == 2 {
+            box(1,h*2/3,w-2,h/3,"0"); box(1,h-5,w-2,1,"N")
+            for x0 in stride(from:2,to:w-5,by:12) {
+                let roof = h/2-2+(x0%3)*2; let height = h-6-roof
+                box(x0,roof,9,height,"N"); box(x0,roof,1,height,"T")
+                for y in 0..<4 { box(x0+4-y,roof-4+y,1+y*2,1,season == 3 ? "b" : y%2 == 0 ? "T" : "U") }
+                box(x0+6,roof-5,1,3,"U")
+                for x in stride(from:x0+2,to:x0+8,by:4) { for y in stride(from:roof+2,to:h-8,by:5) { box(x,y,2,3,sky == 0 ? "W" : "i"); box(x,y+1,2,1,sky == 0 ? "p" : "7") } }
+                box(x0+4,h-9,2,4,"U"); box(x0+4,h-9,1,1,"W"); art(["ggg","FrF","DDD"],x0+1,h-7)
+            }
+            tree(w-5,h-4,3); for x in stride(from:2,to:w-2,by:5) { put(x,h-3,season == 3 ? "w" : season == 2 ? "T" : "N") }
+        } else if scene == 3 {
             for x in 1..<(w-1) {
-                let horizon = h * 2 / 3 + Int((sin(Double(x) * 0.18) * 2).rounded(.toNearestOrEven))
-                for y in horizon..<(h-2) { put(x, y, season == 1 ? "3" : season == 2 ? "y" : season == 3 ? "w" : "g") }
-                if season == 1 { put(x,h-5,"i"); if x % 5 < 3 { put(x,h-8,"i") } }
-                if season == 0 && x % 5 == 0 { put(x,horizon-1,"G"); put(x,horizon-2,"F"); put(x-1,horizon-2,"r"); put(x+1,horizon-2,"b") }
-                if season == 2 && x % 4 == 0 { put(x,horizon-1,"D"); put(x+1,horizon-2,"p") }
+                let far = h/3+abs(x-w/3)/3; let near = h/3+2+abs(x-w*3/4)/2
+                if far < h*2/3 { for y in far..<(h*2/3) { put(x,y,y < far+2 ? "i" : "7") } }
+                if near < h*2/3 { for y in near..<(h*2/3) { put(x,y,y < near+2 && season == 3 ? "w" : "9") } }
+                for y in (h*2/3)..<(h-2) { put(x,y,sky == 0 ? "1" : season == 3 ? "i" : "6") }
             }
-            if season == 1 { stamp(["...w...", "..ww...", ".www...", "kkkkkkk", ".DDDDD."], w/2, h/2, "w") }
-            if season == 2 { stamp(["...D...", "..DDD..", ".DDDDD.", "DDDDDDD", ".twwt..", ".tttt.."], 3, h/2, "D") }
-            if season == 3 { for x in 1..<(w-1) { let peak = h/2 - 4 + abs(x-w/3)/2; if peak <= h-3 { for y in stride(from: h-3, through: peak, by: -1) { put(x,y,y < h/2 ? "w" : "i") } } } }
+            for y in stride(from:h*2/3+1,to:h-3,by:3) { let length = 2+y%5; let x = w/2-length/2+y%3; box(x,y,length,1,sky == 0 ? "7" : "i") }
+            box(1,h-4,7,2,grass); tree(4,h-4,3); art(["...o...","...o...","..ww...",".www...","kkkkkkk",".DDDDD."],w*2/3,h-10)
+        } else if scene == 4 {
+            box(1,h/2,w-2,h/2,grass); tree(5,h/2+4,4); tree(w-6,h/2+2,3)
+            for y in 0..<(h/3) { for x in 1..<(w-1) { let dx=x-w/2; let dy=y-h/6; if dx*dx*4+dy*dy*16 < w*w/2 { put(x,h/2+4+y,season == 3 ? "i" : "6") } } }
+            let bridge=h*2/3; for x in (w/3)..<(w*2/3) { let y=bridge-min(2,min(x-w/3,w*2/3-1-x)); box(x,y,1,2,"0"); put(x,y+2,"D"); if x%3 == 0 { box(x,y-2,1,2,"b") } }
+            art(["..p..",".pwp.","ggggg"],w-12,h-6); art([".w.","pww",".ww"],w/3,h-8)
+            for x in stride(from:3,to:w-3,by:8) { put(x,h-4,"8"); put(x,h-5,season == 0 ? "F" : season == 1 ? "p" : season == 2 ? "T" : "w") }
         } else {
-            for x0 in stride(from: 2, to: w-3, by: 10) {
-                let roof = h/2 + (x0 % 3)*2
-                for x in x0..<min(x0+8,w-1) { for y in roof..<(h-2) { put(x,y,y == roof ? (season == 3 ? "w" : "D") : "l") } }
-                for x in stride(from: x0+2, to: min(x0+7,w-1), by: 3) { for y in stride(from: roof+2, to: h-3, by: 4) { put(x,y,sky == 0 ? "Y" : "i"); put(x,y+1,sky == 0 ? "p" : "3") } }
-                put(x0+6,roof-1,"D"); put(x0+6,roof-2,"D")
-                if season == 0 { put(x0+2,roof-1,"F"); put(x0+3,roof-1,"r") }
-                if season == 1 { put(x0+2,roof-1,"5"); put(x0+3,roof-1,"G") }
-                if season == 2 { put(x0+2,h-3,"t"); put(x0+3,h-4,"y") }
-            }
+            for y in (h/2)..<(h-2) { box(1,y,w-2,1,sky == 0 ? "1" : "6") }
+            for y in stride(from:h/2+2,to:h-3,by:4) { for x in stride(from:3+y%5,to:w-4,by:9) { box(x,y,4,1,sky == 0 ? "7" : "i") } }
+            for x in 1..<(w/3+3) { let shore=h-4-(w/3-x)/3; for y in shore..<(h-2) { put(x,y,season == 3 ? "b" : "0") } }
+            let ly=h-17
+            art(["...t...","..ttt..",".UUUUU.",".kWWWk.",".kkkkk.","..bwb..","..bwb..","..ttt..","..ttt..","..bwb..","..bwb..","..ttt..",".DDDDD."],3,ly)
+            art(["...9...","..999..",".99999.","9999999"],w-12,h-7); art(["w...w",".w.w.","..w.."],w/2,h/3)
+            if sky == 0 { box(10,ly+3,4,1,"W"); box(14,ly+2,4,2,"Y") }
         }
-        if scene != 0 && season == 3 { for i in 0..<(w*h/50) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
+        if scene != 0 && season == 3 { for i in 0..<(w*h/60) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
         // Mullions every 16 pixels or so, a transom, then the frame and the sill.
         let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
         for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
@@ -1145,7 +1181,7 @@ enum Sprites {
         let hair = hairColorSet[look.hairColor]
         let top3 = topColorSet[look.topColor]
         var colors = palette
-        colors["s"] = color([0xFFE0C8, 0xE9B591, 0xBD8361, 0x83523E][look.skin])
+        colors["s"] = color([0xFFE0C8, 0xFFF4EC, 0xD2A17C, 0x83523E][look.skin])
         colors["h"] = color(hair.0)
         colors["H"] = color(hair.1)
         colors["A"] = color(top3.0)
