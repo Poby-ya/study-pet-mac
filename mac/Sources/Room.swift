@@ -21,6 +21,7 @@ struct Poke {
     var girl = false
     var style = ""
     var at: Int64 = 0
+    var missed = false // it was waiting when we connected: sent while the app was off
     var look: Look { Look.parse(style, girl: girl) }
 }
 
@@ -433,8 +434,9 @@ final class Room: @unchecked Sendable {
         tree = Room.applyEvent(tree, type, e.path, e.data)
         let roomName = Room.str(tree, "name")
         let members = Room.members(tree)
-        let poke = Room.pokeFor(tree, me)
-        let fresh = poke != nil && lastPokeAt >= 0 && poke!.at > lastPokeAt
+        var waiting = Room.pokeFor(tree, me)
+        let fresh = waiting != nil && Room.deliverPoke(&waiting!, lastPokeAt: lastPokeAt, now: Int64(Date().timeIntervalSince1970 * 1000))
+        let poke = waiting
         if let poke {
             lastPokeAt = max(lastPokeAt, poke.at)
             write("DELETE", "\(roomPath)/pokes/\(me)", nil)
@@ -486,6 +488,20 @@ final class Room: @unchecked Sendable {
         return result
     }
 
+    /// A poke left while my app was off still counts for this long.
+    static let missedPokeMs: Int64 = 12 * 3_600_000
+    static let missedPokeNote = "자리 비운 사이에 왔었어요"
+    /// Under my outgoing bubble when the friend isn't at their desk: their app may be off.
+    static let offPokeHint = "꺼져 있으면 켤 때 전해져요"
+
+    /// Whether to show a poke. One already waiting at the first snapshot (lastPokeAt -1)
+    /// was sent while the app was off: shown, marked missed, if it's recent.
+    static func deliverPoke(_ poke: inout Poke, lastPokeAt: Int64, now: Int64) -> Bool {
+        if lastPokeAt >= 0 { return poke.at > lastPokeAt }
+        poke.missed = poke.at > 0 && now - poke.at < missedPokeMs
+        return poke.missed
+    }
+
     static func pokeFor(_ tree: [String: Any], _ me: String) -> Poke? {
         guard let p = (tree["pokes"] as? [String: Any])?[me] as? [String: Any] else { return nil }
         return Poke(from: str(p, "from"), name: str(p, "name"), message: str(p, "message"), girl: str(p, "look") == "girl",
@@ -532,6 +548,15 @@ final class Room: @unchecked Sendable {
         return after.filter { m in
             m.id != me && m.state == "studying" && isHere(m, latestAfter) && !before.contains { $0.id == m.id && isHere($0, latestBefore) }
         }.map(\.name).sorted()
+    }
+
+    /// The reminder every 20 minutes: "민지, 준혁도 같이 공부하고 있어요 !", or "" when no one else is.
+    static func companyText(_ members: [Member], me: String) -> String {
+        let newest = latest(members)
+        let names = members.filter { $0.id != me && $0.state == "studying" && isHere($0, newest) }.map(\.name).sorted()
+        if names.isEmpty { return "" }
+        let shown = names.count > 3 ? names.prefix(2).joined(separator: ", ") + " 외 \(names.count - 2)명" : names.joined(separator: ", ")
+        return shown + "도 같이 공부하고 있어요 !"
     }
 
     /// "민지가 공부를 시작했어요 !" / "민지, 준혁이 공부를 시작했어요 !"

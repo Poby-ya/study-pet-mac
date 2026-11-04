@@ -40,6 +40,8 @@ final class AppController: NSObject, NSMenuDelegate {
     private enum State { case off, studying, paused }
 
     private static let pokeCooldown: TimeInterval = 10
+    private static let companyEvery: TimeInterval = 20 * 60
+    private static let newsSeconds: TimeInterval = 15
 
     private let pet = PetWindow()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -58,9 +60,14 @@ final class AppController: NSObject, NSMenuDelegate {
     private var farewell = ""
     private var lastPokes: [String: Date] = [:]
     private var invitePromptOpen = false
+    // A friend's call not answered yet: the menu bar face blinks, then keeps a red dot.
+    private var waitingPoke: Poke?
+    private var blink: Timer?
+    private var blinks = 0
     private var quitting = false
     private var news = ""                // "민지가 공부를 시작했어요 !", in a bubble above mine for a while
     private var newsUntil = Date.distantPast
+    private var companyAt = Date.distantFuture // next "민지도 같이 공부하고 있어요 !"
     private var planner: Planner?
     private var stats: StatsWindow?
     private var help: HelpWindow?
@@ -194,6 +201,8 @@ final class AppController: NSObject, NSMenuDelegate {
         let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
         heartbeat = timer
+        companyAt = Date().addingTimeInterval(AppController.companyEvery)
+        clearWaitingPoke()
         pet.appear(.studying)
         publish()
     }
@@ -214,6 +223,17 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func beat() {
         saveOpen()
         publish()
+        remindCompany()
+    }
+
+    /// Every 20 minutes of study, a reminder of who else is at their desk.
+    private func remindCompany() {
+        guard state == .studying, Date() >= companyAt else { return }
+        companyAt = Date().addingTimeInterval(AppController.companyEvery)
+        let text = Room.companyText(members, me: myId)
+        guard !text.isEmpty, Date() >= newsUntil else { return }
+        news = text
+        newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
     }
 
     private func pause() {
@@ -228,6 +248,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard tryCommit() else { return }
         state = .studying
         openSegment()
+        clearWaitingPoke()
         pet.setMood(.studying)
         publish()
     }
@@ -292,7 +313,7 @@ final class AppController: NSObject, NSMenuDelegate {
     /// One button rolls a complete new look.
     @objc private func switchLook() {
         pet.look = Look.random(girl: Bool.random())
-        statusItem.button?.image = Sprites.face(pet.look)
+        statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil)
         publish()
     }
 
@@ -324,7 +345,7 @@ final class AppController: NSObject, NSMenuDelegate {
             let started = Room.newlyStarted(before: self.members, after: list, me: self.myId)
             if self.roomSeen && !started.isEmpty {
                 self.news = Room.startedText(started)
-                self.newsUntil = Date().addingTimeInterval(8)
+                self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
             }
             self.roomSeen = true
             self.members = list
@@ -524,24 +545,59 @@ final class AppController: NSObject, NSMenuDelegate {
     private func pokeMember(_ mate: Member) {
         guard let room, Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { return }
         lastPokes[mate.id] = Date()
-        let message = Room.pokeMessage(mate, here: Room.isHere(mate, Room.latest(members)))
+        let here = Room.isHere(mate, Room.latest(members))
+        let message = Room.pokeMessage(mate, here: here)
         room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
-        pet.goVisit(mate.name, message: message, side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
+        pet.goVisit(mate.name, message: here ? message : message + "\n" + Room.offPokeHint,
+                    side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
     }
 
+    /// No window pops up by itself: I may be sharing my screen. The friend visits my desk
+    /// (unless minimized) and the menu bar face blinks, then keeps a red dot; its menu
+    /// starts with the call, and choosing it answers.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
-        pet.visit(poke.look, text: "\(poke.name) : \(poke.message)", side: side)
-        guard state != .studying, !invitePromptOpen else { return }
+        let text = "\(poke.name) : \(poke.message)"
+        pet.visit(poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
+        guard state != .studying else { return }
+        waitingPoke = poke
+        statusItem.button?.toolTip = text + " · 눌러서 답하기"
+        blink?.invalidate()
+        blinks = 0
+        let timer = Timer(timeInterval: 0.5, target: self, selector: #selector(blinkFace), userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        blink = timer
+        statusItem.button?.image = Sprites.face(pet.look, dot: true)
+    }
+
+    @objc private func blinkFace() {
+        blinks += 1
+        statusItem.button?.image = Sprites.face(pet.look, dot: blinks % 2 == 0 || blinks >= 20)
+        if blinks >= 20 { blink?.invalidate(); blink = nil }
+    }
+
+    private func clearWaitingPoke() {
+        guard waitingPoke != nil else { return }
+        waitingPoke = nil
+        blink?.invalidate()
+        blink = nil
+        statusItem.button?.image = Sprites.face(pet.look)
+        statusItem.button?.toolTip = "공부 친구 · ⌃⌥S로 공부 시작"
+    }
+
+    @objc private func answerPoke() {
+        guard let poke = waitingPoke, !quitting, !invitePromptOpen else { return }
+        clearWaitingPoke()
         invitePromptOpen = true
+        // After the menu has closed: a modal alert inside its tracking loop misbehaves.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             defer { self.invitePromptOpen = false }
             if self.quitting { return }
             let alert = NSAlert()
-            alert.messageText = "\(poke.name)님이 찾고 있어요."
-            alert.informativeText = "공부를 시작하시겠습니까?\n과목을 고르는 스터디플래너가 열립니다."
+            alert.messageText = "\(poke.name) : \(poke.message)"
+            alert.informativeText = "공부를 시작할까요?"
             alert.addButton(withTitle: "공부 시작")
             alert.addButton(withTitle: "나중에")
             NSApp.activate(ignoringOtherApps: true)
@@ -556,6 +612,12 @@ final class AppController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        if let poke = waitingPoke {
+            let answer = item("\(poke.name) : \(poke.message) → 답하기", #selector(answerPoke))
+            answer.attributedTitle = NSAttributedString(string: answer.title, attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
+            menu.addItem(answer)
+            menu.addItem(.separator())
+        }
         let toggleItem = item(pet.minimized ? "다시 보이기" : state == .studying ? "일시정지" : state == .paused ? "다시 시작" : "공부 시작", #selector(toggle))
         toggleItem.keyEquivalent = "s"
         toggleItem.keyEquivalentModifierMask = [.control, .option]
@@ -701,6 +763,7 @@ final class AppController: NSObject, NSMenuDelegate {
             let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
             RunLoop.main.add(timer, forMode: .common)
             heartbeat = timer
+            companyAt = Date().addingTimeInterval(AppController.companyEvery)
             pet.appear(state == .studying ? .studying : .dozing)
         }
     }

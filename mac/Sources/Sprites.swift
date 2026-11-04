@@ -692,10 +692,16 @@ enum Sprites {
     }
 
     /// The face alone, for the menu bar icon.
-    static func face(_ look: Look) -> NSImage {
+    /// `dot`: a red dot in the top-right corner, for a friend's call not yet answered.
+    static func face(_ look: Look, dot: Bool = false) -> NSImage {
         let (back, head) = headLayers(look, .open, .small, 3, 2)
         return NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
             Sprites.draw(layers: back + head, look, left: 0, top: 0, scale: 0.75)
+            if dot {
+                let circle = NSBezierPath(ovalIn: NSRect(x: 9.5, y: 0.5, width: 8, height: 8))
+                Sprites.color(0xE53935).setFill(); circle.fill()
+                NSColor.white.setStroke(); circle.lineWidth = 1; circle.stroke()
+            }
             return true
         }
     }

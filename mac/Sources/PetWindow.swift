@@ -56,6 +56,8 @@ final class PetWindow: NSPanel {
     private var outgoingTick = -1.0
     private var outgoingSide = 0
     private var outgoingText = ""
+    private var shownNews = ""
+    private var newsShownAt = 0.0
     private var previousSeats: [Seat?] = [nil, nil]
     private var leavingTicks = [-1.0, -1.0]
     private(set) var sizePercent = [50, 75, 100, 125, 150].contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
@@ -413,7 +415,11 @@ final class PetWindow: NSPanel {
                 if let seat = seats[i], seat.here || (leavingTicks[i] >= 0 && leavingTicks[i] < 10) { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 10 ? "다녀올게요!" : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             }
-            if mood != .away { drawBubble(newsText(), cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
+            let news = mood != .away ? newsText() : ""
+            if news != shownNews { shownNews = news; newsShownAt = animationSeconds }
+            // Flashes yellow for its first three seconds, so a glance away doesn't miss it.
+            let flash = animationSeconds - newsShownAt < 3 && frameCount / 2 % 2 == 0
+            drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint)
         }
         // Over the bubbles, so a bubble never hides them.
         for effect in effects {

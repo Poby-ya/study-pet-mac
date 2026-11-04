@@ -396,6 +396,22 @@ enum SelfTest {
         check(Room.startedText(started) == "서연, 하준이 공부를 시작했어요 !", "news: 이 after 준")
         check(Room.startedText(["민지"]) == "민지가 공부를 시작했어요 !", "news: 가 after 지")
         check(Room.withSubjectMarker("Amy") == "Amy가", "particle: 가 after a non-Hangul name")
+        check(Room.companyText(Array(after.prefix(4)), me: "me") == "민지, 서연, 준혁도 같이 공부하고 있어요 !", "company: everyone else studying")
+        check(Room.companyText(after, me: "me") == "민지, 서연 외 2명도 같이 공부하고 있어요 !", "company: more than three are counted")
+        check(Room.companyText(Array(members.prefix(4)), me: "me") == "민지도 같이 공부하고 있어요 !", "company: paused and off left out")
+        check(Room.companyText([m("me", "나", "studying", 0)], me: "me") == "", "company: nothing when alone")
+
+        let hour: Int64 = 3_600_000
+        var missed = Poke(at: now - 2 * hour)
+        check(Room.deliverPoke(&missed, lastPokeAt: -1, now: now) && missed.missed, "missed poke: one waiting from two hours ago is shown, marked missed")
+        var old = Poke(at: now - 13 * hour)
+        check(!Room.deliverPoke(&old, lastPokeAt: -1, now: now), "missed poke: older than 12 hours is dropped")
+        var undated = Poke(at: 0)
+        check(!Room.deliverPoke(&undated, lastPokeAt: -1, now: now), "missed poke: no time is dropped")
+        var live = Poke(at: now)
+        check(Room.deliverPoke(&live, lastPokeAt: 5, now: now) && !live.missed, "poke: a new one while connected is live")
+        var again = Poke(at: 5)
+        check(!Room.deliverPoke(&again, lastPokeAt: 5, now: now), "poke: the same one twice is shown once")
 
         let latest = Room.latest(members)
         check(Room.seatText(members[1], here: Room.isHere(members[1], latest)) == "수학\n32분째 공부 중", "seat: studying text")
