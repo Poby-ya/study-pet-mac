@@ -65,6 +65,16 @@ final class PetWindow: NSPanel {
     private var outgoingText = ""
     private var shownNews = ""
     private var newsShownAt = 0.0
+    private var hair: [Int: (Sprites.Pose, Int, Double)] = [:]
+    private func hairLag(_ seat: Int, _ pose: Sprites.Pose) -> Int {
+        var old = hair[seat] ?? (pose, 0, 0)
+        if old.0 != pose {
+            let lag = [Sprites.Pose.stretchLeft, .lookLeft].contains(pose) ? 1 : [Sprites.Pose.stretchRight, .lookRight].contains(pose) ? -1 : [Sprites.Pose.stretchLeft, .lookLeft].contains(old.0) ? -1 : [Sprites.Pose.stretchRight, .lookRight].contains(old.0) ? 1 : 0
+            old = (pose, lag, animationSeconds + 0.25); hair[seat] = old
+        }
+        hair[seat] = old
+        return animationSeconds < old.2 ? old.1 : 0
+    }
     private var previousSeats: [Seat?] = [nil, nil]
     private var leavingTicks = [-1.0, -1.0]
     private(set) var sizePercent = [50, 75, 100, 125, 150].contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
@@ -428,7 +438,7 @@ final class PetWindow: NSPanel {
             let x = i == 0 ? seatX : rightX
             let lit = night && seat.here && !seat.dozing && !gone
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x, phase: leavingTicks[i] < 0 ? 13 : leavingTicks[i]) }
@@ -437,7 +447,7 @@ final class PetWindow: NSPanel {
         let myLamp = night && mood == .studying && !outgoing
         if myLamp { lamps.append(myX) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away))
+                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away), hairLag: hairLag(-1, myPose))
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()

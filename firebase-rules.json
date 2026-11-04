@@ -157,7 +157,7 @@
     "releaseChannel": {
       "stable": {
         ".read": true,
-        ".write": false,
+        ".write": "auth != null && auth.uid == 'zPrsBgAsWwMDaQYwBQBMmnBEP0o1'",
         ".validate": "newData.isString() && newData.val().matches(/^v[0-9]+\\.[0-9]+\\.[0-9]+$/)"
       }
     }

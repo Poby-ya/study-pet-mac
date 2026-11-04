@@ -6,7 +6,7 @@ final class ReleaseChannel {
     private var task: Task<Void, Never>?
     private let session = URLSession(configuration: .default)
 
-    @MainActor func start(_ found: @escaping (String) -> Void) {
+    func start(_ found: @escaping (String) -> Void) {
         task = Task { @MainActor in
             var delay: UInt64 = 1
             while !Task.isCancelled {

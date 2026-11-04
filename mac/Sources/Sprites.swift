@@ -293,7 +293,7 @@ enum Sprites {
     private static let hairpin = ["kkkk", "kRRk", "kkkk"]
 
     /// Hair hanging behind the face, then the head itself with anything worn on it.
-    private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int) -> ([Layer], [Layer])
+    private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int, lag: Int = 0) -> ([Layer], [Layer])
     {
         let tops = look.girl ? girlTops : boyTops
         let head = Layer(tops[look.hair % 5] + face(eyes, mouth), x, y)
@@ -310,7 +310,8 @@ enum Sprites {
         else if look.girl && look.hair == 3 { front.append(Layer(bun, x, y)); front.append(Layer(bun, x + 12, y))
         }
         else if look.girl && look.hair == 4 { back.append(Layer(mirror(pigtailLeft), x + 16, y + 4)) }
-        if look.girl && look.hair == 0 { front.append(Layer(bow, x + 11, y + 1)) }
+        if look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
+        back = back.map { Layer($0.grid, $0.x + lag, $0.y) }
         if look.accessory == 1 { front.append(Layer(["kkkk.k.kkkk", "k..k.k.k..k", "kkkk...kkkk"], x + 3, y + 10)) }
         if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
         if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
@@ -591,9 +592,9 @@ enum Sprites {
     /// the person (not the desk) by that many rows, for a startled little jump.
     /// `decor` adds the things around a desk: the lamp, the sticker on its front and, while
     /// someone sits there, their bag on the hook and their drink. Without it, a bare desk.
-    static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, decor: Decor? = nil) -> [Layer] {
+    static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, decor: Decor? = nil, hairLag: Int = 0) -> [Layer] {
         let d = decor ?? Decor()
-        var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop)
+        var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop, hairLag: hairLag)
         if lift != 0 { layers = layers.map { $0.grid == desk || $0.grid == book || $0.grid == laptopOpen || $0.grid == laptopShut ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
@@ -776,7 +777,7 @@ enum Sprites {
     private static let laptopOpen = ["...kkkkkkkkkkkk...", "..kxxxxxxxxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxxxxxxxxk..", ".kkXXXXXXXXXXXXkk.", "kXXXXXXXXXXXXXXXXk"]
     private static let laptopShut = ["kkkkkkkkkkkkkk", "kxxxxxxxxxxxxk", "kkkkkkkkkkkkkk"]
 
-    private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool) -> [Layer] {
+    private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool, hairLag: Int) -> [Layer] {
         if pose == .pickUp {
             let (back, head) = headLayers(look, .open, .small, 10, 12)
             var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
@@ -942,7 +943,7 @@ enum Sprites {
             break
         }
 
-        let (hairBack, faceLayers) = headLayers(look, eyes, mouth, 7, headY)
+        let (hairBack, faceLayers) = headLayers(look, eyes, mouth, 7, headY, lag: hairLag)
         let person = [Layer(body(look, sitting: !standing, leftArm: leftArm, rightArm: rightArm), 6, standing ? 16 : 20)] + hairBack + behind + faceLayers
         // With a laptop the lid hides the book's place; the hands type at its sides.
         var lying = [bookLayer]
@@ -990,8 +991,8 @@ enum Sprites {
 
     private static func shift(_ layers: [Layer]) -> [Layer] { layers.map { Layer($0.grid, $0.x + dx, $0.y) } }
 
-    static func draw(_ pose: Pose, _ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, alert: Bool = false, lift: Int = 0, decor: Decor? = nil) {
-        draw(layers: compose(pose, look, alert: alert, lift: lift, decor: decor), look, left: left, top: top, scale: scale)
+    static func draw(_ pose: Pose, _ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, alert: Bool = false, lift: Int = 0, decor: Decor? = nil, hairLag: Int = 0) {
+        draw(layers: compose(pose, look, alert: alert, lift: lift, decor: decor, hairLag: hairLag), look, left: left, top: top, scale: scale)
     }
 
     /// The face alone, for the menu bar icon.

@@ -606,7 +606,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if quitting { return }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let text = "\(poke.name) : \(poke.message)"
-        pet.visit(poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
+        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
         guard state != .studying else { return }
         waitingPoke = poke
         statusItem.button?.toolTip = text + " · 눌러서 답하기"
