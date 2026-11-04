@@ -126,9 +126,6 @@ final class AppController: NSObject, NSMenuDelegate {
             alert("⌃⌥S 또는 ⌃⌥X를 다른 프로그램이 쓰고 있어요. 메뉴 막대의 펫 얼굴을 눌러 시작할 수 있어요.")
         }
 
-        let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
-
         safely("지난 기록 복구") { try Records.recoverOpen() }
         restoreUpdateState()
         connect()
@@ -787,11 +784,6 @@ final class AppController: NSObject, NSMenuDelegate {
         stats = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
-    }
-
-    // Lid closed: doze, so the night doesn't count as study time.
-    @objc private func willSleep() {
-        if state == .studying { pause() }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
