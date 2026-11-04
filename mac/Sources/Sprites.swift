@@ -302,8 +302,8 @@ enum Sprites {
         if look.girl && look.hair % 5 == 0 { back.append(Layer(longLeft, x - 3, y + 7)); back.append(Layer(mirror(longLeft), x + 17, y + 7))
         }
         if look.hair == 5 { back.append(Layer(["kRk", "khk", "kHk", "khk", "kHk", "khk", "kRk", ".k."], x + 16, y + 12)) }
-        else if look.hair == 6 { front[0] = Layer(boyTops[1] + face(eyes, mouth), x, y) }
-        else if look.hair == 7 || look.girl && look.hair == 1 { back.append(Layer(bobLeft, x - 3, y + 7)); back.append(Layer(mirror(bobLeft), x + 17, y + 7))
+        else if look.hair == 6 { front[0] = Layer(["........kk........", ".....kkkkkkkk.....", "...kkhhhhhhHhkk...", "..khhhhhhhhhhhhk..", ".khhhhhhhhhhhHhhk.", ".ksshhhhhhhhhhhhk.", ".ksssshhhhhhhhhhk.", ".ksssssshhhhhhhhk.", ".kssssssssshhhhhk."] + face(eyes, mouth), x, y) }
+        else if look.hair == 7 || look.girl && look.hair == 1 { let side = look.hair == 7 ? ["..khk", ".khhk", "khhhk", ".khhk", "khHhk", ".khhk", "khhhk", ".khhk", "khhhk", ".khhk", "..khk", "...k."] : bobLeft; back.append(Layer(side, x - (look.hair == 7 ? 4 : 3), y + 7)); back.append(Layer(mirror(side), x + 17, y + 7))
         }
         else if look.girl && look.hair == 2 { back.append(Layer(pigtailLeft, x - 4, y + 9)); back.append(Layer(mirror(pigtailLeft), x + 17, y + 9))
         }
@@ -312,7 +312,8 @@ enum Sprites {
         else if look.girl && look.hair == 4 { back.append(Layer(mirror(pigtailLeft), x + 16, y + 4)) }
         if look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
         back = back.map { Layer($0.grid, $0.x + lag, $0.y) }
-        if look.accessory == 1 { front.append(Layer(["kkkk.k.kkkk", "k..k.k.k..k", "kkkk...kkkk"], x + 3, y + 10)) }
+        if look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
+        if look.accessory == 1 { front.append(Layer([".kk.....kk.", "k..k...k..k", ".kk.kkk.kk."], x + 3, y + 10)) }
         if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
         if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
         }
@@ -550,7 +551,8 @@ enum Sprites {
     private static let cookie = [".kkk.", "klDlk", "kDllk", "kllDk", ".kkk."]
     private static let bitten = [".kk..", "klDk.", "kDllk", "kllDk", ".kkk."]
     private static let turningPage = ["......bk......", ".....bbk......", "kkkkkbbkkkkkkk", "kbbbbbkkbbbbbk", "kBBBBBBBBBBBBk"]
-    static let awaySign = ["..kk.............kk...", ".kbbk...........kbbk..", "kbbbbkkkkkkkkkkkbbbkk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kkkkkkkkkkkkkkkkkkkkk.", ".kddddddddddddddddddkk", "..kkkkkkkkkkkkkkkkkk.."]
+    static func personalSticker(_ style: Int) -> [String] { style == 1 ? bigStickers[1] : style == 2 ? bigStickers[3] : ["pppp.", "ywy..", "yy...", "y...."] }
+    static let awaySign = ["..kk.............kk...", ".kbbk...........kllk..", "kbbbbkkkkkkkkkkkbbbkk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kkkkkkkkkkkkkkkkkkkkk.", ".kddddddddddddddddddkk", "..kkkkkkkkkkkkkkkkkk.."]
     static let heart = [".ff.ff.", "fFFfFFf", "fFFFFFf", ".fFFFf.", "..fFf..", "...f..."]
 
     static func butterfly(_ folded: Bool) -> [String] {
@@ -616,7 +618,7 @@ enum Sprites {
         }
         let bagColor = String(Array("ztgprV")[d.seed % 6])
         layers.insert(Layer(bag.map { $0.replacingOccurrences(of: "M", with: bagColor) }, 42, 28), at: at)
-        if look.sticker > 0 { layers.append(Layer(bigStickers[[0,1,3,4][look.sticker]], d.laptop ? 17 : 21, d.laptop ? 22 : 25)) }
+        if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 17 : 21, d.laptop ? 22 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
             let drink = drinkArt[(d.drink == .none ? Drink.mug : d.drink).rawValue]
@@ -884,10 +886,12 @@ enum Sprites {
             eyes = .up
             headY = 3
         case .teaHold:
+            rightArm = true; behind.append(arm(look, (21,22), (23,23), (21,22)))
             rightHand = nil
             front.append(Layer(teacup, 20, 18))
             front.append(Layer(hand, 20, 22))
         case .teaSip:
+            rightArm = true; behind.append(arm(look, (21,22), (19,21), (16,20)))
             eyes = .closed
             rightHand = nil
             front.append(Layer(teacup, 14, 16))
@@ -974,10 +978,13 @@ enum Sprites {
         let left = leftHand && pose == .wave
         let (back, head) = headLayers(look, .open, walking ? .small : .smile, 7, 0)
         var layers = [
-            Layer(body(look, sitting: false, leftArm: left, rightArm: !walking && !left), 6, 16),
+            Layer(body(look, sitting: false, leftArm: walking || left, rightArm: walking || !left), 6, 16),
             Layer(legs(look, lifted: walking ? (alt ? 1 : 2) : 0), 6, 27),
         ] + back
-        if walking { layers.append(arm(look, (9, 18), (alt ? 7 : 10, 22), (alt ? 6 : 11, 25))) }
+        if walking {
+            layers.append(arm(look, (9, 18), (alt ? 7 : 10, 22), (alt ? 6 : 11, 25)))
+            layers.append(arm(look, (21, 18), (alt ? 22 : 19, 22), (alt ? 23 : 18, 25)))
+        }
         if left { layers.append(arm(look, (9, 18), (5, 15), alt ? (4, 8) : (2, 9))) }
         else if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
         return shift(layers + head)

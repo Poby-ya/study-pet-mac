@@ -441,7 +441,7 @@ final class PetWindow: NSPanel {
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
-            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x, phase: leavingTicks[i] < 0 ? 13 : leavingTicks[i]) }
+            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x, phase: leavingTicks[i] < 0 ? 13 : leavingTicks[i], owner: seat.look) }
             if lit { lamps.append(x) }
         }
         let myLamp = night && mood == .studying && !outgoing
@@ -492,20 +492,21 @@ final class PetWindow: NSPanel {
         return t * t * (3 - 2 * t)
     }
 
-    private func drawAwaySign(_ x: CGFloat, phase: Double = 13) {
+    private func drawAwaySign(_ x: CGFloat, phase: Double = 13, owner: Look? = nil) {
         let height = phase < 11 ? 4 : phase < 12 ? 8 : 12
         let top = floorY + CGFloat(27 - height) * scale
         let grid = Array(Sprites.awaySign.suffix(height))
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
-                (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : Sprites.color(0xFFF1B8)).setFill()
+                (c == "k" ? PetWindow.wood : (c == "d" || c == "l") ? PetWindow.floorWood : Sprites.color(0xFFF1B8)).setFill()
                 NSRect(x: x + CGFloat(17 + col) * scale, y: top + CGFloat(y) * scale, width: scale, height: scale).fill()
             }
         }
         guard height == 12 else { return }
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.1 * scale), color: PetWindow.ink,
                  in: NSRect(x: x + 18 * scale, y: top + 3 * scale, width: 19 * scale, height: 6 * scale))
-        if look.sticker > 0 { PetWindow.visitYellow.setFill(); NSRect(x: x + 36 * scale, y: top + 2 * scale, width: scale, height: scale).fill() }
+        let actor = owner ?? look
+        if actor.sticker > 0 { Sprites.draw(layers: [Sprites.Layer(Sprites.personalSticker(actor.sticker), 0, 0)], actor, left: x + 34 * scale, top: top + scale, scale: scale) }
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its
@@ -586,7 +587,7 @@ final class PetWindow: NSPanel {
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
     private func drawNameplate(_ name: String, deskX: CGFloat) {
         if name.isEmpty { return }
-        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale)
+        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * (Settings.get("largeText") == "1" ? max(1, 100 / CGFloat(sizePercent)) : 1))
         // Between the desk's left edge and the person's hand (cols 1..16).
         let w = min(15 * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
         let x = deskX + scale + (15 * scale - w) / 2

@@ -28,6 +28,20 @@ enum SelfTest {
         checkPresentation(out)
         checkRoom()
         checkSprites()
+        save(render(NSSize(width: 3 * Sprites.width * 4, height: Sprites.height * 4)) {
+            for (i, pose) in [Sprites.Pose.writeA, .content, .found].enumerated() { Sprites.draw(pose, Look(girl: true, 1, 0, 2, 2, 0, 0), left: CGFloat(i * Sprites.width * 4), top: 0, scale: 4) }
+        }, out, "expressions.png")
+        save(render(NSSize(width: 4 * Sprites.width * 3, height: 3 * Sprites.height * 3)) {
+            for i in 0..<12 {
+                let look = Look(girl: i % 2 == 0, i % 8, 0, i % 9, i % 10, 0, 1).withExtras("\(i % 4)\(i % 4)\(i % 3)\(i % 4)\(i % 2)\(i % 4)\(i % 4)")
+                Sprites.draw(.writeA, look, left: CGFloat(i % 4 * Sprites.width * 3), top: CGFloat(i / 4 * Sprites.height * 3), scale: 3, decor: Sprites.Decor(drink: .mug, laptop: i % 2 == 0, seed: i))
+            }
+        }, out, "wardrobe.png")
+        save(render(NSSize(width: 8 * Sprites.width * 2, height: PetWindow.moments * Sprites.height * 2)) {
+            for moment in 1...PetWindow.moments {
+                for f in stride(from: 0, to: 24, by: 3) { Sprites.draw(PetWindow.momentPose(moment, f, f), Look(girl: true, 0, 0, 0, 0, 0, 0), left: CGFloat(f / 3 * Sprites.width * 2), top: CGFloat((moment - 1) * Sprites.height * 2), scale: 2) }
+            }
+        }, out, "motion.png")
         if let invite { checkNetwork(invite, out); checkManyRooms(invite) }
 
         save(render(Sprites.sheetSize(scale: 4)) { Sprites.drawSheet(scale: 4) }, out, "sprites.png")
