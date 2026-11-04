@@ -607,10 +607,11 @@ final class PetWindow: NSPanel {
         }
     }
 
-    /// The kind of sky at an hour: 0 night, 1 dawn, 2 day, 3 sunset.
+    /// The kind of sky at an hour: 0 night, 1 dawn, 2 day, 3 sunset. Dawn and sunset get an
+    /// hour each; the rest of the day is a blue sky, in every season.
     static func skyAt(_ time: Date) -> Int {
         let hour = Calendar.current.component(.hour, from: time)
-        return hour < 5 || hour >= 19 ? 0 : hour < 7 ? 1 : hour < 17 ? 2 : 3
+        return hour < 5 || hour >= 19 ? 0 : hour == 5 ? 1 : hour < 18 ? 2 : 3
     }
 
     /// The season of a date: 0 spring (Mar–May), 1 summer, 2 autumn, 3 winter (Dec–Feb).

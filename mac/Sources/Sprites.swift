@@ -123,6 +123,12 @@ enum Sprites {
         "L": color(0xFFF4C8), // lamp glow
         "Q": color(0xC6E8FF), // laptop screen light
         "j": color(0xE6F5FF), // its fainter edge
+        "1": color(0x2E3A66), // night sky
+        "2": color(0xF6C2AE), // dawn
+        "3": color(0x9ED3F6), // day
+        "4": color(0xF4A36C), // sunset
+        "5": color(0x9BD8A6), // sunlit leaves
+        "X": color(0x9AA0AA), // laptop hinge and base
     ]
 
     /// A drink at the right end of the desk, picked at random for each study session.
@@ -552,7 +558,7 @@ enum Sprites {
         if lift != 0 { layers = layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
-        layers.insert(contentsOf: (d.lit ? [Layer(beam, 1, 17)] : []) + [Layer(d.lit ? lampOn : lampOff, 1, 11)], at: 0)
+        layers.insert(contentsOf: (d.lit ? [Layer(beam, 1, 16)] : []) + [Layer(d.lit ? lampOn : lampOff, 1, 11)], at: 0)
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
         let big = d.seed % bigStickers.count
@@ -577,14 +583,14 @@ enum Sprites {
         var away = false
     }
 
-    // A desk lamp behind the nameplate: base, a stem curving over into a shade that points
-    // down at the desk. Lit, its bulb shows and beam falls from the shade.
+    // A desk lamp behind the nameplate: base, a stem curving over into a shade tilted toward
+    // the book. Lit, its bulb shows in the opening and beam slants down from it.
     private static let lampOff = [
-        "...kkk......", "..k...k.....", "..k...kkkkk.", "..k..kwwwwwk", "..k.kwwwwwwk", "..k.kkkkkkkk", "..k....ii...", "..k.........",
-        "..k.........", "..k.........", "..k.........", "..k.........", "..k.........", "..k.........", ".kkk........", "kwwwk.......",
+        "...kkk........", "..k...kkk.....", "..k....kwk....", "..k...kwwwkk..", "..k....kwwwik.", "..k....kwwik..", "..k.....kwk...", "..k.....kk....",
+        "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", ".kkk..........", "kwwwk.........",
     ]
     private static let lampOn = lampOff.map { $0.replacingOccurrences(of: "i", with: "Y") }
-    private static let beam = [".....LLLLL..", "....LLLLLLL.", "....LLLLLLLL", "...LLLLLLLLL", "...LLLLLLLLL"]
+    private static let beam = ["............LL...", "...........LLLL..", "..........LLLLLL.", ".........LLLLLLLL", ".........LLLLLLLL", "........LLLLLLLLL"]
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
     private static let bags = "ztgprV".map { c in
@@ -623,25 +629,41 @@ enum Sprites {
 
         // The tree: a trunk up from the sill, its crown in the season's colours, high up
         // in the corner where speech bubbles and heads don't hide it.
-        let rx = max(5, w / 6), ry = max(4, h / 5), cx = rx, cy = ry
+        // A trunk, then branches forking up and out of it; in winter they stay bare under
+        // snow, otherwise leaves cover them in a few overlapping clumps, lit from the top left.
+        let r = max(4, min(w / 5, h / 3))
+        let cx = r, cy = r - 1
         for y in cy..<(h - 2) { put(cx, y, "o"); put(cx + 1, y, "o") }
-        let (leaf, accent): (Character, Character) = season == 0 ? ("F", "r") : season == 1 ? ("g", "G") : season == 2 ? ("y", "t") : ("o", "w")
+        var branches: [(Int, Int)] = []
+        for i in 1..<r {
+            branches.append((cx - i, cy + 1 - i))          // up and to the left
+            branches.append((cx + 1 + i, cy - i))          // up and to the right
+            branches.append((cx + i % 2, cy - i))          // the leader, wavering up
+            if i >= 2 { branches.append((cx - i + 1, cy - i - i % 2)) } // a twig off the left one
+        }
+        for (x, y) in branches { put(x, y, "o") }
+        let (light, mid, dark): (Character, Character, Character) = season == 0 ? ("b", "F", "r") : season == 1 ? ("5", "g", "G") : ("p", "y", "t")
         if season == 3 {
-            // Bare branches with snow on them.
-            for i in 1...(ry + 1) { put(cx - i, cy - i, "o"); put(cx + 1 + i, cy - i, "o"); put(cx - i, cy - i - 1, "w"); put(cx + 1 + i, cy - i - 1, "w") }
-            for i in 1...ry { put(cx, cy - i, "o"); put(cx + 1, cy - i, "o") }
-            put(cx, cy - ry - 1, "w"); put(cx + 1, cy - ry - 1, "w")
+            for (x, y) in branches where (x * 7 + y * 3) % 3 != 0 { put(x, y - 1, "w") }
         } else {
-            for y in (cy - ry)...(cy + ry) {
-                for x in (cx - rx)...(cx + 1 + rx) {
-                    let dx = (Double(x - cx) - 0.5) / (Double(rx) + 0.5), dy = Double(y - cy) / (Double(ry) + 0.5)
-                    if dx * dx + dy * dy <= 1 { put(x, y, (x * 3 + y * 5) % 7 == 0 ? accent : leaf) }
+            let clumps = [(cx - r / 2, cy + r / 3, r * 2 / 3), (cx + 1 + r / 2, cy + r / 4, r * 2 / 3), (cx, cy - r / 3, r * 3 / 4), (cx + r, cy - r / 4, r / 2), (cx - r, cy, r / 2)]
+            for y in 1..<(h - 2) {
+                for x in 1..<(w - 1) {
+                    for (qx, qy, q) in clumps {
+                        let dx = x - qx, dy = y - qy, d2 = dx * dx + dy * dy
+                        if d2 > q * q + q { continue }
+                        // A ragged edge with gaps the branches show through.
+                        if d2 > q * q - q && (x * 5 + y * 3) % 4 == 0 { break }
+                        let s = dx + dy
+                        put(x, y, s > q / 2 ? dark : s < -q / 2 || (x * 3 + y * 5) % 11 == 0 ? light : mid)
+                        break
+                    }
                 }
             }
         }
         // Drifting: a few petals or leaves, or snow everywhere.
         let drift = season == 3 ? w * h / 30 : season == 0 || season == 2 ? 3 : 0
-        for i in 0..<drift { put(2 + (i * 11 + 5) % (w - 4), 1 + (i * 7 + 3) % (h - 4), season == 3 ? "w" : accent) }
+        for i in 0..<drift { put(2 + (i * 11 + 5) % (w - 4), 1 + (i * 7 + 3) % (h - 4), season == 3 ? "w" : dark) }
 
         // Mullions every 16 pixels or so, a transom, then the frame and the sill.
         let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
@@ -657,7 +679,8 @@ enum Sprites {
     }
 
     // A laptop seen from the front of the desk: the back of its lid, its light at night, and shut for a nap.
-    private static let laptopOpen = [".kkkkkkkkkkkkkkkk.", ".kxxxxxxxwwxxxxxk.", ".kxxxxxxxwwxxxxxk.", ".kxxxxxxxxxxxxxxk.", ".kkkkkkkkkkkkkkkk.", "kxxxxxxxxxxxxxxxxk"]
+    // The lid leans back (its top edge narrower), over a darker hinge and the base's front edge.
+    private static let laptopOpen = ["...kkkkkkkkkkkk...", "..kxxxxxxxxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxxxxxxxxk..", ".kkXXXXXXXXXXXXkk.", "kXXXXXXXXXXXXXXXXk"]
     // Behind the person, so it spills out around them instead of covering the face.
     private static let screenLight = ["....jjjjjjjjjjjjjjjjjj....", "..jjjQQQQQQQQQQQQQQQQjjj..", ".jjQQQQQQQQQQQQQQQQQQQQjj."]
         + Array(repeating: "jjQQQQQQQQQQQQQQQQQQQQQQjj", count: 8)
@@ -817,7 +840,7 @@ enum Sprites {
         var lying = [bookLayer]
         if laptop {
             if lit { person.insert(Layer(screenLight, 2, 12), at: 0) }
-            lying = [Layer(laptopOpen, 6, 21)]
+            lying = [Layer(laptopOpen, 6, 20)]
             let up = pose == .writeB ? 1 : 0
             if let l = leftHand, l.grid == hand, l.x == 7 { leftHand = Layer(hand, 4, 23 + up) }
             if let r = rightHand, r.grid == pencilHand { rightHand = Layer(hand, 21, 24 - up) }
