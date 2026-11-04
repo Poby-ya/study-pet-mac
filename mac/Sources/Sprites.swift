@@ -1054,12 +1054,26 @@ enum Sprites {
         let r = sqrt(3.0) / 2; let cosine = step == 1 ? r : 0.5; let sine = step == 1 ? -0.5 : -r
         let w = art[0].count, h = art.count
         let width = Int(ceil(Double(w)*cosine - Double(h)*sine)), height = Int(ceil(Double(h)*cosine - Double(w)*sine))
-        return (0..<height).map { y in String((0..<width).map { x in
-            let dx = Double(x)-Double(width-1)/2, dy = Double(y)-Double(height-1)/2
-            let sx = Int((cosine*dx+sine*dy+Double(w-1)/2).rounded(.toNearestOrEven))
-            let sy = Int((-sine*dx+cosine*dy+Double(h-1)/2).rounded(.toNearestOrEven))
-            return sx >= 0 && sx < w && sy >= 0 && sy < h ? art[sy][sx] : Character(".")
-        }) }
+        var result: [String] = []
+        let centerX = Double(width - 1) / 2.0
+        let centerY = Double(height - 1) / 2.0
+        let sourceX = Double(w - 1) / 2.0
+        let sourceY = Double(h - 1) / 2.0
+        for y in 0..<height {
+            var row: [Character] = []
+            let dy = Double(y) - centerY
+            for x in 0..<width {
+                let dx = Double(x) - centerX
+                let sampleX: Double = cosine * dx + sine * dy + sourceX
+                let sampleY: Double = -sine * dx + cosine * dy + sourceY
+                let sx = Int(sampleX.rounded(.toNearestOrEven))
+                let sy = Int(sampleY.rounded(.toNearestOrEven))
+                let inside = sx >= 0 && sx < w && sy >= 0 && sy < h
+                row.append(inside ? art[sy][sx] : Character("."))
+            }
+            result.append(String(row))
+        }
+        return result
     }
     private static func drinkPosition(_ kind: Drink, step: Int, rotated: [String], lipX: Int, lipY: Int) -> (Int, Int) {
         let source = drinkArt[kind.rawValue], cx = Double(drinkArt[kind.rawValue][0].count-1)/2
