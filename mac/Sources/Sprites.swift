@@ -77,14 +77,14 @@ enum Sprites {
         case stretchHalf, stretchUp, stretchLeft, stretchRight, content, oops, pickUp, found, lookUp
         case teaHold, teaSip, turnPage, cheer, yawn, nodA, nodB, nodC, startle, munchA, munchB
         case think, idea, spinA, spinB, spinC, spinD
-        case restHands, blinkB, bend, recover, teaReach, teaLift, cookieSmall, crumbs, yawnStart, yawnEnd, readA, readB, bookmark, lookLeft, lookRight
+        case restHands, blinkB, bend, recover, teaReach, teaLift, cookieSmall, crumbs, yawnStart, yawnEnd, readA, readB, bookmark, lookLeft, lookRight, foldArms, glanceLeft, glanceRight
     }
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
     enum Visiting: CaseIterable { case walk, wave, reach }
 
-    private enum Eyes { case open, closed, happy, up, left, right }
+    private enum Eyes { case open, closed, happy, up, left, right, down }
     private enum Mouth { case small, open, smile }
 
     struct Layer {
@@ -194,6 +194,7 @@ enum Sprites {
         case .open: marks = [(1, 4, "ew"), (1, 12, "ew"), (2, 4, "ee"), (2, 12, "ee")]
         case .closed: marks = [(2, 4, "ee"), (2, 12, "ee")]
         case .happy: marks = [(1, 4, "e"), (1, 12, "e"), (2, 3, "ese"), (2, 11, "ese")]
+        case .down: marks = [(2, 4, "ew"), (2, 12, "ew"), (3, 4, "ee"), (3, 12, "ee")]
         case .left: marks = [(1, 3, "ew"), (1, 11, "ew"), (2, 3, "ee"), (2, 11, "ee")]
         case .right: marks = [(1, 5, "ew"), (1, 13, "ew"), (2, 5, "ee"), (2, 13, "ee")]
         case .up: marks = [(0, 4, "ew"), (0, 12, "ew"), (1, 4, "ee"), (1, 12, "ee")]
@@ -439,7 +440,7 @@ enum Sprites {
     private static func body(_ look: Look, sitting: Bool, leftArm: Bool = false, rightArm: Bool = false) -> [String] {
         let shape = sitting ? sittingBody : look.skirt ? Array(standingBody.prefix(8)) + skirtRows : standingBody
         var dressed = dress(shape, look.top)
-        if look.sleeve > 0 { dressed = put(dressed, [(6, 3, look.sleeve == 3 ? "RR" : "CC"), (6, 15, look.sleeve == 3 ? "RR" : "CC")]) }
+        if look.sleeve > 0 { dressed = put(dressed, [(6, 3, look.sleeve == 3 ? "RR" : look.sleeve == 2 ? "AA" : "CC"), (6, 15, look.sleeve == 3 ? "RR" : look.sleeve == 2 ? "AA" : "CC")]) }
         return dressed.enumerated().map { i, row in
             if i < 3 || i > 7 { return row }
             let cells = Array(row)
@@ -497,12 +498,14 @@ enum Sprites {
     /// An arm from the shoulder to a hand, the sleeve patterned like the top.
     private static func arm(_ look: Look, _ path: (Int, Int)...) -> Layer {
         stroke(path, size: 2, fill: { i, count in
+            if look.sleeve == 1 && i >= count - 3 { return "C" }
+            if look.sleeve == 3 && i >= count - 3 { return "R" }
             switch look.top {
             case 1: return i >= count - 3 ? "a" : "A"  // sweater cuff
             case 3: return i % 2 == 0 ? "C" : "A"      // stripes
             default: return "A"
             }
-        }, tip: "s", rooted: true)
+        }, tip: look.sleeve == 2 ? "A" : "s", rooted: true)
     }
 
     private static func pencil(_ path: (Int, Int)...) -> Layer {
@@ -781,7 +784,7 @@ enum Sprites {
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool, hairLag: Int) -> [Layer] {
         if pose == .pickUp {
-            let (back, head) = headLayers(look, .open, .small, 10, 12)
+            let (back, head) = headLayers(look, .down, .small, 10, 12)
             var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
             shifted.insert(Layer(desk, 0, 27), at: 1)
             return shifted + shift([Layer(laptop ? laptopOpen : book, laptop ? 6 : 9, laptop ? 20 : 24)])
@@ -817,11 +820,17 @@ enum Sprites {
         var mark: [String]? = alert ? exclaim : nil
 
         switch pose {
-        case .restHands: rightHand = Layer(hand, 19, 24)
+        case .restHands, .foldArms:
+            if pose == .foldArms { headY = 7; eyes = .closed }
+            leftArm = true; rightArm = true; leftHand = Layer(hand, 10, 25); rightHand = Layer(hand, 14, 25)
+            behind.append(arm(look, (9,22), (11,24), (13,25)))
+            behind.append(arm(look, (21,22), (19,24), (15,25)))
         case .blinkB: eyes = .closed; rightHand = Layer(pencilHand, 18, 22)
-        case .lookLeft: eyes = .left
-        case .lookRight: eyes = .right
-        case .bend: headY = 6; rightHand = Layer(hand, 24, 26); eyes = .closed
+        case .glanceLeft: eyes = .left
+        case .glanceRight: eyes = .right
+        case .lookLeft: eyes = .left; sway = -1
+        case .lookRight: eyes = .right; sway = 1
+        case .bend: headY = 6; rightHand = Layer(hand, 24, 26); eyes = .down
         case .recover: headY = 5; rightHand = Layer(pencilHand, 22, 21)
         case .teaReach: rightHand = Layer(hand, 24, 24)
         case .teaLift: rightHand = nil; front.append(Layer(teacup, 18, 19)); front.append(Layer(hand, 19, 23))
@@ -831,7 +840,7 @@ enum Sprites {
         case .crumbs: front.append(Layer(["l.l", ".l."], 12, 25))
         case .yawnStart: eyes = .closed; mouth = .open
         case .yawnEnd: leftHand = Layer(hand, 9, 22)
-        case .readA, .readB: rightHand = Layer(hand, pose == .readA ? 12 : 16, 24)
+        case .readA, .readB: eyes = .down; rightHand = Layer(hand, pose == .readA ? 12 : 16, 24)
         case .bookmark:
             bookLayer = Layer(turningPage, 9, 23); rightHand = Layer(hand, 17, 23)
             front.append(Layer(["RR", "RR", "RR", "R."], 17, 23))
@@ -872,6 +881,7 @@ enum Sprites {
             eyes = .open
             mouth = .smile
         case .oops:
+            eyes = .down
             mouth = .open
             rightHand = Layer(hand, 20, 24)
             front.append(pencil((27, 30), (31, 33)))
@@ -932,7 +942,7 @@ enum Sprites {
             front.append(arm(look, (21, 22), (24, 21), (24, 18)))
             mark = question
         case .idea:
-            eyes = .open
+            eyes = .down
             mouth = .smile
             mark = exclaim
         case .spinA, .spinB, .spinC, .spinD:
@@ -952,7 +962,7 @@ enum Sprites {
         // With a laptop the lid hides the book's place; the hands type at its sides.
         var lying = [bookLayer]
         if laptop {
-            lying = [Layer(laptopOpen, 6, 20)]
+            lying = [Layer(pose == .foldArms ? ["..kkkkkkkkkkkk...", "..kxxxxxxxxxxk...", ".kkxxxxxxxxxxkk..", "kkkkkkkkkkkkkkkkk", "kXXXXXXXXXXXXXXXk"] : laptopOpen, 6, pose == .foldArms ? 22 : 20)]
             let up = pose == .writeB || pose == .blinkB ? 1 : 0
             if let l = leftHand, l.grid == hand, l.x == 7 { leftHand = Layer(hand, 4, 23 + up) }
             if pose == .turnPage || pose == .bookmark { leftHand = Layer(hand, 4, 24); rightHand = Layer(hand, 16, 25) }

@@ -377,10 +377,10 @@ final class PetWindow: NSPanel {
         switch mood {
         case .studying:
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
-            if visitTick >= 0 && visitTick < 4 { return visitSide == 1 ? .lookRight : .lookLeft }
+            if visitTick >= 0 && visitTick < 4 { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
             if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return tick == 0 ? .nodB : .recover }
             return moment > 0 ? Self.momentPose(moment, momentFrame, tick) : Self.writing(tick)
-        case .dozing: if moodSeconds < 0.75 { return tick == 0 ? .restHands : .bend }; return tick / 3 % 2 == 0 ? .dozeA : .dozeB
+        case .dozing: if moodSeconds < 0.75 { return tick == 0 ? .restHands : .foldArms }; return tick / 3 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving, .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
         }

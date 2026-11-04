@@ -118,7 +118,7 @@ final class AppController: NSObject, NSMenuDelegate {
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
                 let board = Room.board(room.boardMembers, me: self.myId)
-                if room.choices.count > 1 { return ("\(room.name) · \((room.choices.firstIndex { $0.id == room.selected } ?? 0) + 1)/\(room.choices.count) ↻", board.lines) }
+                if room.choices.count > 1 { return ("\(board.title) · \(room.name) \((room.choices.firstIndex { $0.id == room.selected } ?? 0) + 1)/\(room.choices.count) ↻", board.lines) }
                 return (room.name.isEmpty ? board.title : "\(room.name) · \(board.title)", board.lines)
             }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
