@@ -141,12 +141,13 @@ final class PetWindow: NSPanel {
     init() {
         // Older settings only knew boy or girl; those get a random look of that gender.
         let saved = Settings.get("style")
-        look = saved.isEmpty ? Look.random(girl: Settings.get("look") == "girl") : Look.parse(saved, girl: Settings.get("look") == "girl")
-        look = look.withExtras(Settings.get("lookExtras"))
-        if saved.isEmpty { look = look.withAdditions(0); remember("lookExtras", look.extra) }
+        var initialLook = saved.isEmpty ? Look.random(girl: Settings.get("look") == "girl") : Look.parse(saved, girl: Settings.get("look") == "girl")
+        initialLook = initialLook.withExtras(Settings.get("lookExtras"))
+        if saved.isEmpty { initialLook = initialLook.withAdditions(0) }
+        look = initialLook
         super.init(contentRect: NSRect(origin: .zero, size: petSize), styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
-        if saved.isEmpty { remember("style", look.code) }
+        if saved.isEmpty { remember("style", look.code); remember("lookExtras",look.extra) }
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false

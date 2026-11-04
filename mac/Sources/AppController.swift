@@ -206,7 +206,8 @@ final class AppController: NSObject, NSMenuDelegate {
         let page = Planner(ranking: ranking, anchor: pet.frame)
         page.picked = { [weak self] in self?.pickSubject($0) }
         page.removed = { [weak self] removed, alsoRecords in
-            self?.safely("과목 지우기") {
+            guard let self else { return }
+            self.safely("과목 지우기") {
                 if self.deviceSync != nil { self.syncDelete(removed,all:alsoRecords); return }
                 try Records.hide(removed)
                 if alsoRecords { try Records.deleteSubject(removed) }
