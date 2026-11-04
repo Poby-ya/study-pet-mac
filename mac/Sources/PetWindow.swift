@@ -391,6 +391,7 @@ final class PetWindow: NSPanel {
                                  hop: CGFloat(abs(sin(outgoingTick * .pi))) * scale, mirror: (destination < myX) != (outgoingTick > 18), leftHand: true) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
+        var lamps: [CGFloat] = []
         for i in 0..<2 {
             guard let seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
             if let before = previousSeats[i], before.name == seat.name && before.here && !seat.here { leavingTicks[i] = 0 }
@@ -400,14 +401,18 @@ final class PetWindow: NSPanel {
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
                 ? (leavingTicks[i] < 2 ? .stand : Int(leavingTicks[i]) % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
+            let lit = night && seat.here && !seat.dozing && !gone
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: night && seat.here && !seat.dozing && !gone, away: !seat.here))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
+            if lit { lamps.append(x) }
         }
+        let myLamp = night && mood == .studying && !outgoing
+        if myLamp { lamps.append(myX) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: night && mood == .studying && !outgoing, away: mood == .away))
+                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away))
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
@@ -417,6 +422,8 @@ final class PetWindow: NSPanel {
         }
         drawNameplate(myName(), deskX: myX)
         if mood == .away && !outgoing { drawAwaySign(myX) }
+        // The lamps' light over everything at their desks (but under the speech bubbles).
+        for x in lamps { Sprites.drawLampLight(left: x, top: floorY, scale: scale) }
         effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale

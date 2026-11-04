@@ -120,9 +120,6 @@ enum Sprites {
         "g": color(0x6CC08A), // soju bottle
         "G": color(0x489866), // soju cap, bottle shade
         "Y": color(0xFFE27A), // lit bulb
-        "L": color(0xFFE58A), // lamp light
-        "Q": color(0xC6E8FF), // laptop screen light
-        "j": color(0xE6F5FF), // its fainter edge
         "1": color(0x2E3A66), // night sky
         "2": color(0xF6C2AE), // dawn
         "3": color(0x9ED3F6), // day
@@ -534,7 +531,7 @@ enum Sprites {
         var all: [[String]] = []
         for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
         all += drinkArt.dropFirst()
-        all += [lampOff, lampOn, beam, pool, laptopOpen, screenLight, laptopShut] + bags + bigStickers + smallStickers
+        all += [lampOff, lampOn, laptopOpen, laptopShut] + bags + bigStickers + smallStickers
         for sky in 0..<4 { for season in 0..<4 { all.append(windowGrid(40, 30, sky: sky, season: season)) } }
         for pose in Visiting.allCases {
             for alt in [false, true] {
@@ -554,14 +551,13 @@ enum Sprites {
     /// someone sits there, their bag on the hook and their drink. Without it, a bare desk.
     static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, decor: Decor? = nil) -> [Layer] {
         let d = decor ?? Decor()
-        var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop, lit: d.lit)
+        var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop)
         if lift != 0 { layers = layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
-        layers.insert(contentsOf: (d.lit ? [Layer(beam, 1, 16)] : []) + [Layer(d.lit ? lampOn : lampOff, 1, 11)], at: 0)
+        layers.insert(Layer(d.lit ? lampOn : lampOff, 1, 11), at: 0)
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
-        if d.lit { layers.insert(Layer(pool, 3, 28), at: at) }
         let big = d.seed % bigStickers.count
         layers.insert(contentsOf: [
             Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
@@ -574,7 +570,7 @@ enum Sprites {
     }
 
     /// What surrounds a desk. `seed` comes from the owner's name, so everyone sees the same
-    /// bag and sticker; `lit` turns on the lamp and the laptop screen (at night, studying);
+    /// bag and sticker; `lit` turns on the lamp (at night, studying; its light is drawLampLight);
     /// `away` takes the bag and drink too (stepping over to a friend leaves them).
     struct Decor {
         var drink: Drink = .none
@@ -600,9 +596,23 @@ enum Sprites {
         default: return row
         }
     }
-    // Where the light lands: the desk top under the lamp.
-    private static let pool = ["LLLLLLLLLLLLLL"]
-    private static let beam = ["............LL...", "...........LLLL..", "..........LLLLLL.", ".........LLLLLLLL", ".........LLLLLLLL", "........LLLLLLLLL"]
+    // The lamp's light, from the shade's mouth down to the book and the desk top under it.
+    // Drawn last and see-through, over the nameplate and whoever sits there.
+    private static let beam = [
+        "...........LL", "..........LLLL", ".........LLLLLL", ".........LLLLLLLL", "........LLLLLLLLLL", "........LLLLLLLLLLLL",
+        ".......LLLLLLLLLLLLLL", ".......LLLLLLLLLLLLLLLL", "......LLLLLLLLLLLLLLLLLL", "......LLLLLLLLLLLLLLLLLLL", ".....LLLLLLLLLLLLLLLLLLLLL",
+        "", "....LLLLLLLLLLLLLLLLLLLLLLLL",
+    ]
+
+    /// The light of a lit lamp, for drawing after everything else at that desk.
+    static func drawLampLight(left: CGFloat, top: CGFloat, scale: CGFloat) {
+        color(0xFFD855).withAlphaComponent(100.0 / 255).setFill()
+        for (row, line) in beam.enumerated() {
+            for (col, c) in line.enumerated() where c == "L" {
+                NSRect(x: left + CGFloat(1 + col) * scale, y: top + CGFloat(16 + row) * scale, width: scale, height: scale).fill(using: .sourceOver)
+            }
+        }
+    }
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
     private static let bags = "ztgprV".map { c in
@@ -690,15 +700,12 @@ enum Sprites {
         draw(layers: [Layer(windowGrid(w, h, sky: sky, season: season), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
     }
 
-    // A laptop seen from the front of the desk: the back of its lid, its light at night, and shut for a nap.
+    // A laptop seen from the front of the desk: the back of its lid, and shut for a nap.
     // The lid leans back (its top edge narrower), over a darker hinge and the base's front edge.
     private static let laptopOpen = ["...kkkkkkkkkkkk...", "..kxxxxxxxxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxxxxxxxxk..", ".kkXXXXXXXXXXXXkk.", "kXXXXXXXXXXXXXXXXk"]
-    // Behind the person, so it spills out around them instead of covering the face.
-    private static let screenLight = ["....jjjjjjjjjjjjjjjjjj....", "..jjjQQQQQQQQQQQQQQQQjjj..", ".jjQQQQQQQQQQQQQQQQQQQQjj."]
-        + Array(repeating: "jjQQQQQQQQQQQQQQQQQQQQQQjj", count: 8)
     private static let laptopShut = ["kkkkkkkkkkkkkk", "kxxxxxxxxxxxxk", "kkkkkkkkkkkkkk"]
 
-    private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool, lit: Bool) -> [Layer] {
+    private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool) -> [Layer] {
         if pose == .pickUp {
             let (back, head) = headLayers(look, .open, .small, 10, 12)
             var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
@@ -847,11 +854,10 @@ enum Sprites {
         }
 
         let (hairBack, faceLayers) = headLayers(look, eyes, mouth, 7, headY)
-        var person = [Layer(body(look, sitting: !standing, leftArm: leftArm, rightArm: rightArm), 6, standing ? 16 : 20)] + hairBack + behind + faceLayers
+        let person = [Layer(body(look, sitting: !standing, leftArm: leftArm, rightArm: rightArm), 6, standing ? 16 : 20)] + hairBack + behind + faceLayers
         // With a laptop the lid hides the book's place; the hands type at its sides.
         var lying = [bookLayer]
         if laptop {
-            if lit { person.insert(Layer(screenLight, 2, 12), at: 0) }
             lying = [Layer(laptopOpen, 6, 20)]
             let up = pose == .writeB ? 1 : 0
             if let l = leftHand, l.grid == hand, l.x == 7 { leftHand = Layer(hand, 4, 23 + up) }
