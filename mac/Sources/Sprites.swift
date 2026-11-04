@@ -617,9 +617,12 @@ enum Sprites {
         if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
-            let drink = tiltDrink(d.drink == .none ? .mug : d.drink, step: pose == .teaSip ? 2 : pose == .teaLift ? 1 : 0)
-            let x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
-            let y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
+            let kind: Drink = d.drink == .none ? .mug : d.drink
+            let step = pose == .teaSip ? 2 : pose == .teaLift ? 1 : 0
+            let drink = tiltDrink(kind, step: step)
+            var x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
+            var y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
+            if step > 0 { (x,y) = drinkPosition(kind,step: step,rotated: drink,lipX: pose == .teaLift ? 30 : 25,lipY: look.hair == 6 ? 16 : 17) }
             layers.append(Layer(drink, x, y))
         } else if d.drink != .none { layers.insert(drinkLayer(d.drink), at: at) }
         return layers
@@ -1057,6 +1060,15 @@ enum Sprites {
             let sy = Int((-sine*dx+cosine*dy+Double(h-1)/2).rounded(.toNearestOrEven))
             return sx >= 0 && sx < w && sy >= 0 && sy < h ? art[sy][sx] : Character(".")
         }) }
+    }
+    private static func drinkPosition(_ kind: Drink, step: Int, rotated: [String], lipX: Int, lipY: Int) -> (Int, Int) {
+        let source = drinkArt[kind.rawValue], cx = Double(drinkArt[kind.rawValue][0].count-1)/2
+        let cy = Double(source.count-1)/2, dx = kind == .icedCoffee ? 5-cx : 0
+        let dy = -cy, r = sqrt(3.0)/2
+        let cosine = step == 1 ? r : 0.5, sine = step == 1 ? -0.5 : -r
+        let x = cosine*dx-sine*dy+Double(rotated[0].count-1)/2
+        let y = sine*dx+cosine*dy+Double(rotated.count-1)/2
+        return (lipX-Int(x.rounded(.toNearestOrEven)),lipY-Int(y.rounded(.toNearestOrEven)))
     }
     static func flame(_ alt: Bool) -> [String] { alt ? ["..t.", ".tt.", "tpty", "tyyt", ".pp."] : [".t..", ".tt.", "ytpt", "tyyt", ".pp."] }
     static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 20, 12), Layer(flame(!alt), 28, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
