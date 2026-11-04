@@ -165,14 +165,6 @@ private final class LineChart: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 720, height: 380))
     }
 
-    func follow(_ source: @escaping () -> [Segment]) {
-        live = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
-            guard let self, self.isVisible else { return }
-            self.daily = Records.daily(source()); self.rebuild()
-        }
-        RunLoop.main.add(live!, forMode: .common)
-    }
-    deinit { live?.invalidate() }
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override var isFlipped: Bool { true }

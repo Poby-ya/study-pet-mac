@@ -45,6 +45,18 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     const status = { name: '친구', look: 'girl', style: 'g213402', state: 'studying', subject: '수학', minutes: 3, updated: serverTimestamp() };
     await assertSucceeds(update(ref(guest), { [`rooms/${first}/members/guest`]: status, [`rooms/${second}/members/guest`]: status }));
     assert.equal((await get(ref(host, `rooms/${first}/members/guest/minutes`))).val(), 3);
+    await assertSucceeds(set(ref(guest, `rooms/${first}/wardrobe/guest`), '1323133'));
+    await assertFails(set(ref(guest, `rooms/${first}/wardrobe/host`), '1323133'));
+    await assertFails(set(ref(guest, `rooms/${first}/wardrobe/guest`), '9999999'));
+    await assertFails(set(ref(outsider, 'releaseChannel/stable'), 'v9.0.0'));
+    await assertSucceeds(get(ref(env.unauthenticatedContext().database(), 'releaseChannel/stable')));
+    const channelRule = JSON.parse(fs.readFileSync('../firebase-rules.json', 'utf8')).rules.releaseChannel.stable['.write'];
+    const publisherUid = channelRule.match(/auth.uid == '([^']+)'/)[1];
+    const publisher = db(publisherUid);
+    await assertSucceeds(set(ref(publisher, 'releaseChannel/stable'), 'v0.5.0'));
+    await assertFails(set(ref(publisher, 'releaseChannel/stable'), 'not-a-version'));
+    await assertFails(get(ref(publisher, `rooms/${first}`)));
+
     assert.equal((await get(ref(host, `rooms/${second}/members/guest/minutes`))).val(), 3);
     await assertSucceeds(update(ref(host), { [`rooms/${first}/members/host`]: { ...status, name: '방장' }, [`rooms/${second}/members/host`]: { ...status, name: '방장' } }));
     await assertFails(update(ref(other), { [`rooms/${foreign}/approved/guest`]: true, [`access/guest/${foreign}`]: true }));
