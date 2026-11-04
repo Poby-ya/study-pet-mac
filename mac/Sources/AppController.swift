@@ -642,6 +642,7 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func answerPoke() {
         guard let poke = waitingPoke, !quitting, !invitePromptOpen else { return }
         clearWaitingPoke()
+        if poke.message == FriendInteractions.updateNotice { DispatchQueue.main.async { [weak self] in self?.showSettings() }; return }
         invitePromptOpen = true
         // After the menu has closed: a modal alert inside its tracking loop misbehaves.
         DispatchQueue.main.async { [weak self] in

@@ -24,7 +24,7 @@ enum SelfTest {
         check(interactions.message(friend, here: true, current: "0.5.1") == "드디어 깼구나 !", "friend: rest greeting")
         var last = ""
         for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
-        friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") != FriendInteractions.updateNotice, "friend: legacy version never guessed")
+        friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: unknown legacy version receives notice")
         check(Sprites.maskLaptop(["ssss"], x: 0, y: 0, lid: Sprites.Layer([".kk."], 0, 0)) == ["s..s"], "laptop: lid masks hands")
         check(Sprites.heldDrink(.mug, tilted: false).count != Sprites.heldDrink(.mug, tilted: true).count, "tea: cup tips")
         save(render(NSSize(width: 480, height: 612)) {

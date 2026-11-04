@@ -18,7 +18,10 @@ final class FriendInteractions {
         }
     }
     func message(_ m: Member, here: Bool, current: String) -> String {
-        if let own = UpdateRelease.version(current), let other = UpdateRelease.version(m.version), other.lexicographicallyPrecedes(own) { return Self.updateNotice }
+        if let own = UpdateRelease.version(current) {
+            if let other = UpdateRelease.version(m.version) { if other.lexicographicallyPrecedes(own) { return Self.updateNotice } }
+            else { return Self.updateNotice }
+        }
         if !here || m.state == "paused" { return Room.pokeMessage(m, here: here) }
         if let greeting = greetings.removeValue(forKey: m.id) { return greeting }
         var index = Int.random(in: 0..<(Self.cheers.count - 1))
