@@ -413,6 +413,8 @@ enum SelfTest {
         var only = Room.members(tree)
         check(only.count == 1 && only[0].name == "민지" && only[0].look == Look(girl: true, 2, 1, 3, 4, 0, 2) && only[0].minutes == 32 && only[0].updated == 1000,
               "room: put / loads members with their look")
+        tree = Room.applyEvent(tree, "put", "/versions/aaa", "0.5.0")
+        check(Room.members(tree).first?.version == "0.5.0", "room: optional peer version parsed")
         tree = Room.applyEvent(tree, "patch", "/members/aaa", json(#"{"state":"paused"}"#))
         only = Room.members(tree)
         check(only.first?.state == "paused" && only.first?.name == "민지", "room: patch changes one field and keeps the rest")

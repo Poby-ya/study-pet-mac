@@ -21,7 +21,7 @@ final class AppearanceWindow: NSWindow {
             let label = NSTextField(labelWithString: title); label.frame = NSRect(x: 20, y: CGFloat(20 + n * 38), width: 80, height: 24); body.addSubview(label)
             let toggle: NSSegmentedControl
             if index == 7 {
-                let images = [0xFFF4EC, 0xFFE0C8, 0xD2A17C, 0x83523E].map { color in NSImage(size: NSSize(width: 40,height: 18)) { rect in Sprites.color(color).setFill(); rect.fill(); return true } }
+                let images = [0xFFF4EC, 0xFFE0C8, 0xD2A17C, 0x83523E].map { color in NSImage(size: NSSize(width: 40,height: 18), flipped: true) { rect in Sprites.color(color).setFill(); rect.fill(); return true } }
                 toggle = NSSegmentedControl(images: images, trackingMode: .selectOne, target: self, action: #selector(toggleChanged(_:)))
             } else { toggle = NSSegmentedControl(labels: items, trackingMode: .selectOne, target: self, action: #selector(toggleChanged(_:))) }
             toggle.tag = index; toggle.selectedSegment = index == 7 ? [1,0,2,3].firstIndex(of: values[index])! : values[index]; toggle.frame = NSRect(x: 105, y: CGFloat(16 + n * 38), width: 380, height: 30); body.addSubview(toggle)

@@ -91,9 +91,11 @@ final class PetWindow: NSPanel {
     var canvasSize: NSSize {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
         // 12 on the left, 20 on the right where the last bag hangs past its desk.
-        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32, height: floorY + CGFloat(Sprites.height) * scale + 10)
+        let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32
+        return NSSize(width: Settings.get("largeText") == "1" ? max(width,260 * max(1,100 / CGFloat(sizePercent))) : width, height: floorY + CGFloat(Sprites.height) * scale + 10)
     }
-    private var myX: CGFloat { hasLeft ? 12 + deskWidth + 22 : 12 }
+    private var deskInset: CGFloat { max(12,(canvasSize.width - CGFloat(1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskWidth - CGFloat((hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * 22)/2) }
+    private var myX: CGFloat { hasLeft ? deskInset + deskWidth + 22 : deskInset }
     private var seatX: CGFloat { myX - deskWidth - 22 }
     private var rightX: CGFloat { myX + deskWidth + 22 }
 
@@ -598,10 +600,11 @@ final class PetWindow: NSPanel {
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
     private func drawNameplate(_ name: String, deskX: CGFloat) {
         if name.isEmpty { return }
-        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * textFactor)
+        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * (Settings.get("largeText") == "1" ? 1.25 * max(1,75 / CGFloat(sizePercent)) : 1))
         // Between the desk's left edge and the person's hand (cols 1..16).
-        let w = min(15 * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
-        let x = deskX + scale + (15 * scale - w) / 2
+        let maxName: CGFloat = Settings.get("largeText") == "1" ? 20 : 15
+        let w = min(maxName * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
+        let x = deskX + scale + (maxName * scale - w) / 2
         let labelHeight = max(5 * scale, font.ascender - font.descender + 2)
         let face = NSRect(x: x, y: floorY + 27 * scale - labelHeight, width: w, height: labelHeight)
         PetWindow.plateTop.setFill()
