@@ -95,6 +95,12 @@
             ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
             ".validate": "newData.isString() && newData.val().matches(/^[0-3][0-3][0-2][0-3][0-1][0-3][0-3]$/)"
           }
+        },
+        "versions": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
+            ".validate": "newData.isString() && newData.val().matches(/^[0-9]+\\.[0-9]+\\.[0-9]+$/)"
+          }
         }
       }
     },

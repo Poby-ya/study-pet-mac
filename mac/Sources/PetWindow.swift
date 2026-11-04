@@ -3,7 +3,7 @@ import AppKit
 // Sizes in points: the Windows app's layout at 100 %.
 private let scale: CGFloat = 4
 private let deskWidth = CGFloat(Sprites.width) * scale
-private let boardLine: CGFloat = 20
+private let boardLine: CGFloat = 24
 // Room for the tallest chalkboard; a shorter one leaves the top of the window empty.
 private let boardSpace = 48 + CGFloat(Room.boardLines) * boardLine
 private let bubbleArea: CGFloat = 112 // room for an update reminder above a visitor's bubble
@@ -17,6 +17,10 @@ let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites
 /// It starts bottom-right above the Dock; drag it anywhere and it remembers the spot.
 final class PetWindow: NSPanel {
     /// Away: my desk is empty, shown only while a friend visits.
+    private var textFactor: CGFloat { Settings.get("largeText") == "1" ? 1.25 * max(1, 100 / CGFloat(sizePercent)) : 1 }
+    private var boardLine: CGFloat { 24 * textFactor }
+    private var boardSpace: CGFloat { 62 + CGFloat(Room.boardLines) * boardLine }
+    private var floorY: CGFloat { boardSpace + bubbleArea }
     enum Mood { case studying, dozing, leaving, away, notifying }
 
     /// What the seatmate desk shows. Not here: an empty desk with their nameplate.
@@ -87,7 +91,7 @@ final class PetWindow: NSPanel {
     var canvasSize: NSSize {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
         // 12 on the left, 20 on the right where the last bag hangs past its desk.
-        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32, height: petSize.height)
+        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32, height: floorY + CGFloat(Sprites.height) * scale + 10)
     }
     private var myX: CGFloat { hasLeft ? 12 + deskWidth + 22 : 12 }
     private var seatX: CGFloat { myX - deskWidth - 22 }
@@ -366,7 +370,9 @@ final class PetWindow: NSPanel {
 
     private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
     private var momentFrame: Int { tick % 360 - 336 }
-    private var momentText: String { laptop && moment == 5 ? "한 줄 내려보기" : Self.momentLine(moment, momentFrame) }
+    private var momentText: String {
+        if laptop && [2,5,10,11,12].contains(moment) { return moment == 2 ? "잠깐 화면 읽기" : [5,12].contains(moment) ? "한 줄 내려보기" : moment == 10 ? "다시 집중!" : "손목 잠깐 쉬기" }; return Self.momentLine(moment, momentFrame)
+    }
 
     func subjectChanged() { subjectChangedAt = animationSeconds; redraw() }
     func nextSeason() {
@@ -377,6 +383,7 @@ final class PetWindow: NSPanel {
     private var myPose: Sprites.Pose {
         switch mood {
         case .studying:
+            if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") { return .content }
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < 4 { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
             if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return tick == 0 ? .nodB : .recover }
@@ -416,14 +423,15 @@ final class PetWindow: NSPanel {
         let arrived = myX + (visitSide == 1 ? 19 : -19) * scale
         let visitorX = start + (arrived - start) * CGFloat(Self.travelProgress(visitTick))
         let walking = visitTick < 4 || visitTick > 18
-        let tapping = visiting && !walking && !outgoing && (mood == .studying || mood == .dozing)
+        let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부")
+        let tapping = visiting && !cheering && !walking && !outgoing && (mood == .studying || mood == .dozing)
         let tap = tapping && frameCount % 2 == 0
-        if visiting { drawVisitor(visitLook, pose: walking ? .walk : tapping ? .reach : .wave, x: visitorX,
+        if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering ? .cheer : tapping ? .reach : .wave, x: visitorX,
                                  hop: walking ? CGFloat(abs(sin(visitTick * .pi))) * scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
         let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Self.travelProgress(outgoingTick))
         // Wave with the far hand: the near one would be behind the friend I'm visiting.
-        if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
+        if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") ? .wave : .cheer, x: outX,
                                  hop: outgoingTick < 4 || outgoingTick > 18 ? CGFloat(abs(sin(outgoingTick * .pi))) * scale : 0, mirror: (destination < myX) != (outgoingTick > 18), leftHand: true) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
@@ -449,6 +457,7 @@ final class PetWindow: NSPanel {
         if myLamp { lamps.append(myX) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away), hairLag: hairLag(-1, myPose))
+        if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
@@ -507,8 +516,8 @@ final class PetWindow: NSPanel {
         }
         NSGraphicsContext.current?.shouldAntialias = antialias
         guard height == 18 else { return }
-        drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.1 * scale), color: PetWindow.ink,
-                 in: NSRect(x: x + 18 * scale, y: top + 2 * scale, width: 19 * scale, height: 7 * scale))
+        drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.9 * scale), color: PetWindow.ink,
+                 in: NSRect(x: x + 18 * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its
@@ -555,9 +564,9 @@ final class PetWindow: NSPanel {
     private func drawBubble(_ text: String, cx: CGFloat, tipY: CGFloat, maxWidth: CGFloat, fill: NSColor) -> CGFloat {
         if text.isEmpty { return tipY }
         let lines = text.components(separatedBy: "\n")
-        let factor = Settings.get("largeText") == "1" ? max(1, 100 / CGFloat(sizePercent)) : 1
+        let factor = textFactor
         let font = NSFont.boldSystemFont(ofSize: (text == Self.updateMessage ? 12 : 13) * factor)
-        let lineHeight: CGFloat = 17 * factor
+        let lineHeight: CGFloat = 18 * factor
         let w = min(maxWidth, (lines.map { textWidth($0, font) }.max() ?? 0) + 22)
         let h = CGFloat(lines.count) * lineHeight + 10
         let tailHeight: CGFloat = 6
@@ -589,13 +598,14 @@ final class PetWindow: NSPanel {
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
     private func drawNameplate(_ name: String, deskX: CGFloat) {
         if name.isEmpty { return }
-        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * (Settings.get("largeText") == "1" ? max(1, 100 / CGFloat(sizePercent)) : 1))
+        let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * textFactor)
         // Between the desk's left edge and the person's hand (cols 1..16).
         let w = min(15 * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
         let x = deskX + scale + (15 * scale - w) / 2
-        let face = NSRect(x: x, y: floorY + 22 * scale, width: w, height: 5 * scale)
+        let labelHeight = max(5 * scale, font.ascender - font.descender + 2)
+        let face = NSRect(x: x, y: floorY + 27 * scale - labelHeight, width: w, height: labelHeight)
         PetWindow.plateTop.setFill()
-        NSRect(x: x + scale / 2, y: floorY + 21 * scale, width: w - scale, height: scale + 1).fill()
+        NSRect(x: x + scale / 2, y: face.minY - scale, width: w - scale, height: scale + 1).fill()
         PetWindow.plateFace.setFill()
         face.fill()
         PetWindow.ink.setStroke()
@@ -608,7 +618,7 @@ final class PetWindow: NSPanel {
     private func drawClassroom(_ title: String, _ lines: [String]) {
         let shownLines = CGFloat(max(1, lines.count))
         let boardBottom = boardSpace - 6
-        let boardTop = boardBottom - (30 + shownLines * boardLine + 8)
+        let boardTop = boardBottom - ((shownLines + 1) * boardLine + 12)
         let card = NSRect(x: 2, y: boardTop - 14, width: canvasSize.width - 4, height: canvasSize.height - 2 - (boardTop - 14))
 
         let cardPath = NSBezierPath(roundedRect: card, xRadius: 14, yRadius: 14)
@@ -651,12 +661,12 @@ final class PetWindow: NSPanel {
         let faint = PetWindow.chalk.withAlphaComponent(150.0 / 255)
         let textX = slate.minX + 10
         let textW = slate.width - 20
-        drawLine(title, font: .boldSystemFont(ofSize: 12), color: faint,
-                 in: NSRect(x: textX, y: slate.minY + 5, width: textW, height: 16), align: .left)
+        drawLine(title, font: .boldSystemFont(ofSize: 14 * textFactor), color: faint,
+                 in: NSRect(x: textX, y: slate.minY + 3, width: textW, height: boardLine), align: .left)
         let shown = lines.isEmpty ? ["아직 아무도 없어요"] : lines
         for (i, line) in shown.enumerated() {
-            drawLine(line, font: .systemFont(ofSize: 14), color: lines.isEmpty ? faint : PetWindow.chalk,
-                     in: NSRect(x: textX, y: slate.minY + 25 + CGFloat(i) * boardLine, width: textW, height: boardLine), align: .left)
+            drawLine(line, font: .systemFont(ofSize: 16 * textFactor), color: lines.isEmpty ? faint : PetWindow.chalk,
+                     in: NSRect(x: textX, y: slate.minY + boardLine + 5 + CGFloat(i) * boardLine, width: textW, height: boardLine), align: .left)
         }
     }
 
@@ -681,8 +691,17 @@ final class PetWindow: NSPanel {
         windowGlass = NSRect(x: left, y: wall.minY, width: CGFloat(w) * scale, height: CGFloat(h) * scale)
         let stored = Int(Settings.get("season")) ?? -1
         Sprites.drawWindow(w, h, sky: Self.skyAt(clock()), season: (0..<4).contains(stored) ? stored : Self.seasonAt(clock()),
-                           left: (wall.minX + (wall.width - CGFloat(w) * scale) / 2).rounded(.down), top: wall.minY, scale: scale)
+                           left: (wall.minX + (wall.width - CGFloat(w) * scale) / 2).rounded(.down), top: wall.minY, scale: scale, scene: windowScene)
+        let date = Calendar.current.dateComponents([.hour, .minute], from: clock())
+        Sprites.drawClock(date.hour ?? 0, date.minute ?? 0, left: 9, top: wall.minY + 12, scale: 2)
     }
+
+    private var windowScene: Int {
+        if let s = Int(Settings.get("windowScene")), (0..<3).contains(s) { return s }
+        let date = Calendar.current.dateComponents([.hour, .minute], from: clock())
+        return ((Calendar.current.ordinality(of: .day, in: .year, for: clock()) ?? 1) + (date.hour ?? 0) * 2 + (date.minute ?? 0) / 30) % 3
+    }
+    func nextWindowScene() { remember("windowScene", String((windowScene + 1) % 3)); redraw() }
 
     // ---- Mouse ----------------------------------------------------------------------
 
@@ -734,7 +753,7 @@ final class PetWindow: NSPanel {
     func hitBoard(_ p: NSPoint) -> Bool {
         guard let board = board() else { return false }
         let bottom = boardSpace - 6
-        let top = bottom - (30 + CGFloat(max(1, board.lines.count)) * boardLine + 8)
+        let top = bottom - ((CGFloat(max(1, board.lines.count)) + 1) * boardLine + 12)
         return NSRect(x: 18, y: top, width: canvasSize.width - 36, height: bottom - top).contains(p)
     }
 

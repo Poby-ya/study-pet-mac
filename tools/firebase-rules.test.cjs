@@ -48,6 +48,10 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertSucceeds(set(ref(guest, `rooms/${first}/wardrobe/guest`), '1323133'));
     await assertFails(set(ref(guest, `rooms/${first}/wardrobe/host`), '1323133'));
     await assertFails(set(ref(guest, `rooms/${first}/wardrobe/guest`), '9999999'));
+    await assertSucceeds(set(ref(guest, `rooms/${first}/versions/guest`), '0.5.1'));
+    await assertFails(set(ref(guest, `rooms/${first}/versions/host`), '0.5.1'));
+    await assertFails(set(ref(outsider, `rooms/${first}/versions/outsider`), '0.5.1'));
+    await assertFails(set(ref(guest, `rooms/${first}/versions/guest`), 'https://example.com'));
     await assertFails(set(ref(outsider, 'releaseChannel/stable'), 'v9.0.0'));
     await assertSucceeds(get(ref(env.unauthenticatedContext().database(), 'releaseChannel/stable')));
     const channelRule = JSON.parse(fs.readFileSync('../firebase-rules.json', 'utf8')).rules.releaseChannel.stable['.write'];

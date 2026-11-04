@@ -8,6 +8,7 @@ struct Member {
     var state = "off" // studying, paused, off
     var girl = false
     var extra = ""
+    var version = ""
     var style = ""     // Look.code; empty from versions before random looks
     var minutes = 0
     var updated: Int64 = 0 // server clock, ms
@@ -288,6 +289,7 @@ final class Room: @unchecked Sendable {
         if let extra = member.removeValue(forKey: "extra") { write("PUT", "\(roomPath)/wardrobe/\(me)", extra, quiet: true) }
         let desk = member.removeValue(forKey: "desk") as? Int
         write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
+        write("PUT", "\(roomPath)/versions/\(me)", Updater.current, quiet: true)
         // Optional desk writes can fail independently. Retry with each heartbeat.
         if let desk { write("PUT", "\(roomPath)/desks/\(me)", desk, quiet: true) }
     }
@@ -492,13 +494,14 @@ final class Room: @unchecked Sendable {
     static func members(_ tree: [String: Any]) -> [Member] {
         let all = tree["members"] as? [String: Any] ?? [:]
         let wardrobe = tree["wardrobe"] as? [String: String] ?? [:]
+        let versions = tree["versions"] as? [String: String] ?? [:]
         let desks = tree["desks"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             let desk = Int(num(desks, id))
             let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
-                          extra: wardrobe[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
+                          extra: wardrobe[id] ?? "", version: versions[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
                           drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1)
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {

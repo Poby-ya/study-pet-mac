@@ -91,6 +91,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private var pendingCommit: Segment?
     private var room: StudyRooms?
     private var members: [Member] = []
+    private var interactions = FriendInteractions()
     private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
     private var checking = false
 
@@ -343,6 +344,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     /// One button rolls a complete new look.
     @objc private func chooseSeason(_ sender: NSMenuItem) { safely("계절 저장") { try Settings.set("season", sender.representedObject as? String ?? ""); pet.redraw() } }
+    @objc private func nextWindowScene() { pet.nextWindowScene() }
     @objc private func toggleLargeText() { safely("글자 크기 저장") { try Settings.set("largeText", Settings.get("largeText") == "1" ? "" : "1"); pet.redraw() } }
     @objc private func switchLook() {
         guard let selected = AppearanceWindow.choose(pet.look) else { return }
@@ -356,7 +358,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func connect() {
         room?.dispose()
         room = nil
-        members = []
+        members = []; interactions = FriendInteractions()
         roomSeen = false
         pendingCheck?.invalidate()
         pendingCheck = nil
@@ -382,6 +384,7 @@ final class AppController: NSObject, NSMenuDelegate {
                 self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
             }
             self.roomSeen = true
+            self.interactions.observe(list)
             self.members = list
         }
         joined.poked = { [weak self, weak joined] poke in
@@ -564,7 +567,7 @@ final class AppController: NSObject, NSMenuDelegate {
         room?.flush()
         room?.dispose()
         room = nil
-        members = []
+        members = []; interactions = FriendInteractions()
         pendingCheck?.invalidate()
         pendingCheck = nil
         safely("방 나가기") {
@@ -595,7 +598,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
-        let message = Room.pokeMessage(mate, here: here)
+        let message = interactions.message(mate, here: here, current: Updater.current)
         room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
         pet.goVisit(mate.name, message: here ? message : message + "\n" + Room.offPokeHint,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
@@ -606,6 +609,7 @@ final class AppController: NSObject, NSMenuDelegate {
     /// starts with the call, and choosing it answers.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
+        if poke.message == FriendInteractions.updateNotice { updater.check() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let text = "\(poke.name) : \(poke.message)"
         pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
@@ -694,7 +698,8 @@ final class AppController: NSObject, NSMenuDelegate {
             let entry = item(label, #selector(chooseSeason(_:))); entry.representedObject = value; entry.state = Settings.get("season") == value ? .on : .off; submenu.addItem(entry)
         }
         seasons.submenu = submenu; menu.addItem(seasons)
-        let large = item("글자 크게", #selector(toggleLargeText)); large.state = Settings.get("largeText") == "1" ? .on : .off; menu.addItem(large)
+        menu.addItem(item("창밖 풍경 바꾸기", #selector(nextWindowScene)))
+        let large = item("글자 크게 (이름·말풍선·칠판)", #selector(toggleLargeText)); large.state = Settings.get("largeText") == "1" ? .on : .off; menu.addItem(large)
         menu.addItem(item("캐릭터 꾸미기…", #selector(switchLook)))
         menu.addItem(item(pet.laptop ? "책상에 책 놓기" : "책상에 노트북 놓기", #selector(toggleLaptop)))
         menu.addItem(.separator())

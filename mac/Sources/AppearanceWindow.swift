@@ -1,60 +1,59 @@
 import AppKit
 
+private final class AppearanceContent: NSView { override var isFlipped: Bool { true } }
 final class AppearanceWindow: NSWindow {
-    private var choices: [NSPopUpButton] = []
-    private var locks: [NSButton] = []
-    private let preview = NSImageView(frame: NSRect(x: 25, y: 65, width: 430, height: 145))
+    private var values: [Int]
+    private var locks: [Int: NSButton] = [:]
+    private let preview = NSImageView(frame: NSRect(x: 20, y: 348, width: 468, height: 126))
     private var selected: Look
     private var applied = false
-
+    private let categories = [(0, "머리"), (1, "머리색"), (2, "상의"), (3, "상의 색"), (4, "하의"), (5, "리본 색"), (8, "모자"), (9, "소매"), (11, "문구 스티커"), (12, "가방 색")]
     init(_ look: Look) {
         selected = look
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 490, height: 660), styleMask: [.titled], backing: .buffered, defer: false)
-        title = "캐릭터 꾸미기"; isReleasedWhenClosed = false
-        let labels = ["머리", "머리색", "상의", "상의 색", "하의", "리본 색", "착용", "피부색", "모자", "소매", "주로 쓰는 손", "문구 스티커", "가방", "캐릭터"]
-        let values = [
-            ["기본 1", "기본 2", "기본 3", "기본 4", "기본 5", "땋은 머리", "투블럭", "웨이브 단발"],
-            ["갈색", "검정", "연갈색", "적갈색", "꿀색"],
-            ["후드", "니트", "카디건", "줄무늬", "재킷", "하트 니트", "세일러", "멜빵", "배색 칼라"],
-            ["파랑", "민트", "분홍", "노랑", "회색", "라벤더", "남색", "베이지", "빨강", "올리브"],
-            (1...8).map { "하의 \($0)" }, ["분홍", "빨강", "노랑", "민트", "남색", "흰색"],
-            ["없음", "별 머리핀", "헤드폰"], ["기본", "피부색 2", "피부색 3", "피부색 4"],
-            ["없음", "비니", "베레모"], ["기본", "접은 소매", "긴소매", "손목 밴드"],
-            ["오른손", "왼손"], ["없음", "별", "클로버", "귤 조각"], ["기본", "복주머니", "메신저백", "에코백"], ["남자", "여자"]
-        ]
-        let initial = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory < 2 ? 0 : look.accessory - 1, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
-        let saved = Array(Settings.get("appearanceLocks"))
-        for i in values.indices {
-            let y = CGFloat(620 - i * 28)
-            let label = NSTextField(labelWithString: labels[i]); label.frame = NSRect(x: 18, y: y + 2, width: 115, height: 24)
-            let choice = NSPopUpButton(frame: NSRect(x: 140, y: y, width: 220, height: 26))
-            choice.addItems(withTitles: values[i]); choice.selectItem(at: initial[i]); choice.target = self; choice.action = #selector(changed)
-            let lock = NSButton(checkboxWithTitle: "잠금", target: nil, action: nil); lock.frame = NSRect(x: 375, y: y, width: 90, height: 26)
-            lock.state = i < saved.count && saved[i] == "1" ? .on : .off
-            if i == 7 { lock.state = .on; lock.isEnabled = false; lock.title = "직접 선택" }
-            choices.append(choice); locks.append(lock); contentView?.addSubview(label); contentView?.addSubview(choice); contentView?.addSubview(lock)
+        values = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory < 2 ? 0 : look.accessory - 1, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 528, height: 570), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        title = "캐릭터 꾸미기"; isReleasedWhenClosed = false; minSize = NSSize(width: 440, height: 400)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 65, width: 528, height: 505)); scroll.hasVerticalScroller = true; scroll.autoresizingMask = [.width, .height]
+        let body = AppearanceContent(frame: NSRect(x: 0, y: 0, width: 508, height: 505)); scroll.documentView = body; contentView?.addSubview(scroll)
+        let toggles = [("캐릭터", 13, ["남자", "여자"]), ("쓰는 손", 10, ["오른손", "왼손"]), ("액세서리", 6, ["없음", "별 머리핀", "헤드폰"]), ("피부색", 7, ["기본", "살구", "갈색", "짙은 갈색"])]
+        for (n, entry) in toggles.enumerated() {
+            let (title, index, items) = entry
+            let label = NSTextField(labelWithString: title); label.frame = NSRect(x: 20, y: CGFloat(20 + n * 38), width: 80, height: 24); body.addSubview(label)
+            let toggle = NSSegmentedControl(labels: items, trackingMode: .selectOne, target: self, action: #selector(toggleChanged(_:)))
+            toggle.tag = index; toggle.selectedSegment = values[index]; toggle.frame = NSRect(x: 105, y: CGFloat(16 + n * 38), width: 380, height: 30); body.addSubview(toggle)
         }
-        contentView?.addSubview(preview)
-        for (title, x, action) in [("잠금 빼고 랜덤", 20, #selector(roll)), ("적용", 290, #selector(apply)), ("취소", 385, #selector(cancel))] {
-            let button = NSButton(title: title, target: self, action: action); button.frame = NSRect(x: CGFloat(x), y: 20, width: title.count > 4 ? 145 : 80, height: 30); contentView?.addSubview(button)
+        let hint = NSTextField(labelWithString: "마음에 드는 부분만 체크하면 다음에도 그대로예요."); hint.frame = NSRect(x: 20, y: 180, width: 480, height: 24); body.addSubview(hint)
+        let saved = Array(Settings.get("appearanceLocks"))
+        for (n, entry) in categories.enumerated() {
+            let (i, title) = entry
+            let check = NSButton(checkboxWithTitle: title + " 고정", target: nil, action: nil)
+            check.frame = NSRect(x: CGFloat(20 + (n % 3) * 160), y: CGFloat(216 + (n / 3) * 28), width: 155, height: 26)
+            check.state = i < saved.count && saved[i] == "1" ? .on : .off; locks[i] = check; body.addSubview(check)
+        }
+        body.addSubview(preview)
+        let caption = NSTextField(labelWithString: "        필기                      잠깐 쉬기                    손인사"); caption.frame = NSRect(x: 20, y: 478, width: 480, height: 24); body.addSubview(caption)
+        for (title, x, width, action) in [("랜덤 뽑기", 20, 130, #selector(roll)), ("적용", 330, 80, #selector(apply)), ("취소", 420, 80, #selector(cancel))] {
+            let button = NSButton(title: title, target: self, action: action); button.frame = NSRect(x: CGFloat(x), y: 20, width: CGFloat(width), height: 30); contentView?.addSubview(button)
+            if title == "적용" { button.keyEquivalent = "\r" }; if title == "취소" { button.keyEquivalent = "\u{1b}" }
         }
         changed(); center()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
-    private func read() -> Look {
-        let v = choices.map { $0.indexOfSelectedItem }
-        return Look(girl: v[13] == 1, v[0], v[1], v[2], v[3], v[4], v[5]).withExtras((6...12).map { String($0 == 6 ? [0, 2, 3][v[$0]] : v[$0]) }.joined())
-    }
-    @objc private func changed() {
+    private func read() -> Look { Look(girl: values[13] == 1, values[0], values[1], values[2], values[3], values[4], values[5]).withExtras((6...12).map { String($0 == 6 ? [0, 2, 3][values[$0]] : values[$0]) }.joined()) }
+    @objc private func toggleChanged(_ sender: NSSegmentedControl) { values[sender.tag] = sender.selectedSegment; changed() }
+    private func changed() {
         let look = read()
-        preview.image = NSImage(size: NSSize(width: 430, height: 145), flipped: true) { _ in
-            for (i, pose) in [Sprites.Pose.writeA, .dozeA, .waveA].enumerated() { Sprites.draw(pose, look, left: CGFloat(i * 143), top: 8, scale: 3) }
+        preview.image = NSImage(size: NSSize(width: 468, height: 126), flipped: true) { _ in
+            for (i, pose) in [Sprites.Pose.writeA, .dozeA, .waveA].enumerated() { Sprites.draw(pose, look, left: CGFloat(i * 156), top: 6, scale: 3, decor: Sprites.Decor(seed: 7)) }
             return true
         }
     }
-    @objc private func roll() { for i in choices.indices where locks[i].state == .off { choices[i].selectItem(at: Int.random(in: 0..<choices[i].numberOfItems)) }; changed() }
+    @objc private func roll() {
+        let counts = [8, 5, 9, 10, values[13] == 1 ? 8 : 4, 6, 3, 4, 3, 4, 2, 4, 4, 2]
+        for (i, _) in categories where locks[i]?.state == .off { values[i] = Int.random(in: 0..<counts[i]) }; changed()
+    }
     @objc private func apply() {
-        do { try Settings.set("appearanceLocks", locks.map { $0.state == .on ? "1" : "0" }.joined()); selected = read(); applied = true; NSApp.stopModal() }
+        do { try Settings.set("appearanceLocks", (0..<14).map { locks[$0]?.state == .on ? "1" : "0" }.joined()); selected = read(); applied = true; NSApp.stopModal() }
         catch { let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
     }
     @objc private func cancel() { NSApp.stopModal() }

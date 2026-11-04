@@ -14,6 +14,39 @@ enum SelfTest {
         if !ok { failures.append(what) }
     }
 
+    private static func checkRevision(_ out: URL) {
+        let interactions = FriendInteractions()
+        var friend = Member(id: "friend", state: "off", version: "0.5.0", updated: 1000)
+        interactions.observe([friend]); friend.state = "studying"; interactions.observe([friend])
+        check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: newer app offers update before greeting")
+        friend.version = "0.5.1"; check(interactions.message(friend, here: true, current: "0.5.1") == "드디어 왔구나 !", "friend: return greeting")
+        friend.state = "paused"; interactions.observe([friend]); friend.state = "studying"; interactions.observe([friend])
+        check(interactions.message(friend, here: true, current: "0.5.1") == "드디어 깼구나 !", "friend: rest greeting")
+        var last = ""
+        for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
+        friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") != FriendInteractions.updateNotice, "friend: legacy version never guessed")
+        check(Sprites.maskLaptop(["ssss"], x: 0, y: 0, lid: Sprites.Layer([".kk."], 0, 0)) == ["s..s"], "laptop: lid masks hands")
+        check(Sprites.heldDrink(.mug, tilted: false).count != Sprites.heldDrink(.mug, tilted: true).count, "tea: cup tips")
+        save(render(NSSize(width: 480, height: 306)) {
+            for scene in 0..<3 { for season in 0..<4 {
+                let grid = Sprites.windowGrid(40,34,sky: 2,season: season,scene: scene)
+                check(grid.count == 34 && grid.allSatisfy { $0.count == 40 }, "window: valid variant")
+                if scene > 0 { check(grid != Sprites.windowGrid(40,34,sky: 2,season: season), "window: different scene") }
+                Sprites.drawWindow(40,34,sky: 2,season: season,left: CGFloat(season*120),top: CGFloat(scene*102),scale: 3,scene: scene)
+            } }
+        }, out, "window-variants.png")
+        save(render(NSSize(width: 624,height: 630)) {
+            for drink in 1...5 { for f in 0..<4 { Sprites.draw([Sprites.Pose.teaReach,.teaHold,.teaLift,.teaSip][f], Look(girl: true,1,0,2,2,0,0), left: CGFloat(f*156),top: CGFloat((drink-1)*126),scale: 3,decor: Sprites.Decor(drink: Sprites.Drink(rawValue: drink)!,laptop: true,seed: 7)) } }
+        }, out, "tea.png")
+        save(render(NSSize(width: 936,height: 252)) {
+            let poses: [Sprites.Pose] = [.writeA,.writeB,.readA,.readB,.bookmark,.turnPage,.restHands,.foldArms,.spinA,.idea,.dozeA,.cheer]
+            for (i,pose) in poses.enumerated() { Sprites.draw(pose,Look(girl: true,1,0,2,2,0,0),left: CGFloat(i%6*156),top: CGFloat(i/6*126),scale: 3,decor: Sprites.Decor(laptop: true,seed: 7)) }
+        }, out, "laptop.png")
+        let appearance = AppearanceWindow(Look(girl: true,2,0,3,2,0,1))
+        if let content = appearance.contentView { content.layoutSubtreeIfNeeded(); save(capture(content),out,"appearance.png") }
+        appearance.orderOut(nil)
+    }
+
     static func run(outDir: String?, invite: String?) -> Int32 {
         let out = URL(fileURLWithPath: outDir ?? NSTemporaryDirectory() + "StudyPet-selftest")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -21,6 +54,7 @@ enum SelfTest {
         try? FileManager.default.removeItem(at: Records.folder)
 
         check(HelpWindow.sections().count == 5, "help: five offline sections are bundled")
+        checkRevision(out)
         checkRecords()
         checkRecovery()
         checkUpdater()

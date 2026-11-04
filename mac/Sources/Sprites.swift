@@ -82,7 +82,7 @@ enum Sprites {
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
-    enum Visiting: CaseIterable { case walk, wave, reach }
+    enum Visiting: CaseIterable { case walk, wave, reach, cheer }
 
     private enum Eyes { case open, closed, happy, up, left, right, down }
     private enum Mouth { case small, open, smile }
@@ -611,19 +611,11 @@ enum Sprites {
             Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
         ], at: at)
         if d.away { return layers }
-        let bag: [String]
-        switch look.bag {
-        case 1: bag = ["..kk..", ".kRRk.", "kMMMMk", "kMMMMk", ".kkkk."]
-        case 2: bag = [".kkkkkk.", "kMMMMMMk", "kMMppMMk", "kMMMMMMk", ".kkkkkk."]
-        case 3: bag = [".k..k.", ".k..k.", "kkkkkk", "kMMMMk", "kMMMMk", ".kkkk."]
-        default: bag = bags[d.seed % bags.count]
-        }
-        let bagColor = String(Array("ztgprV")[d.seed % 6])
-        layers.insert(Layer(bag.map { $0.replacingOccurrences(of: "M", with: bagColor) }, 42, 28), at: at)
-        if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 17 : 21, d.laptop ? 22 : 25)) }
+        layers.insert(Layer(bags[look.bag], 42, 28), at: at)
+        if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
-            let drink = drinkArt[(d.drink == .none ? Drink.mug : d.drink).rawValue]
+            let drink = heldDrink(d.drink == .none ? .mug : d.drink, tilted: pose == .teaSip)
             let x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
             let y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
             layers.append(Layer(drink, x, y))
@@ -696,16 +688,16 @@ enum Sprites {
     /// the tree in its season (0 spring, 1 summer, 2 autumn, 3 winter) high in the left corner.
     private static var windowCache: [String: [String]] = [:]
     private static var windowSize = ""
-    static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int) -> [String] {
+    static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int, scene: Int = 0) -> [String] {
         let size = "\(w)x\(h)"
         if windowSize != size { windowCache.removeAll(); windowSize = size }
-        let key = "\(sky)-\(season)"
+        let key = "\(sky)-\(season)-\(scene)"
         if let grid = windowCache[key] { return grid }
-        let grid = buildWindow(w, h, sky: sky, season: season)
+        let grid = buildWindow(w, h, sky: sky, season: season, scene: scene)
         windowCache[key] = grid
         return grid
     }
-    private static func buildWindow(_ w: Int, _ h: Int, sky: Int, season: Int) -> [String] {
+    private static func buildWindow(_ w: Int, _ h: Int, sky: Int, season: Int, scene: Int = 0) -> [String] {
         var grid = Array(repeating: Array(repeating: Array("1234")[sky], count: w), count: h)
         func put(_ x: Int, _ y: Int, _ c: Character) { if x > 0 && x < w - 1 && y > 0 && y < h - 2 { grid[y][x] = c } }
         func stamp(_ art: [String], _ x0: Int, _ y0: Int, _ c: Character) {
@@ -722,6 +714,7 @@ enum Sprites {
             stamp([".pp.", "pppp", "pppp", ".pp."], w - 9, 3, sky == 1 ? "Y" : "p")
         }
 
+        if scene == 0 {
         // The tree: a trunk up from the sill, its crown in the season's colours, high up
         // in the corner where speech bubbles and heads don't hide it.
         // A trunk, then branches forking up and out of it; in winter they stay bare under
@@ -763,6 +756,29 @@ enum Sprites {
         if season == 1 { put(w - 4, h / 3 - 1, "G"); put(w - 5, h / 3 - 2, "i"); put(w - 3, h / 3 - 2, "i") }
         if season == 2 { put(w - 5, h - 3, "t"); put(w - 4, h - 3, "y"); put(w - 4, h - 4, "p") }
         if season == 3 { for i in 1...4 { put(w - 1 - i, h - 2 - i, "i"); put(w - 2 - i, h - 2 - i, "w") } }
+        } else if scene == 1 {
+            for x in 1..<(w-1) {
+                let horizon = h * 2 / 3 + Int((sin(Double(x) * 0.18) * 2).rounded(.toNearestOrEven))
+                for y in horizon..<(h-2) { put(x, y, season == 1 ? "3" : season == 2 ? "y" : season == 3 ? "w" : "g") }
+                if season == 1 { put(x,h-5,"i"); if x % 5 < 3 { put(x,h-8,"i") } }
+                if season == 0 && x % 5 == 0 { put(x,horizon-1,"G"); put(x,horizon-2,"F"); put(x-1,horizon-2,"r"); put(x+1,horizon-2,"b") }
+                if season == 2 && x % 4 == 0 { put(x,horizon-1,"D"); put(x+1,horizon-2,"p") }
+            }
+            if season == 1 { stamp(["...w...", "..ww...", ".www...", "kkkkkkk", ".DDDDD."], w/2, h/2, "w") }
+            if season == 2 { stamp(["...D...", "..DDD..", ".DDDDD.", "DDDDDDD", ".twwt..", ".tttt.."], 3, h/2, "D") }
+            if season == 3 { for x in 1..<(w-1) { let peak = h/2 - 4 + abs(x-w/3)/2; if peak <= h-3 { for y in stride(from: h-3, through: peak, by: -1) { put(x,y,y < h/2 ? "w" : "i") } } } }
+        } else {
+            for x0 in stride(from: 2, to: w-3, by: 10) {
+                let roof = h/2 + (x0 % 3)*2
+                for x in x0..<min(x0+8,w-1) { for y in roof..<(h-2) { put(x,y,y == roof ? (season == 3 ? "w" : "D") : "l") } }
+                for x in stride(from: x0+2, to: min(x0+7,w-1), by: 3) { for y in stride(from: roof+2, to: h-3, by: 4) { put(x,y,sky == 0 ? "Y" : "i"); put(x,y+1,sky == 0 ? "p" : "3") } }
+                put(x0+6,roof-1,"D"); put(x0+6,roof-2,"D")
+                if season == 0 { put(x0+2,roof-1,"F"); put(x0+3,roof-1,"r") }
+                if season == 1 { put(x0+2,roof-1,"5"); put(x0+3,roof-1,"G") }
+                if season == 2 { put(x0+2,h-3,"t"); put(x0+3,h-4,"y") }
+            }
+        }
+        if scene != 0 && season == 3 { for i in 0..<(w*h/50) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
         // Mullions every 16 pixels or so, a transom, then the frame and the sill.
         let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
         for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
@@ -772,8 +788,8 @@ enum Sprites {
         return grid.map { String($0) }
     }
 
-    static func drawWindow(_ w: Int, _ h: Int, sky: Int, season: Int, left: CGFloat, top: CGFloat, scale: CGFloat) {
-        draw(layers: [Layer(windowGrid(w, h, sky: sky, season: season), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
+    static func drawWindow(_ w: Int, _ h: Int, sky: Int, season: Int, left: CGFloat, top: CGFloat, scale: CGFloat, scene: Int = 0) {
+        draw(layers: [Layer(windowGrid(w, h, sky: sky, season: season, scene: scene), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
     }
 
     // A laptop seen from the front of the desk: the back of its lid, and shut for a nap.
@@ -782,6 +798,8 @@ enum Sprites {
     private static let laptopShut = ["kkkkkkkkkkkkkk", "kxxxxxxxxxxxxk", "kkkkkkkkkkkkkk"]
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool, hairLag: Int) -> [Layer] {
+        var pose = pose
+        if laptop && [.oops, .pickUp, .bend, .recover, .found, .think, .idea, .spinA, .spinB, .spinC, .spinD].contains(pose) { pose = [.idea, .found].contains(pose) ? .content : .restHands }
         if pose == .pickUp {
             let (back, head) = headLayers(look, .down, .small, 10, 12)
             var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
@@ -964,7 +982,7 @@ enum Sprites {
             lying = [Layer(pose == .foldArms ? ["..kkkkkkkkkkkk...", "..kxxxxxxxxxxk...", ".kkxxxxxxxxxxkk..", "kkkkkkkkkkkkkkkkk", "kXXXXXXXXXXXXXXXk"] : laptopOpen, 6, pose == .foldArms ? 22 : 20)]
             let up = pose == .writeB || pose == .blinkB ? 1 : 0
             if let l = leftHand, l.grid == hand, l.x == 7 { leftHand = Layer(hand, 4, 23 + up) }
-            if pose == .turnPage || pose == .bookmark { leftHand = Layer(hand, 4, 24); rightHand = Layer(hand, 16, 25) }
+            if [.turnPage, .bookmark, .readA, .readB].contains(pose) { leftHand = Layer(hand, 4, 24); rightHand = Layer(hand, 18, 24); front.removeAll() }
             if let r = rightHand, r.grid == pencilHand { rightHand = Layer(hand, 21, 24 - up) }
         }
         var onDesk: [Layer] = []
@@ -977,14 +995,40 @@ enum Sprites {
         if let mark = mark { onDesk.append(Layer(mark, mark == question ? 28 : 26, 1)) }
         func move(_ l: Layer) -> Layer { Layer(l.grid, l.x + sway, l.y - rise) }
         // Person, then the desk in front of their lap, then what lies on the desk.
-        return shift(person.map(move)) + [Layer(desk, 0, 27)] + shift(lying) + shift(onDesk.map(move))
+        var on = onDesk.map(move)
+        if laptop { let lid = lying[0]; on = on.map { Layer(maskLaptop($0.grid, x: $0.x, y: $0.y, lid: lid), $0.x, $0.y) } }
+        return shift(person.map(move)) + [Layer(desk, 0, 27)] + shift(lying) + shift(on)
     }
+
+    static func maskLaptop(_ grid: [String], x: Int, y: Int, lid: Layer) -> [String] {
+        let mask = lid.grid.map(Array.init)
+        return grid.enumerated().map { j, row in String(row.enumerated().map { i, c in
+            let mx = x + i - lid.x, my = y + j - lid.y
+            return my >= 0 && my < mask.count && mx >= 0 && mx < mask[my].count && mask[my][mx] != "." ? Character(".") : c
+        }) }
+    }
+    static func heldDrink(_ drink: Drink, tilted: Bool) -> [String] {
+        let art = drinkArt[drink.rawValue].map(Array.init)
+        if !tilted { return drinkArt[drink.rawValue] }
+        return (0..<art[0].count).map { y in String((0..<art.count).map { x in art[x][art[0].count - 1 - y] }) }
+    }
+    static func flame(_ alt: Bool) -> [String] { alt ? ["..t.", ".tt.", "tpty", "tyyt", ".pp."] : [".t..", ".tt.", "ytpt", "tyyt", ".pp."] }
+    static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 20, 12), Layer(flame(!alt), 28, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
+    static func clockGrid(_ hour: Int, _ minute: Int) -> [String] {
+        var grid = Array(repeating: Array(repeating: Character("."), count: 17), count: 17)
+        for y in 0..<17 { for x in 0..<17 { let r = (x-8)*(x-8)+(y-8)*(y-8); if r <= 64 { grid[y][x] = r >= 49 ? "d" : "b" } } }
+        for (x,y) in [(8,2), (14,8), (8,14), (2,8)] { grid[y][x] = "D" }
+        func hand(_ angle: Double, _ length: Int) { for i in 0...(length * 3) { let x = 8 + Int((sin(angle) * Double(i) / 3).rounded(.toNearestOrEven)); let y = 8 - Int((cos(angle) * Double(i) / 3).rounded(.toNearestOrEven)); grid[y][x] = "k" } }
+        hand((Double(hour % 12) + Double(minute) / 60) * .pi / 6, 4); hand(Double(minute) * .pi / 30, 6); grid[8][8] = "t"
+        return grid.map { String($0) }
+    }
+    static func drawClock(_ hour: Int, _ minute: Int, left: CGFloat, top: CGFloat, scale: CGFloat) { draw(layers: [Layer(clockGrid(hour, minute), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
 
     /// A friend standing up, with legs since no desk hides them. `leftHand` waves with the
     /// other hand, the one away from a seated friend who would hide it.
     static func visitor(_ look: Look, _ pose: Visiting, alt: Bool, leftHand: Bool = false) -> [Layer] {
         let walking = pose == .walk
-        let left = leftHand && pose == .wave
+        let left = leftHand && (pose == .wave || pose == .cheer)
         let (back, head) = headLayers(look, .open, walking ? .small : .smile, 7, 0)
         var layers = [
             Layer(body(look, sitting: false, leftArm: walking || left, rightArm: walking || !left), 6, 16),
@@ -994,7 +1038,8 @@ enum Sprites {
             layers.append(arm(look, (9, 18), (alt ? 7 : 10, 22), (alt ? 6 : 11, 25)))
             layers.append(arm(look, (21, 18), (alt ? 22 : 19, 22), (alt ? 23 : 18, 25)))
         }
-        if left { layers.append(arm(look, (9, 18), (5, 15), alt ? (4, 8) : (2, 9))) }
+        if pose == .cheer { layers.append(left ? arm(look, (9,18), (5,20), (4, alt ? 15 : 16)) : arm(look, (21,18), (25,20), (26, alt ? 15 : 16))) }
+        else if left { layers.append(arm(look, (9, 18), (5, 15), alt ? (4, 8) : (2, 9))) }
         else if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
         return shift(layers + head)
     }
