@@ -241,7 +241,7 @@ final class PetWindow: NSPanel {
     func showFeedback(_ text: String) { feedbackText = text; feedbackUntil = animationSeconds + 8; updateShownAt = animationSeconds; if minimized { restoreScene() }; if !isVisible { appear(.notifying) }; redraw() }
     var updateText: String {
         if animationSeconds < feedbackUntil { return feedbackText }
-        updateAvailable && animationSeconds - updateShownAt < 8 && (mood == .studying || mood == .dozing || mood == .notifying) ? Self.updateMessage : ""
+        return updateAvailable && animationSeconds - updateShownAt < 8 && (mood == .studying || mood == .dozing || mood == .notifying) ? Self.updateMessage : ""
     }
 
     /// Stand up, wave for about two seconds, fade out, hide.
