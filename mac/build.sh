@@ -14,6 +14,7 @@ lipo -create -output build/StudyPet.app/Contents/MacOS/StudyPet build/StudyPet-a
 mkdir -p build/StudyPet.app/Contents/Resources
 cp ../Shared/사용\ 설명서.txt build/StudyPet.app/Contents/Resources/help.txt
 cp install-mac.sh build/StudyPet.app/Contents/Resources/updater.sh
+cp ../web/config.json build/StudyPet.app/Contents/Resources/web-config.json
 cp Info.plist build/StudyPet.app/Contents/
 # Ad-hoc signature: Apple silicon won't run an unsigned binary. Not notarized, which the
 # one-line installer gets around (curl downloads carry no quarantine flag).

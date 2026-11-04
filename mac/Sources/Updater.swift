@@ -48,6 +48,7 @@ final class Updater {
     private(set) var release: UpdateRelease?
     private var checkAgain = false
     private(set) var checking = false
+    private(set) var checkSucceeded = false
     private(set) var installing = false
     private(set) var status = "새 버전을 자동으로 확인합니다."
     var changed: (() -> Void)?
@@ -59,6 +60,7 @@ final class Updater {
         guard !installing else { return }
         if checking { checkAgain = true; return }
         checking = true
+        checkSucceeded = false
         status = "업데이트 확인 중…"
         changed?()
         Task { @MainActor in
@@ -75,6 +77,7 @@ final class Updater {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw RoomError("릴리스를 확인하지 못했어요.") }
                 release = try UpdateRelease.parse(data)
+                checkSucceeded = true
                 availabilityChanged?(available)
                 status = available ? "새 버전 \(release!.tag)을 설치할 수 있어요." : "최신 버전을 사용하고 있어요."
                 if available, Settings.get("updateNotified") != release!.tag {

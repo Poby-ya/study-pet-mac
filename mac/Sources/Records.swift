@@ -57,6 +57,15 @@ enum Records {
         try (old + separator + format(normalized) + "\r\n").write(to: sessionsURL, atomically: true, encoding: .utf8)
     }
 
+    static func replaceSynced(_ segments: [Segment], hidden: [String]) throws {
+        try files.createDirectory(at: folder, withIntermediateDirectories: true)
+        let backup = folder.appendingPathComponent("sessions-before-sync.csv")
+        if files.fileExists(atPath: sessionsURL.path) && !files.fileExists(atPath: backup.path) { try files.copyItem(at:sessionsURL,to:backup) }
+        let text = "\u{FEFF}start,end,subject\r\n" + segments.filter { $0.end > $0.start }.sorted { $0.start < $1.start }.map(format).joined(separator:"\r\n") + "\r\n"
+        try text.write(to:sessionsURL,atomically:true,encoding:.utf8)
+        try hidden.joined(separator:"\n").write(to:hiddenURL,atomically:true,encoding:.utf8)
+    }
+
     static func commit(_ segment: Segment) throws {
         try saveOpen(start: segment.start, lastSeen: segment.end, subject: segment.subject)
         try append(segment)

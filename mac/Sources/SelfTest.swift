@@ -15,6 +15,25 @@ enum SelfTest {
     }
 
     private static func checkRevision(_ out: URL) {
+        let legacyLook = Look.parse("g001040", girl: false).withExtras("0020030")
+        check(legacyLook.additions == 7 && legacyLook.withAdditions(0).additions == 0, "appearance: legacy defaults and all-off flags")
+        func signature(_ look: Look) -> String {
+            Sprites.compose(.writeA, look, decor: Sprites.Decor(drink: .beer, seed: 7)).map { "\($0.x),\($0.y):" + $0.grid.joined(separator: "/") }.joined(separator: "|")
+        }
+        check(signature(legacyLook) == signature(legacyLook.withAdditions(7)), "appearance: explicit legacy mask preserves existing pixels")
+        check(signature(legacyLook) != signature(legacyLook.withAdditions(0)), "appearance: unchecked additions change rendered pixels")
+        for mask in 0..<8 {
+            check(Sprites.grids(legacyLook.withAdditions(mask)).allSatisfy { $0.allSatisfy { $0.allSatisfy(Sprites.isKnownColor) } }, "appearance: optional combinations use known pixel colours")
+        }
+        let displayKeys = ["largeText", "boardTextSize", "bubbleTextSize", "nameTextSize"]
+        let displayBefore = displayKeys.map { ($0, Settings.get($0)) }
+        do {
+            try Settings.setMany(("largeText", "1"), ("boardTextSize", "200"), ("bubbleTextSize", "150"), ("nameTextSize", "75"))
+            check(DisplayPreferences.percent("boardTextSize") == 200 && DisplayPreferences.percent("bubbleTextSize") == 150 && DisplayPreferences.percent("nameTextSize") == 75, "sizes: board, bubble and nickname stay independent")
+            try Settings.set("nameTextSize", "")
+            check(DisplayPreferences.percent("nameTextSize") == 125 && DisplayPreferences.percent("boardTextSize") == 200, "sizes: legacy fallback respects explicit sizes")
+        } catch { check(false, "sizes: settings test could not save") }
+        for (key, value) in displayBefore { try? Settings.set(key, value) }
         let interactions = FriendInteractions()
         var friend = Member(id: "friend", state: "off", version: "0.5.0", updated: 1000)
         interactions.observe([friend]); friend.state = "studying"; interactions.observe([friend])
@@ -57,6 +76,7 @@ enum SelfTest {
         checkRevision(out)
         checkRecords()
         checkRecovery()
+        checkDeviceTransitions()
         checkUpdater()
         checkPetControls(out)
         checkPresentation(out)
@@ -92,7 +112,7 @@ enum SelfTest {
         help.contentView?.layoutSubtreeIfNeeded()
         save(capture(help.contentView!), out, "help.png")
         help.close()
-        let settings = SettingsWindow(updater: Updater(), apply: {}, login: {})
+        let settings = SettingsWindow(updater: Updater(), apply: {}, login: {}, resize: { _ in })
         settings.orderFront(nil)
         settings.contentView?.layoutSubtreeIfNeeded()
         save(capture(settings.contentView!), out, "settings.png")
@@ -193,6 +213,41 @@ enum SelfTest {
         pet.preview(.leaving, frame: 4)
         save(render(petSize) { pet.paint() }, out, "farewell.png")
         pet.close()
+    }
+
+    private static func checkDeviceTransitions() {
+        let minute: Int64 = 60000
+        func operation(_ type: String, _ id: String, _ at: Int64, _ device: String, _ source: [String: Any], _ subject: String = "수학") -> [String: Any] {
+            ["type":type,"id":id,"at":at,"device":device,"observed":DeviceSync.obj(source,"active"),"subject":subject]
+        }
+        func total(_ source: [String: Any]) -> Int64 {
+            DeviceSync.obj(source,"segments").values.compactMap { $0 as? [String:Any] }.reduce(Int64(0)) { $0 + DeviceSync.num($1,"end") - DeviceSync.num($1,"start") }
+        }
+        do {
+            let empty = DeviceSync.empty()
+            let pc = try DeviceSync.transition(empty, operation("start","test-start",1000,"test-pc",empty))
+            let phone = try DeviceSync.transition(pc, operation("takeover","test-transfer",1000+20*minute,"test-phone",pc))
+            check(DeviceSync.str(DeviceSync.obj(phone,"active"),"device") == "test-phone" && total(phone) == 20*minute,"sync: phone takes over the PC timer at one boundary")
+            let late = operation("stop","test-late-stop",1000+35*minute,"test-pc",pc)
+            let reconciled = try DeviceSync.transition(phone,late)
+            check(DeviceSync.str(DeviceSync.obj(reconciled,"active"),"device") == "test-phone" && total(reconciled) == 20*minute,"sync: a late offline stop cannot stop or extend a phone timer")
+            let finished = try DeviceSync.transition(reconciled,operation("stop","test-phone-stop",1000+30*minute,"test-phone",reconciled))
+            check(DeviceSync.obj(finished,"active").isEmpty && total(finished) == 30*minute,"sync: twenty PC minutes plus ten phone minutes equals thirty")
+            let replay = try DeviceSync.transition(finished,late)
+            check(total(replay) == total(finished) && DeviceSync.num(replay,"revision") == DeviceSync.num(finished,"revision"),"sync: acknowledged operations are idempotent")
+            let early = try DeviceSync.transition(phone,operation("pause","test-early-pause",1000+15*minute,"test-pc",pc))
+            check(total(early) == 15*minute && DeviceSync.str(DeviceSync.obj(early,"active"),"device") == "test-phone","sync: an early offline pause only shortens its old segment")
+            let paused = try DeviceSync.transition(pc,operation("pause","test-pause",1000+20*minute,"test-pc",pc))
+            let transferredPause = try DeviceSync.transition(paused,operation("takeover","test-paused-transfer",1000+50*minute,"test-phone",paused))
+            check(DeviceSync.str(DeviceSync.obj(transferredPause,"active"),"state") == "paused" && total(transferredPause) == 20*minute,"sync: transferring a paused session excludes rest time")
+            do { _ = try DeviceSync.transition(pc,operation("stop","test-foreign-stop",1000+minute,"test-phone",pc)); check(false,"sync: foreign stop was accepted") } catch { }
+            var imported: [String:Any] = ["id":"test-import","type":"import","at":1000,"device":"test-pc","importId":"test-legacy","segments":["test-row":["start":1000,"end":1000+minute,"subject":"수학"]]]
+            let migrated = try DeviceSync.transition(empty,imported)
+            let deleted = try DeviceSync.transition(migrated,operation("delete","test-delete",1000+2*minute,"test-pc",migrated))
+            imported["id"] = "test-import-retry"
+            let retried = try DeviceSync.transition(deleted,imported)
+            check(total(retried) == 0,"sync: import retry cannot revive a deleted subject")
+        } catch { check(false,"sync: pure transitions failed: \(error)") }
     }
 
     private static func checkPresentation(_ out: URL) {
@@ -439,11 +494,12 @@ enum SelfTest {
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
         var board = Room.board(members, me: "me")
-        check(board.title == "공부 중 2 · 쉬는 중 1" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
-              "board: everyone else at their desk, studying first, away and off left out: \(board.lines)")
+        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중", "서연 · 노는 중", "하늘 · 노는 중"],
+              "board: study, rest and absent people keep individual rows: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
         board = Room.board(members, me: "me")
-        check(board.title == "공부 중 4 · 쉬는 중 1" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == Room.boardLines && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        check(Room.board([], me: "me").title == "공부 중 0 / 쉬는 중 0 / 노는 중 0", "board: empty room counts are explicit")
         check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == Room.boardLines,
               "board: grows only up to boardLines")
 

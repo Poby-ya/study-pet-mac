@@ -54,6 +54,12 @@ final class AppController: NSObject, NSMenuDelegate {
     private let localId: String      // my id on the local test server, which has no sign-in
     private var myId = ""            // my member id in the room: the Firebase uid, or localId
     private var auth: Auth?
+    private var deviceSync: DeviceSync?
+    private var syncCheck: Timer?
+    private var syncBusy = false
+    private var profileDirty = false
+    private var profileEdit = 0
+    private var deviceLink: DeviceLinkWindow?
 
     private var state = State.off
     private var subject = ""
@@ -119,8 +125,7 @@ final class AppController: NSObject, NSMenuDelegate {
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
                 let board = Room.board(room.boardMembers, me: self.myId)
-                if room.choices.count > 1 { return ("\(board.title) · \(room.name) \((room.choices.firstIndex { $0.id == room.selected } ?? 0) + 1)/\(room.choices.count) ↻", board.lines) }
-                return (room.name.isEmpty ? board.title : "\(room.name) · \(board.title)", board.lines)
+                return (room.name.isEmpty ? board.title : "\(room.name)\n\(board.title)", board.lines)
             }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
         }
@@ -202,6 +207,7 @@ final class AppController: NSObject, NSMenuDelegate {
         page.picked = { [weak self] in self?.pickSubject($0) }
         page.removed = { [weak self] removed, alsoRecords in
             self?.safely("과목 지우기") {
+                if self.deviceSync != nil { self.syncDelete(removed,all:alsoRecords); return }
                 try Records.hide(removed)
                 if alsoRecords { try Records.deleteSubject(removed) }
             }
@@ -221,6 +227,7 @@ final class AppController: NSObject, NSMenuDelegate {
         heartbeat = timer
     }
     private func start(_ picked: String) {
+        if deviceSync != nil { syncChange("start", picked); return }
         guard state == .off, tryCommit() else { return }
         do { try Records.recoverOpen() } catch { alert("지난 기록을 먼저 저장해야 해요.\n" + describe(error)); return }
         safely("과목 목록 저장") { try Records.unhide(picked) }
@@ -237,6 +244,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     private func pickSubject(_ picked: String) {
         if quitting { return }
+        if deviceSync != nil { if subject != picked { syncChange(state == .off ? "start" : "subject",picked) }; return }
         if state == .off { start(picked); return }
         if subject == picked { return }
         guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
@@ -268,6 +276,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func pause() {
+        if let sync = deviceSync { syncChange(sync.mine ? "pause" : "takeover"); return }
         closeSegment()
         state = .paused
         pet.setMood(.dozing)
@@ -275,6 +284,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func resume() {
+        if let sync = deviceSync { syncChange(sync.mine ? "resume" : "takeover"); return }
         if quitting { return }
         guard tryCommit() else { return }
         state = .studying
@@ -285,6 +295,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     @objc private func stop() {
+        if deviceSync != nil { syncChange("stop"); return }
         if quitting { return }
         guard state != .off else { return }
         guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
@@ -313,6 +324,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     /// Writes the running segment to sessions.csv. Safe to call when nothing is running.
     @discardableResult private func closeSegment() -> Bool {
+        if deviceSync != nil { return true }
         if let start = segmentStart {
             let end = segmentEnd(start)
             pendingCommit = Segment(start: start, end: end, subject: subject)
@@ -328,9 +340,13 @@ final class AppController: NSObject, NSMenuDelegate {
         catch { alert("기록을 저장하지 못했어요. 다시 시작하거나 그만하기를 누르면 재시도해요.\n\n" + describe(error)); return false }
     }
 
-    private var elapsed: TimeInterval { banked + (segmentStart.map { segmentEnd($0).timeIntervalSince($0) } ?? 0) }
+    private var elapsed: TimeInterval { deviceSync?.elapsed ?? (banked + (segmentStart.map { segmentEnd($0).timeIntervalSince($0) } ?? 0)) }
 
+    private var feedback = ""
+    private var feedbackUntil = Date.distantPast
     private func bubble() -> String {
+        if Date() < feedbackUntil { return feedback }
+        if let sync = deviceSync, !sync.mine { return subject + "\n다른 기기에서 공부 중\n클릭해서 이어하기" }
         if state == .studying {
             let cheer = StudyCheer.text(elapsed)
             if !cheer.isEmpty { return cheer }
@@ -349,6 +365,7 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func switchLook() {
         guard let selected = AppearanceWindow.choose(pet.look) else { return }
         pet.look = selected
+        profileDirty = deviceSync != nil; profileEdit += 1; syncNow()
         statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil)
         publish()
     }
@@ -362,9 +379,12 @@ final class AppController: NSObject, NSMenuDelegate {
         roomSeen = false
         pendingCheck?.invalidate()
         pendingCheck = nil
-        guard let invite = Invite.parse(Settings.get("room")) else { return }
+        syncCheck?.invalidate(); deviceSync = nil
+        let invite: Invite
+        if let saved = Invite.parse(Settings.get("room")) { invite = saved } else if Settings.get("cloudSync") == "1", let configured = try? DeviceLinkWindow.defaultInvite() { invite = configured } else { return }
         auth = invite.key.isEmpty ? nil : Auth(apiKey: invite.key)
-        myId = auth != nil ? Settings.get("uid") : localId
+        myId = auth != nil ? (Settings.get("linkedUid").isEmpty ? Settings.get("uid") : Settings.get("linkedUid")) : localId
+        if let auth, Settings.get("cloudSync") == "1" { deviceSync = DeviceSync(invite:invite,auth:auth); syncCheck = Timer.scheduledTimer(withTimeInterval:10,repeats:true) { [weak self] _ in self?.syncNow() }; syncNow() }
         if Settings.get("pending") == "1" {
             let check = Timer(timeInterval: 10, target: self, selector: #selector(checkPending), userInfo: nil, repeats: true)
             RunLoop.main.add(check, forMode: .common)
@@ -400,7 +420,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let value = try await current.token()
         let uid = await current.uid
         let changed = await MainActor.run { () -> Bool in
-            guard self.auth === current, self.myId != uid else { return false }
+            guard self.auth === current, self.myId != (Settings.get("linkedUid").isEmpty ? uid : Settings.get("linkedUid")) else { return false }
             self.safely("로그인 저장") { try Settings.set("pending", "1") }
             self.alert("로그인 정보가 바뀌어 재승인이 필요해요. 초대 코드를 다시 넣어 주세요.")
             self.connect()
@@ -423,7 +443,8 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
-        room?.publish([
+        if let sync = deviceSync, !sync.mine || !sync.pending.isEmpty || quitting { return }
+        var status: [String:Any] = [
             "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
             "look": pet.look.girl ? "girl" : "boy",
@@ -433,7 +454,9 @@ final class AppController: NSObject, NSMenuDelegate {
             "subject": state == .off ? "" : subject,
             "minutes": min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
             "updated": Room.serverTime,
-        ])
+        ]
+        if let sync = deviceSync { status["syncRevision"] = DeviceSync.num(sync.data,"revision") }
+        room?.publish(status)
     }
 
     @discardableResult
@@ -441,6 +464,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let name = Room.cleanName(ask("친구들에게 보일 이름을 정해 주세요. (\(Room.maxNameLength)자까지)", title: "닉네임", value: nickname))
         if name.isEmpty { return false }
         safely("닉네임 저장") { try Settings.set("name", name) }
+        profileDirty = deviceSync != nil; profileEdit += 1; syncNow()
         if room == nil { connect() } else { publish() }
         return true
     }
@@ -450,7 +474,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if invite.key.isEmpty { return (localId, "") }
         let signIn = Auth(apiKey: invite.key)
         let token = try await signIn.token()
-        return (await signIn.uid, token)
+        return (Settings.get("linkedUid").isEmpty ? await signIn.uid : Settings.get("linkedUid"), token)
     }
 
     /// Asking to join: nickname, real name and referrer go to the owner, who decides.
@@ -692,15 +716,9 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
-        if updater.available { menu.addItem(item("새 버전 설치…", #selector(showSettings))) }
-        let seasons = NSMenuItem(title: "창밖 계절", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        for (label, value) in [("실제 계절 따라가기", ""), ("봄", "0"), ("여름", "1"), ("가을", "2"), ("겨울", "3")] {
-            let entry = item(label, #selector(chooseSeason(_:))); entry.representedObject = value; entry.state = Settings.get("season") == value ? .on : .off; submenu.addItem(entry)
-        }
-        seasons.submenu = submenu; menu.addItem(seasons)
-        menu.addItem(item("창밖 풍경 바꾸기", #selector(nextWindowScene)))
-        let large = item("글자 크게 (이름·말풍선·칠판)", #selector(toggleLargeText)); large.state = Settings.get("largeText") == "1" ? .on : .off; menu.addItem(large)
+        
+        menu.addItem(item("계정·기기 연결…", #selector(showDeviceLink)))
+        menu.addItem(item("크기 조정…", #selector(showSizes)))
         menu.addItem(item("캐릭터 꾸미기…", #selector(switchLook)))
         menu.addItem(item(pet.laptop ? "책상에 책 놓기" : "책상에 노트북 놓기", #selector(toggleLaptop)))
         menu.addItem(.separator())
@@ -756,7 +774,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let login = item("로그인할 때 자동 실행", #selector(toggleLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
-        menu.addItem(item("설정…", #selector(showSettings)))
+        menu.addItem(item("업데이트 확인", #selector(showSettings)))
         menu.addItem(item("종료", #selector(quit)))
     }
 
@@ -768,6 +786,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     @objc private func toggleLaptop() {
         pet.laptop.toggle()
+        profileDirty = deviceSync != nil; profileEdit += 1; syncNow()
         let on = pet.laptop
         safely("책상 설정 저장") { try Settings.set("laptop", on ? "1" : "") }
         publish()
@@ -786,18 +805,74 @@ final class AppController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func showSettings() {
+    @objc private func showDeviceLink() {
+        if deviceSync == nil && state != .off { alert("공부를 마친 뒤 처음 기기를 연결해 주세요."); return }
+        if deviceLink == nil { deviceLink = DeviceLinkWindow(connected:{ [weak self] in self?.connect() }) }
+        NSApp.activate(ignoringOtherApps:true); deviceLink?.makeKeyAndOrderFront(nil)
+    }
+    private func syncNow() {
+        guard let current = deviceSync, !syncBusy, !quitting else { return }; syncBusy = true
+        Task { @MainActor in
+            defer { syncBusy = false }
+            do {
+                try await current.pull()
+                if profileDirty {
+                    let edit = profileEdit
+                    let profile: [String:Any] = ["name":nickname,"style":pet.look.code,"extra":pet.look.extra,"desk":pet.drink.rawValue + (pet.laptop ? 10 : 0),"invite":Settings.get("room")]
+                    try await current.change("profile",fields:["profile":profile])
+                    if profileEdit == edit { profileDirty = false }
+                }
+                if self.deviceSync === current && !quitting { try applySync() }
+            }
+            catch { feedback = error.localizedDescription; feedbackUntil = Date().addingTimeInterval(8) }
+        }
+    }
+    private func syncChange(_ action: String, _ picked: String = "") {
+        guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
+        Task { @MainActor in
+            defer { syncBusy = false }
+            do { try await sync.change(action,subject:picked); if self.deviceSync === sync && !quitting { try applySync(); publish() } }
+            catch { alert(error.localizedDescription) }
+        }
+    }
+    private func syncDelete(_ subject: String, all: Bool) {
+        guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
+        Task { @MainActor in defer { syncBusy = false }; do { try await sync.change(all ? "delete" : "hide",subject:subject); if self.deviceSync === sync && !quitting { try applySync() } } catch { alert(error.localizedDescription) } }
+    }
+    private func applySync() throws {
+        guard let sync = deviceSync else { return }; try sync.mirror()
+        let active = sync.active, profile = DeviceSync.obj(sync.data,"profile")
+        if !profileDirty && !DeviceSync.str(profile,"name").isEmpty { try Settings.set("name",DeviceSync.str(profile,"name")) }
+        if !profileDirty && !DeviceSync.str(profile,"style").isEmpty { pet.look = Look.parse(DeviceSync.str(profile,"style"),girl:false).withExtras(DeviceSync.str(profile,"extra")) }
+        let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none
+        let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
+        let changed = state != next; state = next; subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0
+        if state != .off { startHeartbeat(); if changed || !pet.isVisible && !pet.minimized { pet.appear(state == .studying ? .studying : .dozing) } else { pet.setMood(state == .studying ? .studying : .dozing) } }
+        else if changed { heartbeat?.invalidate(); pet.standUpAndLeave() }
+        pet.redraw()
+    }
+
+    @objc private func showSizes() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindow(updater: updater, apply: { [weak self] in self?.installUpdate() }, login: { [weak self] in self?.toggleLogin() }, resize: { [weak self] in self?.pet.setDisplaySize($0) })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
-        updater.check()
+    }
+
+    @objc private func showSettings() {
+        guard !updater.installing else { return }
+        Task { @MainActor in
+            updater.check()
+            while updater.checking { try? await Task.sleep(nanoseconds: 50_000_000) }
+            if updater.available && updater.checkSucceeded { installUpdate() }
+            else { feedback = updater.checkSucceeded ? "지금이 최신버전이에요!" : updater.status; feedbackUntil = Date().addingTimeInterval(8); pet.showFeedback(feedback) }
+        }
     }
 
     private func showUpdateNotice(_ tag: String) {
         updateNotifications.show(tag)
-        statusItem.button?.toolTip = "공부 친구 · 새 버전 \(tag) · 설정 → 업데이트"
+        statusItem.button?.toolTip = "공부 친구 · 새 버전 \(tag) · 업데이트 확인"
     }
 
     @objc private func changeSubject() { showPlanner() }
@@ -823,6 +898,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func restoreUpdateState() {
+        if Settings.get("cloudSync") == "1" { try? Settings.set("updateResume",""); return }
         let raw = Settings.get("updateResume")
         guard !raw.isEmpty else { return }
         safely("업데이트 상태 복구") {
@@ -877,6 +953,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     func shutDown() {
+        syncCheck?.invalidate()
         releaseChannel.stop(); networkMonitor.cancel(); updateCheck?.invalidate()
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         closeSegment()

@@ -158,6 +158,7 @@ actor Auth {
             } catch let error as RoomError where error.invalidIdentity {
                 // Firebase turned the token down (another project's, or a deleted user): start over
                 // below. A plain network error propagates instead, so being offline never costs the uid.
+                if Settings.get("cloudSync") == "1" { throw RoomError("기기 연결을 다시 확인해 주세요. 기존 기록은 보관했어요.") }
                 refreshToken = ""
                 uid = ""
             }
@@ -288,7 +289,10 @@ final class Room: @unchecked Sendable {
         var member = status
         if let extra = member.removeValue(forKey: "extra") { write("PUT", "\(roomPath)/wardrobe/\(me)", extra, quiet: true) }
         let desk = member.removeValue(forKey: "desk") as? Int
-        write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
+        let revision = member.removeValue(forKey: "syncRevision")
+        var patch: [String:Any] = ["\(roomPath)/members/\(me)":member,"\(roomPath)/names/\(me)":member["name"] ?? ""]
+        if let revision { patch["\(roomPath)/presenceRevisions/\(me)"] = revision }
+        write("PATCH","",patch)
         write("PUT", "\(roomPath)/versions/\(me)", Updater.current, quiet: true)
         // Optional desk writes can fail independently. Retry with each heartbeat.
         if let desk { write("PUT", "\(roomPath)/desks/\(me)", desk, quiet: true) }
@@ -554,12 +558,14 @@ final class Room: @unchecked Sendable {
             if a.minutes != b.minutes { return a.minutes > b.minutes }
             return a.name < b.name
         }
-        let lines = here.prefix(boardLines).map { m -> String in
+        let ordered = here + members.filter { !isHere($0, newest) }.sorted { $0.name < $1.name }
+        let lines = ordered.prefix(boardLines).map { m -> String in
+            if !isHere(m, newest) { return "\(m.name) · 노는 중" }
             if m.state == "paused" { return "\(m.name) · 쉬는 중" }
             let what = m.subject.isEmpty ? "" : m.subject + " "
             return m.minutes < 1 ? "\(m.name) · \(what)방금 시작" : "\(m.name) · \(what)\(Records.duration(Double(m.minutes)))"
         }
-        return ("공부 중 \(here.filter { $0.state == "studying" }.count) · 쉬는 중 \(here.filter { $0.state == "paused" }.count)", lines)
+        return ("공부 중 \(here.filter { $0.state == "studying" }.count) / 쉬는 중 \(here.filter { $0.state == "paused" }.count) / 노는 중 \(members.count - here.count)", lines)
     }
 
     /// Who went from away (or not in the room) to studying between two snapshots.

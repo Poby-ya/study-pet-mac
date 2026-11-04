@@ -19,9 +19,12 @@ struct Look: Equatable {
     var leftHanded: Bool { Array(extra)[4] == "1" }
     var sticker: Int { Int(Array(extra)[5].asciiValue! - 48) }
     var bag: Int { Int(Array(extra)[6].asciiValue! - 48) }
+    // Older seven-digit looks keep all additions visible.
+    var additions: Int { extra.count == 8 ? Int(Array(extra)[7].asciiValue! - 48) : 7 }
+    func withAdditions(_ value: Int) -> Look { withExtras(String(extra.prefix(7)) + String(value & 7)) }
     func withExtras(_ value: String) -> Look {
         var result = self
-        result.extra = value.range(of: "^[0-3][0-3][0-2][0-3][0-1][0-3][0-3]$", options: .regularExpression) != nil ? value : "0000000"
+        result.extra = value.range(of: "^[0-3][0-3][0-2][0-3][0-1][0-3][0-3][0-7]?$", options: .regularExpression) != nil ? value : "0000000"
         return result
     }
     let girl: Bool
@@ -67,6 +70,8 @@ struct Look: Equatable {
 enum Sprites {
     static let width = 44
     static let height = 38
+    static let clockSize = 31
+    static let awaySignLeft = 11
 
     /// The person sits a little right of the desk's middle, leaving the left end of the
     /// desk top free for the nameplate (cols 1..16).
@@ -153,7 +158,7 @@ enum Sprites {
         ["....kk.", "....k..", "kkkkkkk", "kiiiiik", ".koiok.", ".kiook.", ".kooik.", ".koiok.", ".koook.", ".kkkkk."],
         ["kkkkkk..", "koooOk..", "kwwwwkkk", "kwwwwk.k", "kwwwwkkk", "kwwwwk..", ".kkkk..."],
         [".kkkk.", "kxxxxk", "kttttk", "ktwwtk", "ktwwtk", "kttttk", "kxxxxk", ".kkkk."],
-        ["kkkkkk", "kwwwbk", "kyyyyk", "kyiyyk", "kyyiyk", "kyyyyk", ".kyyk.", ".kkkk."],
+        ["kkkkkk..", "kwwwbkk.", "kyyyykkk", "kyiyyk.k", "kyyyyk.k", "kyyiykkk", "kyyyykk.", "kiiiik..", "kkkkkk.."],
         [".kkkk.", ".kGGk.", ".kggk.", ".kggk.", "kggggk", "kwwwwk", "kwzzwk", "kwwwwk", "kggggk", "kgGggk", ".kkkk."],
     ]
 
@@ -313,14 +318,18 @@ enum Sprites {
         else if look.girl && look.hair == 3 { front.append(Layer(bun, x, y)); front.append(Layer(bun, x + 12, y))
         }
         else if look.girl && look.hair == 4 { back.append(Layer(mirror(pigtailLeft), x + 16, y + 4)) }
-        if look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
+        if look.additions & 1 != 0 && look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
         back = back.map { Layer($0.grid, $0.x + lag, $0.y) }
-        if look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
+        if look.additions & 1 != 0 && look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
+        if look.additions & 1 == 0 {
+            back = back.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
+            front = front.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
+        }
         if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
         if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
         }
-        if look.hat == 1 { front.append(Layer(["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"], x + 1, y + 1)) }
-        if look.hat == 2 { front.append(Layer(["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."], x - 1, y + 1)) }
+        if look.additions & 4 != 0 && look.hat == 1 { front.append(Layer(["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"], x + 1, y + 1)) }
+        if look.additions & 4 != 0 && look.hat == 2 { front.append(Layer(["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."], x - 1, y + 1)) }
         return (back, front)
     }
 
@@ -608,13 +617,15 @@ enum Sprites {
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
         let big = d.seed % bigStickers.count
-        layers.insert(contentsOf: [
-            Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
-            Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
-        ], at: at)
+        if look.additions & 2 != 0 {
+            layers.insert(contentsOf: [
+                Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
+                Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
+            ], at: at)
+        }
         if d.away { return layers }
         layers.insert(Layer(bags[look.bag], 42, 28), at: at)
-        if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
+        if look.additions & 2 != 0 && look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
             let kind: Drink = d.drink == .none ? .mug : d.drink
@@ -1077,7 +1088,7 @@ enum Sprites {
     }
     private static func drinkPosition(_ kind: Drink, step: Int, rotated: [String], lipX: Int, lipY: Int) -> (Int, Int) {
         let source = drinkArt[kind.rawValue], cx = Double(drinkArt[kind.rawValue][0].count-1)/2
-        let cy = Double(source.count-1)/2, dx = kind == .icedCoffee ? 5-cx : 0
+        let cy = Double(source.count-1)/2, dx = kind == .icedCoffee ? 5-cx : kind == .beer ? 2.5-cx : 0
         let dy = -cy, r = sqrt(3.0)/2
         let cosine = step == 1 ? r : 0.5, sine = step == 1 ? -0.5 : -r
         let x = cosine*dx-sine*dy+Double(rotated[0].count-1)/2
@@ -1087,11 +1098,30 @@ enum Sprites {
     static func flame(_ alt: Bool) -> [String] { alt ? ["..t.", ".tt.", "tpty", "tyyt", ".pp."] : [".t..", ".tt.", "ytpt", "tyyt", ".pp."] }
     static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 20, 12), Layer(flame(!alt), 28, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
     static func clockGrid(_ hour: Int, _ minute: Int) -> [String] {
-        var grid = Array(repeating: Array(repeating: Character("."), count: 17), count: 17)
-        for y in 0..<17 { for x in 0..<17 { let r = (x-8)*(x-8)+(y-8)*(y-8); if r <= 64 { grid[y][x] = r >= 49 ? "d" : "b" } } }
-        for (x,y) in [(8,2), (14,8), (8,14), (2,8)] { grid[y][x] = "D" }
-        func hand(_ angle: Double, _ length: Int) { for i in 0...(length * 3) { let x = 8 + Int((sin(angle) * Double(i) / 3).rounded(.toNearestOrEven)); let y = 8 - Int((cos(angle) * Double(i) / 3).rounded(.toNearestOrEven)); grid[y][x] = "k" } }
-        hand((Double(hour % 12) + Double(minute) / 60) * .pi / 6, 4); hand(Double(minute) * .pi / 30, 6); grid[8][8] = "t"
+        let center = 15
+        var grid = Array(repeating: Array(repeating: Character("."), count: clockSize), count: clockSize)
+        for y in 0..<clockSize { for x in 0..<clockSize {
+            let radius = (x-center)*(x-center)+(y-center)*(y-center)
+            if radius <= 225 { grid[y][x] = radius >= 196 ? "d" : "b" }
+        } }
+        for tick in 0..<60 {
+            let angle = Double(tick) * .pi / 30
+            for radius in (tick % 5 == 0 ? 10 : 12)...12 {
+                let x = center + Int((sin(angle) * Double(radius)).rounded(.toNearestOrEven))
+                let y = center - Int((cos(angle) * Double(radius)).rounded(.toNearestOrEven))
+                grid[y][x] = "D"
+            }
+        }
+        func hand(_ angle: Double, _ length: Int) {
+            for i in 0...(length * 3) {
+                let x = center + Int((sin(angle) * Double(i) / 3).rounded(.toNearestOrEven))
+                let y = center - Int((cos(angle) * Double(i) / 3).rounded(.toNearestOrEven))
+                grid[y][x] = "k"
+            }
+        }
+        hand((Double(hour % 12) + Double(minute) / 60) * .pi / 6, 7)
+        hand(Double(minute) * .pi / 30, 9)
+        grid[center][center] = "t"
         return grid.map { String($0) }
     }
     static func drawClock(_ hour: Int, _ minute: Int, left: CGFloat, top: CGFloat, scale: CGFloat) { draw(layers: [Layer(clockGrid(hour, minute), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }

@@ -1,6 +1,6 @@
 {
   "private": true,
   "type": "commonjs",
-  "scripts": { "test:rules": "firebase emulators:exec --only database --project demo-study-pet --config ../firebase-test.json \"node --test firebase-rules.test.cjs\"" },
+  "scripts": { "test:rules": "firebase emulators:exec --only database --project demo-study-pet --config ../firebase-test.json \"node --test --test-concurrency=1 firebase-rules.test.cjs pairing-rules.test.cjs\"" },
   "devDependencies": { "firebase-tools": "15.34.2", "@firebase/rules-unit-testing": "6.0.0", "firebase": "13.1.0" }
 }

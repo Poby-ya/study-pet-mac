@@ -2,24 +2,24 @@
   "rules": {
     "rooms": {
       "$room": {
-        ".read": "auth != null && data.child('approved').child(auth.uid).val() == true",
+        ".read": "auth != null && data.child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true",
         "owner": {
-          ".write": "auth != null && !data.exists() && newData.val() == auth.uid && $room.matches(/^[a-z0-9]{16,40}$/)"
+          ".write": "auth != null && !data.exists() && newData.val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && $room.matches(/^[a-z0-9]{16,40}$/)"
         },
         "name": {
-          ".write": "auth != null && (newData.parent().child('owner').val() == auth.uid)",
+          ".write": "auth != null && (newData.parent().child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))",
           ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
         },
         "approved": {
           "$uid": {
-            ".read": "auth != null && auth.uid == $uid",
-            ".write": "auth != null && newData.parent().parent().child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid) && ($uid != auth.uid || newData.val() == true)",
+            ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
+            ".write": "auth != null && newData.parent().parent().child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) || $uid == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)) && ($uid != (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) || newData.val() == true)",
             ".validate": "newData.val() == true"
           }
         },
         "members": {
           "$uid": {
-            ".write": "auth != null && ((auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == auth.uid))",
+            ".write": "((auth != null && (((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)))) && (!newData.exists() || !root.child('users').child($uid).child('active').exists() || root.child('users').child($uid).child('active').child('device').val() == auth.uid)) && (!newData.exists() || !root.child('users').child($uid).exists() || (newData.parent().parent().child('presenceRevisions').child($uid).val() == root.child('users').child($uid).child('revision').val() && ((!root.child('users').child($uid).child('active').exists() && newData.child('state').val() == 'off' && newData.child('subject').val() == '') || (newData.child('state').val() == root.child('users').child($uid).child('active').child('state').val() && newData.child('subject').val() == root.child('users').child($uid).child('active').child('subject').val()))))",
             ".validate": "newData.hasChildren(['name', 'look', 'state', 'subject', 'minutes', 'updated'])",
             "name": {
               ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
@@ -49,8 +49,8 @@
         },
         "pokes": {
           "$to": {
-            ".write": "auth != null && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true && ((!newData.exists() && auth.uid == $to) || (newData.exists() && root.child('rooms').child($room).child('approved').child($to).val() == true))",
-            ".validate": "newData.hasChildren(['from', 'name', 'look', 'message', 'at']) && newData.child('from').val() == auth.uid",
+            ".write": "auth != null && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true && ((!newData.exists() && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $to) || (newData.exists() && root.child('rooms').child($room).child('approved').child($to).val() == true))",
+            ".validate": "newData.hasChildren(['from', 'name', 'look', 'message', 'at']) && newData.child('from').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
             "from": {
               ".validate": "newData.isString()"
             },
@@ -76,56 +76,62 @@
         },
         "desks": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",
+            ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",
             ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99"
           }
         },
         "names": {
           "$uid": {
-            ".write": "auth != null && (newData.parent().parent().child('owner').val() == auth.uid || (auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true))",
+            ".write": "auth != null && (newData.parent().parent().child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) || ((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true))",
             ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
           }
         },
         "entry": {
-          ".write": "auth != null && newData.parent().child('owner').val() == auth.uid",
-          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{16,40}$/) && newData.parent().parent().child(newData.val()).child('owner').val() == auth.uid"
+          ".write": "auth != null && newData.parent().child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{16,40}$/) && newData.parent().parent().child(newData.val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)"
         },
         "wardrobe": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
-            ".validate": "newData.isString() && newData.val().matches(/^[0-3][0-3][0-2][0-3][0-1][0-3][0-3]$/)"
+            ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true",
+            ".validate": "newData.isString() && newData.val().matches(/^[0-3][0-3][0-2][0-3][0-1][0-3][0-3][0-7]?$/)"
           }
         },
         "versions": {
           "$uid": {
-            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
+            ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true",
             ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[0-9]+\\.[0-9]+\\.[0-9]+$/)"
+          }
+        },
+        "presenceRevisions": {
+          "$uid": {
+            ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",
+            ".validate": "newData.isNumber() && newData.val() == root.child('users').child($uid).child('revision').val()"
           }
         }
       }
     },
     "seats": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && ((!newData.exists() && root.child('rooms').child(data.val()).child('owner').val() == auth.uid) || (newData.exists() && newData.parent().parent().child('rooms').child(newData.val()).child('owner').val() == auth.uid && (!data.exists() || root.child('rooms').child(data.val()).child('owner').val() == auth.uid)))",
+        ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
+        ".write": "auth != null && ((!newData.exists() && root.child('rooms').child(data.val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)) || (newData.exists() && newData.parent().parent().child('rooms').child(newData.val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && (!data.exists() || root.child('rooms').child(data.val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))))",
         ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{16,40}$/) && newData.parent().parent().child('rooms').child(newData.val()).child('approved').child($uid).val() == true"
       }
     },
     "owned": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
+        ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
         "$room": {
-          ".write": "auth != null && auth.uid == $uid && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == auth.uid",
+          ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
           ".validate": "newData.isNumber()"
         }
       }
     },
     "requests": {
       "$room": {
-        ".read": "auth != null && root.child('rooms').child($room).child('owner').val() == auth.uid",
+        ".read": "auth != null && root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
         "$uid": {
-          ".read": "auth != null && auth.uid == $uid",
-          ".write": "auth != null && (auth.uid == $uid || root.child('rooms').child($room).child('owner').val() == auth.uid)",
+          ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
+          ".write": "auth != null && ((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid || root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))",
           ".validate": "newData.hasChildren(['name', 'realName', 'referrer', 'look', 'at'])",
           "name": {
             ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12"
@@ -153,9 +159,9 @@
     },
     "access": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
+        ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
         "$room": {
-          ".write": "auth != null && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == auth.uid && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == auth.uid || $uid == auth.uid)",
+          ".write": "auth != null && newData.parent().parent().parent().child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && (!root.child('seats').child($uid).exists() || root.child('rooms').child(root.child('seats').child($uid).val()).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) || $uid == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))",
           ".validate": "newData.val() == true && newData.parent().parent().parent().child('rooms').child($room).child('approved').child($uid).val() == true"
         }
       }
@@ -165,6 +171,61 @@
         ".read": true,
         ".write": "auth != null && auth.uid == 'zPrsBgAsWwMDaQYwBQBMmnBEP0o1'",
         ".validate": "newData.isString() && newData.val().matches(/^v[0-9]+\\.[0-9]+\\.[0-9]+$/)"
+      }
+    },
+    "deviceAccounts": {
+      "$device": {
+        ".read": "auth != null && auth.uid == $device",
+        ".write": "auth != null && !data.exists() && newData.hasChildren(['account','pair']) && newData.child('account').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && root.child('pairings').child(newData.child('pair').val()).child('issuer').val() == auth.uid && root.child('pairings').child(newData.child('pair').val()).child('candidate').val() == $device && root.child('pairings').child(newData.child('pair').val()).child('created').val() > now - 600000",
+        "account": {
+          ".validate": "newData.isString()"
+        },
+        "pair": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "pairings": {
+      "$code": {
+        ".read": "auth != null && data.child('created').val() > now - 600000",
+        ".write": "auth != null && ((!data.exists() && $code.matches(/^[A-Z0-9]{10}$/) && newData.child('issuer').val() == auth.uid && newData.child('account').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && newData.child('created').val() == now && !newData.child('candidate').exists() && !newData.child('accepted').exists()) || (data.exists() && data.child('issuer').val() == auth.uid))",
+        "issuer": {
+          ".validate": "newData.isString()"
+        },
+        "account": {
+          ".validate": "newData.isString()"
+        },
+        "created": {
+          ".validate": "newData.isNumber()"
+        },
+        "candidate": {
+          ".write": "auth != null && !data.exists() && newData.val() == auth.uid && root.child('pairings').child($code).child('issuer').val() != auth.uid && root.child('pairings').child($code).child('created').val() > now - 600000 && !root.child('deviceAccounts').child(auth.uid).exists()",
+          ".validate": "newData.isString()"
+        },
+        "accepted": {
+          ".validate": "newData.val() == true"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "users": {
+      "$account": {
+        ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $account",
+        ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $account",
+        ".validate": "newData.hasChildren(['schema','revision']) && newData.child('schema').val() == 1 && newData.child('revision').isNumber() && newData.child('revision').val() >= 0",
+        "active": {
+          ".validate": "newData.hasChildren(['id','device','state','subject','start']) && (newData.child('state').val() == 'studying' || newData.child('state').val() == 'paused') && newData.child('subject').isString() && newData.child('subject').val().length > 0 && newData.child('subject').val().length <= 16 && newData.child('start').isNumber()"
+        },
+        "segments": {
+          "$segment": {
+            ".validate": "newData.hasChildren(['start','end','subject']) && newData.child('start').isNumber() && newData.child('end').isNumber() && newData.child('end').val() >= newData.child('start').val() && newData.child('subject').isString() && newData.child('subject').val().length <= 16"
+          }
+        }
       }
     }
   }

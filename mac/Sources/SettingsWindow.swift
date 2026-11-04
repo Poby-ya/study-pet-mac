@@ -1,79 +1,27 @@
 import AppKit
-import ServiceManagement
 
 final class SettingsWindow: NSWindow {
-    private let updater: Updater
-    private let apply: () -> Void
-    private let login: () -> Void
     private let resize: (Int) -> Void
-    private let sizeChoice = NSPopUpButton()
-    private let status = NSTextField(wrappingLabelWithString: "")
-    private let check = NSButton(title: "업데이트 확인", target: nil, action: nil)
-    private let install = NSButton(title: "업데이트하고 다시 시작", target: nil, action: nil)
-
-    init(updater: Updater, apply: @escaping () -> Void, login: @escaping () -> Void, resize: @escaping (Int) -> Void = { _ in }) {
-        self.updater = updater
-        self.apply = apply
-        self.login = login
+    private var sliders: [NSSlider] = []
+    private var values: [NSTextField] = []
+    private let keys = ["petSize","boardTextSize","bubbleTextSize","nameTextSize"]
+    init(updater: Updater, apply: @escaping () -> Void, login: @escaping () -> Void, resize: @escaping (Int) -> Void) {
         self.resize = resize
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 540, height: 390), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        title = "설정 · 공부 친구"
-        isReleasedWhenClosed = false
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        contentView!.addSubview(stack)
-        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: contentView!.leadingAnchor, constant: 24),
-                                     stack.trailingAnchor.constraint(equalTo: contentView!.trailingAnchor, constant: -24),
-                                     stack.topAnchor.constraint(equalTo: contentView!.topAnchor, constant: 24)])
-        let startup = NSButton(checkboxWithTitle: "로그인할 때 자동 실행", target: self, action: #selector(toggleLogin(_:)))
-        startup.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        let background = NSButton(checkboxWithTitle: "교실 배경 보이기", target: self, action: #selector(toggleBackground(_:)))
-        background.state = Settings.get("background") == "hidden" ? .off : .on
-        stack.addArrangedSubview(startup)
-        stack.addArrangedSubview(background)
-        let sizeLabel = NSTextField(labelWithString: "캐릭터 크기")
-        let sizes = PetWindow.displaySizes
-        sizeChoice.addItems(withTitles: sizes.map { "\($0)%" })
-        sizeChoice.selectItem(at: sizes.firstIndex(of: Int(Settings.get("petSize")) ?? 75) ?? 5)
-        sizeChoice.target = self; sizeChoice.action = #selector(changeSize)
-        let sizeRow = NSStackView(views: [sizeLabel, sizeChoice]); sizeRow.spacing = 12
-        stack.addArrangedSubview(sizeRow)
-        let heading = NSTextField(labelWithString: "업데이트 · 현재 버전 " + Updater.current)
-        heading.font = .boldSystemFont(ofSize: 15)
-        stack.addArrangedSubview(heading)
-        status.preferredMaxLayoutWidth = 490
-        stack.addArrangedSubview(status)
-        check.target = self; check.action = #selector(checkUpdate)
-        install.target = self; install.action = #selector(installUpdate)
-        let buttons = NSStackView(views: [check, install])
-        buttons.spacing = 12
-        stack.addArrangedSubview(buttons)
-        let note = NSTextField(wrappingLabelWithString: "앱이 켜져 있으면 새 버전 배포 소식을 바로 받아요.\n업데이트할 때 공부 기록을 저장하고 재실행 후 이어갑니다.")
-        note.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(note)
-        updater.changed = { [weak self] in self?.refresh() }
-        refresh()
+        super.init(contentRect: NSRect(x: 0,y: 0,width: 440,height: 300),styleMask: [.titled,.closable],backing: .buffered,defer: false)
+        title = "크기 조정 · 공부 친구"; isReleasedWhenClosed = false
+        for (i, title) in ["캐릭터","칠판 글자","말풍선","닉네임"].enumerated() {
+            let label = NSTextField(labelWithString: title); label.frame = NSRect(x: 20,y: CGFloat(244-i*58),width: 85,height: 24); contentView?.addSubview(label)
+            let initial = i == 0 ? max(50,min(150,Int(Settings.get("petSize")) ?? 75)) : DisplayPreferences.percent(keys[i])
+            let slider = NSSlider(value: Double(initial), minValue: i == 0 ? 50 : 75, maxValue: i == 0 ? 150 : 200,target: self,action: #selector(changed(_:)))
+            slider.tag = i; slider.frame = NSRect(x: 110,y: CGFloat(242-i*58),width: 230,height: 28); slider.isContinuous = true; contentView?.addSubview(slider); sliders.append(slider)
+            let value = NSTextField(labelWithString: "\(initial)%"); value.frame = NSRect(x: 355,y: CGFloat(244-i*58),width: 65,height: 24); contentView?.addSubview(value); values.append(value)
+        }
         center()
     }
-
-    private func refresh() {
-        status.stringValue = updater.status
-        check.isEnabled = !updater.checking && !updater.installing
-        install.isEnabled = updater.available && !updater.checking && !updater.installing
-    }
-    @objc private func changeSize() {
-        let percent = PetWindow.displaySizes[sizeChoice.indexOfSelectedItem]
-        do { try Settings.set("petSize", String(percent)); resize(percent) }
-        catch { let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
-    }
-    @objc private func checkUpdate() { updater.check() }
-    @objc private func installUpdate() { apply() }
-    @objc private func toggleLogin(_ sender: NSButton) { login(); sender.state = SMAppService.mainApp.status == .enabled ? .on : .off }
-    @objc private func toggleBackground(_ sender: NSButton) {
-        do { try Settings.set("background", sender.state == .on ? "" : "hidden") }
-        catch { sender.state = sender.state == .on ? .off : .on; let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
+    required init?(coder: NSCoder) { fatalError("not used") }
+    @objc private func changed(_ sender: NSSlider) {
+        let percent = Int((sender.doubleValue / 5).rounded()) * 5
+        do { try Settings.set(keys[sender.tag],String(percent)); values[sender.tag].stringValue = "\(percent)%"; resize(Int(Settings.get("petSize")) ?? 75) }
+        catch { let alert = NSAlert(); alert.messageText = "크기를 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
     }
 }
