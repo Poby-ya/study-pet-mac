@@ -230,6 +230,15 @@ enum SelfTest {
             check(b.boardMembers.contains { $0.id == owner }, "multi-room: the owner appears in all rooms")
         }
         check(Set(seen.map(\.id)).count == seen.count, "multi-room: shared members are deduplicated")
+        // The first optional desk write fails; an identical heartbeat must repair it.
+        let deskProbe = Room(invite: invite, me: friend, token: { "" }, followSeat: false)
+        _ = finish { try await Room.call("POST", URL(string: invite.database + "/__test/fail-next")!, "PUT") }
+        var decorated = status("친구", 17); decorated["desk"] = 15
+        deskProbe.publish(decorated); deskProbe.flush()
+        deskProbe.publish(decorated)
+        check(waitFor { a.boardMembers.contains { $0.id == friend && $0.drink == .soju && $0.laptop } }, "desk: identical heartbeat retries a failed drink/laptop write")
+        deskProbe.flush(); deskProbe.dispose()
+
         let selected = b.selected
         try? b.next()
         check(b.selected != selected && b.boardMembers.contains { $0.id == friend && $0.minutes == 17 }, "board: cycling retains elapsed minutes")

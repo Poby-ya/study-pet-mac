@@ -288,13 +288,10 @@ final class Room: @unchecked Sendable {
         if let extra = member.removeValue(forKey: "extra") { write("PUT", "\(roomPath)/wardrobe/\(me)", extra, quiet: true) }
         let desk = member.removeValue(forKey: "desk") as? Int
         write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
-        if let desk, desk != sentDesk {
-            sentDesk = desk
-            write("PUT", "\(roomPath)/desks/\(me)", desk, quiet: true)
-        }
+        // Optional desk writes can fail independently. Retry with each heartbeat.
+        if let desk { write("PUT", "\(roomPath)/desks/\(me)", desk, quiet: true) }
     }
 
-    private var sentDesk: Int?
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
 

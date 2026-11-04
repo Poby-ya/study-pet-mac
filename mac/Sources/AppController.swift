@@ -242,6 +242,8 @@ final class AppController: NSObject, NSMenuDelegate {
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
         pet.subjectChanged()
+        let drinks = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }
+        pet.drink = drinks.randomElement()!
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
