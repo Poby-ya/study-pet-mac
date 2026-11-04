@@ -27,6 +27,7 @@ final class PetWindow: NSPanel {
         var dozing: Bool
         var text: String
         var drink: Sprites.Drink = .none
+        var laptop = false
     }
 
     static let ink = Sprites.color(0x3A2E39)
@@ -82,6 +83,11 @@ final class PetWindow: NSPanel {
     var myName: () -> String = { "" }
     /// On my desk while I'm at it; an empty desk draws none.
     var drink: Sprites.Drink = .none
+    /// A laptop on my desk instead of a book (menu).
+    var laptop = false
+    /// The time of day for the window's sky and the lamps; the self-test sets it.
+    var clock: () -> Date = { Date() }
+    private var night: Bool { let hour = Calendar.current.component(.hour, from: clock()); return hour >= 18 || hour < 6 }
     var seatmate: () -> Seat? = { nil }
     var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
@@ -346,7 +352,9 @@ final class PetWindow: NSPanel {
     }
 
     /// A seatmate's own moments, keyed by name so each friend keeps to their own rhythm.
-    private static func seatSeed(_ seat: Seat) -> Int { 1 + seat.name.utf16.reduce(0) { $0 + Int($1) } % 211 }
+    private static func seatSeed(_ seat: Seat) -> Int { nameSeed(seat.name) }
+    /// Also picks a desk's bag and sticker, so a friend's screen shows mine the same.
+    private static func nameSeed(_ name: String) -> Int { 1 + name.utf16.reduce(0) { $0 + Int($1) } % 211 }
 
     private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Self.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
 
@@ -391,12 +399,14 @@ final class PetWindow: NSPanel {
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
                 ? (leavingTicks[i] < 2 ? .stand : Int(leavingTicks[i]) % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
-            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale, drink: seat.drink)
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: night && seat.here && !seat.dozing && !gone, away: !seat.here))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
         }
-        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0, drink: drink)
+        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
+                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: night && mood == .studying && !outgoing, away: mood == .away))
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
@@ -569,6 +579,7 @@ final class PetWindow: NSPanel {
         }
         Sprites.color(0xB88655).setStroke()
         seams.stroke()
+        drawWindow(NSRect(x: card.minX + 14, y: boardSpace + 4, width: card.width - 28, height: floorY + 18 * scale - boardSpace - 4))
         NSGraphicsContext.restoreGraphicsState()
         cardPath.lineWidth = 1
         Sprites.color(0xC9B89A).setStroke()
@@ -593,6 +604,55 @@ final class PetWindow: NSPanel {
             drawLine(line, font: .systemFont(ofSize: 14), color: lines.isEmpty ? faint : PetWindow.chalk,
                      in: NSRect(x: textX, y: slate.minY + 25 + CGFloat(i) * boardLine, width: textW, height: boardLine), align: .left)
         }
+    }
+
+    /// The kind of sky at an hour: 0 night, 1 dawn, 2 day, 3 sunset.
+    static func skyAt(_ time: Date) -> Int {
+        let hour = Calendar.current.component(.hour, from: time)
+        return hour < 5 || hour >= 19 ? 0 : hour < 7 ? 1 : hour < 17 ? 2 : 3
+    }
+
+    private static let skies = [(0x1F2A4D, 0x3B4C7E), (0xF3B6A6, 0xFCE3B6), (0x86C5F2, 0xCDEBFB), (0xEE8A5E, 0xF8CB7C)]
+
+    /// Classroom windows behind the desks, showing the sky of the hour.
+    private func drawWindow(_ r: NSRect) {
+        guard r.width >= 20, r.height >= 20 else { return }
+        let sky = Self.skyAt(clock())
+        NSGradient(starting: Sprites.color(Self.skies[sky].0), ending: Sprites.color(Self.skies[sky].1))?.draw(in: r, angle: 90)
+        if sky == 0 {
+            Sprites.color(0xFFF6D8).setFill()
+            for i in 0..<24 {
+                NSRect(x: r.minX + CGFloat((i * 53 + 17) % Int(r.width)), y: r.minY + CGFloat((i * 29 + 7) % Int(r.height * 0.7)), width: 2, height: 2).fill()
+            }
+            Sprites.color(0xFFF3C4).setFill()
+            NSBezierPath(ovalIn: NSRect(x: r.maxX - 30, y: r.minY + 8, width: 14, height: 14)).fill()
+            Sprites.color(Self.skies[0].0).setFill()
+            NSBezierPath(ovalIn: NSRect(x: r.maxX - 26, y: r.minY + 6, width: 14, height: 14)).fill()
+        } else if sky == 2 {
+            NSColor.white.withAlphaComponent(235.0 / 255).setFill()
+            for (cx, cy) in [(0.22, 0.22), (0.68, 0.12)] {
+                let x = r.minX + r.width * cx, y = r.minY + r.height * cy
+                NSBezierPath(ovalIn: NSRect(x: x, y: y + 3, width: 26, height: 9)).fill()
+                NSBezierPath(ovalIn: NSRect(x: x + 6, y: y, width: 14, height: 10)).fill()
+            }
+        } else {
+            Sprites.color(sky == 1 ? 0xFFE9A8 : 0xFFC85A).setFill()
+            NSBezierPath(ovalIn: NSRect(x: r.minX + r.width * (sky == 1 ? 0.2 : 0.7), y: r.minY + r.height * 0.25, width: 18, height: 18)).fill()
+        }
+        // Frames: a transom across the top, mullions every pane, and a sill.
+        let frames = NSBezierPath()
+        frames.lineWidth = 3
+        let count = max(1, Int((r.width / 48).rounded()))
+        for i in 1..<count {
+            let x = r.minX + r.width * CGFloat(i) / CGFloat(count)
+            frames.move(to: NSPoint(x: x, y: r.minY)); frames.line(to: NSPoint(x: x, y: r.maxY))
+        }
+        frames.move(to: NSPoint(x: r.minX, y: r.minY + r.height * 0.32)); frames.line(to: NSPoint(x: r.maxX, y: r.minY + r.height * 0.32))
+        frames.appendRect(r)
+        PetWindow.wood.setStroke()
+        frames.stroke()
+        Sprites.color(0x8B5E3C).setFill()
+        NSRect(x: r.minX - 3, y: r.maxY, width: r.width + 6, height: 3).fill()
     }
 
     // ---- Mouse ----------------------------------------------------------------------

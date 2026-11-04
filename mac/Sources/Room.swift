@@ -10,7 +10,8 @@ struct Member {
     var style = ""     // Look.code; empty from versions before random looks
     var minutes = 0
     var updated: Int64 = 0 // server clock, ms
-    var drink: Sprites.Drink = .none // from drinks/{uid}; none from older versions or rules
+    var drink: Sprites.Drink = .none // from desks/{uid}; none from older versions or rules
+    var laptop = false
     var look: Look { Look.parse(style, girl: girl) }
 }
 
@@ -278,19 +279,19 @@ final class Room: @unchecked Sendable {
 
     private var roomPath: String { "rooms/" + invite.roomId }
 
-    /// `status` may carry a "drink", which goes to drinks/{me} on its own and quietly: a room
-    /// whose owner hasn't published the rules that allow it then shows no drink, and nothing breaks.
+    /// `status` may carry a "desk", which goes to desks/{me} on its own and quietly: a room
+    /// whose owner hasn't published the rules that allow it then shows plain desks, and nothing breaks.
     func publish(_ status: [String: Any]) {
         var member = status
-        let drink = member.removeValue(forKey: "drink") as? Int
+        let desk = member.removeValue(forKey: "desk") as? Int
         write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
-        if let drink, drink != sentDrink {
-            sentDrink = drink
-            write("PUT", "\(roomPath)/drinks/\(me)", drink, quiet: true)
+        if let desk, desk != sentDesk {
+            sentDesk = desk
+            write("PUT", "\(roomPath)/desks/\(me)", desk, quiet: true)
         }
     }
 
-    private var sentDrink: Int?
+    private var sentDesk: Int?
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
 
@@ -490,12 +491,14 @@ final class Room: @unchecked Sendable {
 
     static func members(_ tree: [String: Any]) -> [Member] {
         let all = tree["members"] as? [String: Any] ?? [:]
-        let drinks = tree["drinks"] as? [String: Any] ?? [:]
+        let desks = tree["desks"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
+            let desk = Int(num(desks, id))
+            let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
                           style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
-                          drink: Sprites.Drink(rawValue: Int(num(drinks, id))) ?? .none)
+                          drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1)
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
             if let name = value as? String, !result.contains(where: { $0.id == id }) { result.append(Member(id: id, name: name)) }

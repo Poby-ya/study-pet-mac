@@ -99,6 +99,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.myName = { Settings.get("name") }
         pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next() } }
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
+        pet.laptop = Settings.get("laptop") == "1"
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
@@ -384,7 +385,7 @@ final class AppController: NSObject, NSMenuDelegate {
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
         room?.publish([
-            "drink": state == .off ? 0 : pet.drink.rawValue,
+            "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
             "look": pet.look.girl ? "girl" : "boy",
             "style": pet.look.code,
@@ -539,7 +540,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func seatView(_ key: String) -> PetWindow.Seat? {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
         let here = Room.isHere(mate, Room.latest(members))
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink)
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink, laptop: mate.laptop)
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
@@ -649,6 +650,7 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
         menu.addItem(item("랜덤 꾸미기", #selector(switchLook)))
+        menu.addItem(item(pet.laptop ? "책상에 책 놓기" : "책상에 노트북 놓기", #selector(toggleLaptop)))
         menu.addItem(.separator())
         menu.addItem(item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)))
 
@@ -710,6 +712,13 @@ final class AppController: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         return item
+    }
+
+    @objc private func toggleLaptop() {
+        pet.laptop.toggle()
+        let on = pet.laptop
+        safely("책상 설정 저장") { try Settings.set("laptop", on ? "1" : "") }
+        publish()
     }
 
     @objc private func toggleBackground() {

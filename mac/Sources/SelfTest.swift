@@ -528,12 +528,12 @@ enum SelfTest {
         a.changed = { _ in aReady = true }
         a.poked = { pokeAtA = $0 }
         b.changed = { seenByB = $0 }
-        a.publish(["name": "가나", "look": "girl", "style": "g213402", "state": "studying", "subject": "영어", "minutes": 5, "updated": Room.serverTime, "drink": 5])
+        a.publish(["name": "가나", "look": "girl", "style": "g213402", "state": "studying", "subject": "영어", "minutes": 5, "updated": Room.serverTime, "desk": 15])
         b.publish(["name": "다라", "look": "boy", "style": "b120310", "state": "paused", "subject": "수학", "minutes": 12, "updated": Room.serverTime])
         check(waitFor { seenByB?.contains { $0.id == owner && $0.name == "가나" && $0.state == "studying" && $0.look.code == "g213402" && $0.updated > 0 } == true },
               "network: B should see A studying (A: \(a.error) B: \(b.error))")
-        check(waitFor { seenByB?.contains { $0.id == owner && $0.drink == .soju } == true },
-              "network: B should see A's drink, which needs the rules allowing drinks/ (A: \(a.error))")
+        check(waitFor { seenByB?.contains { $0.id == owner && $0.drink == .soju && $0.laptop } == true },
+              "network: B should see A's soju and laptop, which needs the rules allowing desks/ (A: \(a.error))")
         check(waitFor { aReady }, "network: A should get its first snapshot")
         b.poke(owner, ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": "일어나 !", "at": Room.serverTime])
         check(waitFor { pokeAtA != nil }, "network: A should be poked (B: \(b.error))")
