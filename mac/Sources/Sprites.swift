@@ -617,7 +617,7 @@ enum Sprites {
         if look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
-            let drink = heldDrink(d.drink == .none ? .mug : d.drink, tilted: pose == .teaSip)
+            let drink = tiltDrink(d.drink == .none ? .mug : d.drink, step: pose == .teaSip ? 2 : pose == .teaLift ? 1 : 0)
             let x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
             let y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
             layers.append(Layer(drink, x, y))
@@ -1044,10 +1044,19 @@ enum Sprites {
             return my >= 0 && my < mask.count && mx >= 0 && mx < mask[my].count && mask[my][mx] != "." ? Character(".") : c
         }) }
     }
-    static func heldDrink(_ drink: Drink, tilted: Bool) -> [String] {
+    static func heldDrink(_ drink: Drink, tilted: Bool) -> [String] { tiltDrink(drink, step: tilted ? 2 : 0) }
+    private static func tiltDrink(_ drink: Drink, step: Int) -> [String] {
         let art = drinkArt[drink.rawValue].map(Array.init)
-        if !tilted { return drinkArt[drink.rawValue] }
-        return (0..<art[0].count).map { y in String((0..<art.count).map { x in art[x][art[0].count - 1 - y] }) }
+        if step == 0 { return drinkArt[drink.rawValue] }
+        let r = sqrt(3.0) / 2; let cosine = step == 1 ? r : 0.5; let sine = step == 1 ? -0.5 : -r
+        let w = art[0].count, h = art.count
+        let width = Int(ceil(Double(w)*cosine - Double(h)*sine)), height = Int(ceil(Double(h)*cosine - Double(w)*sine))
+        return (0..<height).map { y in String((0..<width).map { x in
+            let dx = Double(x)-Double(width-1)/2, dy = Double(y)-Double(height-1)/2
+            let sx = Int((cosine*dx+sine*dy+Double(w-1)/2).rounded(.toNearestOrEven))
+            let sy = Int((-sine*dx+cosine*dy+Double(h-1)/2).rounded(.toNearestOrEven))
+            return sx >= 0 && sx < w && sy >= 0 && sy < h ? art[sy][sx] : Character(".")
+        }) }
     }
     static func flame(_ alt: Bool) -> [String] { alt ? ["..t.", ".tt.", "tpty", "tyyt", ".pp."] : [".t..", ".tt.", "ytpt", "tyyt", ".pp."] }
     static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 20, 12), Layer(flame(!alt), 28, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }

@@ -12,7 +12,7 @@ final class AppearanceWindow: NSWindow {
         selected = look
         values = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory < 2 ? 0 : look.accessory - 1, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
         super.init(contentRect: NSRect(x: 0, y: 0, width: 528, height: 570), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        title = "캐릭터 꾸미기"; isReleasedWhenClosed = false; minSize = NSSize(width: 440, height: 400)
+        title = "캐릭터 꾸미기"; isReleasedWhenClosed = false; minSize = NSSize(width: 528, height: 400)
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 65, width: 528, height: 505)); scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autoresizingMask = [.width, .height]
         let body = AppearanceContent(frame: NSRect(x: 0, y: 0, width: 508, height: 505)); scroll.documentView = body; contentView?.addSubview(scroll)
         let toggles = [("캐릭터", 13, ["남자", "여자"]), ("쓰는 손", 10, ["오른손", "왼손"]), ("액세서리", 6, ["없음", "별 머리핀", "헤드폰"]), ("피부색", 7, ["", "", "", ""])]

@@ -99,7 +99,7 @@
         "versions": {
           "$uid": {
             ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child(auth.uid).val() == true",
-            ".validate": "newData.isString() && newData.val().matches(/^[0-9]+\\.[0-9]+\\.[0-9]+$/)"
+            ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[0-9]+\\.[0-9]+\\.[0-9]+$/)"
           }
         }
       }
