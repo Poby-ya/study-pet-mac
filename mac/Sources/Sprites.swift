@@ -1021,6 +1021,7 @@ enum Sprites {
             if [.turnPage, .bookmark, .readA, .readB].contains(pose) { leftHand = Layer(hand, 4, 24); rightHand = Layer(hand, 18, 24); front.removeAll() }
             if let r = rightHand, r.grid == pencilHand { rightHand = Layer(hand, 21, 24 - up) }
         }
+        if laptop { front.removeAll { $0.grid == teacup } }
         var onDesk: [Layer] = []
         if let left = leftHand { onDesk.append(left) }
         if let right = rightHand { onDesk.append(right) }

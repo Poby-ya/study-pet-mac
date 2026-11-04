@@ -91,13 +91,14 @@ final class PetWindow: NSPanel {
     var canvasSize: NSSize {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
         // 12 on the left, 20 on the right where the last bag hangs past its desk.
-        let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32
+        let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * deskGap + 32
         return NSSize(width: Settings.get("largeText") == "1" ? max(width,260 * max(1,100 / CGFloat(sizePercent))) : width, height: floorY + CGFloat(Sprites.height) * scale + 10)
     }
-    private var deskInset: CGFloat { max(12,(canvasSize.width - CGFloat(1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskWidth - CGFloat((hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * 22)/2) }
-    private var myX: CGFloat { hasLeft ? deskInset + deskWidth + 22 : deskInset }
-    private var seatX: CGFloat { myX - deskWidth - 22 }
-    private var rightX: CGFloat { myX + deskWidth + 22 }
+    private var deskGap: CGFloat { Settings.get("largeText") == "1" ? max(22,190 * max(1,100 / CGFloat(sizePercent)) - deskWidth) : 22 }
+    private var deskInset: CGFloat { max(12,(canvasSize.width - CGFloat(1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskWidth - CGFloat((hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskGap)/2) }
+    private var myX: CGFloat { hasLeft ? deskInset + deskWidth + deskGap : deskInset }
+    private var seatX: CGFloat { myX - deskWidth - deskGap }
+    private var rightX: CGFloat { myX + deskWidth + deskGap }
 
     /// Read on every frame, so the minutes tick over without anyone pushing updates.
     var bubbleText: () -> String = { "" }
@@ -474,7 +475,7 @@ final class PetWindow: NSPanel {
         effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
-        let narrow = deskWidth + 16
+        let narrow = min(canvasSize.width-2,max(deskWidth+16,deskWidth+deskGap-6))
         if visiting || outgoing {
             let top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
             if !updateText.isEmpty { drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
