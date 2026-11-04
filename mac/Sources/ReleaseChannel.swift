@@ -18,7 +18,7 @@ final class ReleaseChannel {
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
                         guard line.hasPrefix("data: "), let json = String(line.dropFirst(6)).data(using: .utf8),
-                              let event = try JSONSerialization.jsonObject(with: json) as? [String: Any],
+                              let event = try JSONSerialization.jsonObject(with: json, options: [.fragmentsAllowed]) as? [String: Any],
                               event["path"] as? String == "/", let tag = event["data"] as? String,
                               tag.range(of: "^v[0-9]+\\.[0-9]+\\.[0-9]+$", options: .regularExpression) != nil else { continue }
                         delay = 1

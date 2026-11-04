@@ -554,7 +554,7 @@ enum Sprites {
     private static let bitten = [".kk..", "klDk.", "kDllk", "kllDk", ".kkk."]
     private static let turningPage = ["......bk......", ".....bbk......", "kkkkkbbkkkkkkk", "kbbbbbkkbbbbbk", "kBBBBBBBBBBBBk"]
     static func personalSticker(_ style: Int) -> [String] { style == 1 ? bigStickers[1] : style == 2 ? bigStickers[3] : ["pppp.", "ywy..", "yy...", "y...."] }
-    static let awaySign = ["kkkkkkkkkkkkkkkkkkkkkk", "kuuuuuuuuuuuuuuuuuuuuk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kkkkkkkkkkkkkkkkkkkkkk", ".dddddddddddddddddddd.", "..kkkkkkkkkkkkkkkkkk.."]
+    static let awaySign = ["..kkkkkkkkkkkkkkkkkk..", ".kbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", "kbbbbbbbbbbbbbbbbbbbbk", ".kbbbbbbbbbbbbbbbbbbk.", "..kkkkkkkkkkkkkkkkkk..", "..........dd..........", "..........dd..........", "..........dd..........", "..........dd..........", "..........dd..........", "......kkkkkkkkkk......", ".....dddddddddddd....."]
     static let heart = [".ff.ff.", "fFFfFFf", "fFFFFFf", ".fFFFf.", "..fFf..", "...f..."]
 
     static func butterfly(_ folded: Bool) -> [String] {

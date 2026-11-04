@@ -494,8 +494,10 @@ final class PetWindow: NSPanel {
     }
 
     private func drawAwaySign(_ x: CGFloat, phase: Double = 13) {
-        let height = phase < 11 ? 4 : phase < 12 ? 8 : 12
+        let height = phase < 11 ? 6 : phase < 12 ? 12 : 18
         let top = floorY + CGFloat(27 - height) * scale
+        let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
+        NSGraphicsContext.current?.shouldAntialias = false
         let grid = Array(Sprites.awaySign.suffix(height))
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
@@ -503,9 +505,10 @@ final class PetWindow: NSPanel {
                 NSRect(x: x + CGFloat(17 + col) * scale, y: top + CGFloat(y) * scale, width: scale, height: scale).fill()
             }
         }
-        guard height == 12 else { return }
+        NSGraphicsContext.current?.shouldAntialias = antialias
+        guard height == 18 else { return }
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.1 * scale), color: PetWindow.ink,
-                 in: NSRect(x: x + 18 * scale, y: top + 3 * scale, width: 19 * scale, height: 6 * scale))
+                 in: NSRect(x: x + 18 * scale, y: top + 2 * scale, width: 19 * scale, height: 7 * scale))
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its
