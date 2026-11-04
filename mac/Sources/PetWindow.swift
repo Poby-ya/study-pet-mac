@@ -442,7 +442,7 @@ final class PetWindow: NSPanel {
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
-            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x, phase: leavingTicks[i] < 0 ? 13 : leavingTicks[i], owner: seat.look) }
+            if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x, phase: leavingTicks[i] < 0 ? 13 : leavingTicks[i]) }
             if lit { lamps.append(x) }
         }
         let myLamp = night && mood == .studying && !outgoing
@@ -493,21 +493,19 @@ final class PetWindow: NSPanel {
         return t * t * (3 - 2 * t)
     }
 
-    private func drawAwaySign(_ x: CGFloat, phase: Double = 13, owner: Look? = nil) {
+    private func drawAwaySign(_ x: CGFloat, phase: Double = 13) {
         let height = phase < 11 ? 4 : phase < 12 ? 8 : 12
         let top = floorY + CGFloat(27 - height) * scale
         let grid = Array(Sprites.awaySign.suffix(height))
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
-                (c == "k" ? PetWindow.wood : (c == "d" || c == "l") ? PetWindow.floorWood : Sprites.color(0xFFF1B8)).setFill()
+                (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : c == "u" ? Sprites.color(0xFFF9E7) : Sprites.color(0xFFF1B8)).setFill()
                 NSRect(x: x + CGFloat(17 + col) * scale, y: top + CGFloat(y) * scale, width: scale, height: scale).fill()
             }
         }
         guard height == 12 else { return }
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.1 * scale), color: PetWindow.ink,
                  in: NSRect(x: x + 18 * scale, y: top + 3 * scale, width: 19 * scale, height: 6 * scale))
-        let actor = owner ?? look
-        if actor.sticker > 0 { Sprites.draw(layers: [Sprites.Layer(Sprites.personalSticker(actor.sticker), 0, 0)], actor, left: x + 34 * scale, top: top + scale, scale: scale) }
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its

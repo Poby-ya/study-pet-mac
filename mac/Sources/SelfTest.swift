@@ -232,7 +232,7 @@ enum SelfTest {
         check(Set(seen.map(\.id)).count == seen.count, "multi-room: shared members are deduplicated")
         // The first optional desk write fails; an identical heartbeat must repair it.
         let deskProbe = Room(invite: invite, me: friend, token: { "" }, followSeat: false)
-        _ = finish { try await Room.call("POST", URL(string: invite.database + "/__test/fail-next")!, "PUT") }
+        _ = finish { try await Room.call("POST", invite.database + "/__test/fail-next", Data("PUT".utf8)) }
         var decorated = status("친구", 17); decorated["desk"] = 15
         deskProbe.publish(decorated); deskProbe.flush()
         deskProbe.publish(decorated)
