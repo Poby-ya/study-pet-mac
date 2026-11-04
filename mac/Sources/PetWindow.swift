@@ -371,16 +371,11 @@ final class PetWindow: NSPanel {
         let tap = tapping && frameCount % 2 == 0
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : tapping ? .reach : .wave, x: visitorX,
                                  hop: walking ? CGFloat(abs(sin(visitTick * .pi))) * scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
-        if tapping {
-            NSGraphicsContext.saveGraphicsState()
-            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-            Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
-            NSGraphicsContext.restoreGraphicsState()
-        }
         let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Self.travelProgress(outgoingTick))
+        // Wave with the far hand: the near one would be behind the friend I'm visiting.
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : .wave, x: outX,
-                                 hop: CGFloat(abs(sin(outgoingTick * .pi))) * scale, mirror: (destination < myX) != (outgoingTick > 18)) }
+                                 hop: CGFloat(abs(sin(outgoingTick * .pi))) * scale, mirror: (destination < myX) != (outgoingTick > 18), leftHand: true) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
         for i in 0..<2 {
@@ -398,6 +393,13 @@ final class PetWindow: NSPanel {
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
         }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
+        // The tapping arm goes over my pet, or only a stub of it would show.
+        if tapping {
+            NSGraphicsContext.saveGraphicsState()
+            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+            Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
+            NSGraphicsContext.restoreGraphicsState()
+        }
         drawNameplate(myName(), deskX: myX)
         if mood == .away && !outgoing { drawAwaySign(myX) }
         effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
@@ -472,11 +474,11 @@ final class PetWindow: NSPanel {
                               top: floorY + 20 * scale - CGFloat(t * 1.8) * scale, scale: small)
         }
     }
-    private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool) {
+    private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool, leftHand: Bool = false) {
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: canvasSize.width, height: floorY + 27 * scale).clip()
         if mirror { let t = NSAffineTransform(); t.translateX(by: x + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
+        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 

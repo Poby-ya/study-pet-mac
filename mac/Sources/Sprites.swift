@@ -500,7 +500,10 @@ enum Sprites {
         var all: [[String]] = []
         for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
         for pose in Visiting.allCases {
-            for alt in [false, true] { all += visitor(look, pose, alt: alt).map(\.grid) }
+            for alt in [false, true] {
+                all += visitor(look, pose, alt: alt).map(\.grid)
+                all += visitor(look, pose, alt: alt, leftHand: true).map(\.grid)
+            }
         }
         all += reachLayers(look, down: true).map(\.grid)
         return all + [butterfly(false), butterfly(true), heart]
@@ -667,15 +670,18 @@ enum Sprites {
         return shift(person.map(move)) + [Layer(desk, 0, 27)] + shift([bookLayer] + onDesk.map(move))
     }
 
-    /// A friend standing up, with legs since no desk hides them.
-    static func visitor(_ look: Look, _ pose: Visiting, alt: Bool) -> [Layer] {
+    /// A friend standing up, with legs since no desk hides them. `leftHand` waves with the
+    /// other hand, the one away from a seated friend who would hide it.
+    static func visitor(_ look: Look, _ pose: Visiting, alt: Bool, leftHand: Bool = false) -> [Layer] {
         let walking = pose == .walk
+        let left = leftHand && pose == .wave
         let (back, head) = headLayers(look, .open, walking ? .small : .smile, 7, 0)
         var layers = [
-            Layer(body(look, sitting: false, rightArm: !walking), 6, 16),
+            Layer(body(look, sitting: false, leftArm: left, rightArm: !walking && !left), 6, 16),
             Layer(legs(look, lifted: walking ? (alt ? 1 : 2) : 0), 6, 27),
         ] + back
-        if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
+        if left { layers.append(arm(look, (9, 18), (5, 15), alt ? (4, 8) : (2, 9))) }
+        else if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
         return shift(layers + head)
     }
 
@@ -743,6 +749,8 @@ enum Sprites {
             (visitor(girl, .wave, alt: false), girl),
             (visitor(girl, .reach, alt: true) + reachLayers(girl, down: true), girl),
             (compose(.writeA, girl, alert: true, lift: 1), girl),
+            (visitor(girl, .wave, alt: true, leftHand: true), girl),
+            (visitor(girl, .wave, alt: false, leftHand: true), girl),
         ]
         for (i, cell) in cells.enumerated() {
             let (x, y) = at(row + i)
