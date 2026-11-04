@@ -77,7 +77,7 @@ enum SelfTest {
         check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
         check([335, 336, 359, 360, 696, 1056, 1080].map { PetWindow.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
-        check([1416, 1776, 2136, 2496, 3936, 4296].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 1], "moments: all eleven play before the cycle repeats")
+        check([1416, 1776, 2136, 2496, 3936, 4296].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 12], "moments: all twelve play before the cycle repeats")
         check((0..<3600).filter { PetWindow.studyMoment($0, seed: 37) > 0 }.count == 240 && !(0..<3600).allSatisfy { PetWindow.studyMoment($0, seed: 37) == PetWindow.studyMoment($0) },
               "moments: a seatmate acts as often as me, on their own schedule")
         check((1...PetWindow.moments).allSatisfy { m in !PetWindow.momentLine(m, 0).isEmpty }, "moments: every moment has a line")
@@ -171,7 +171,7 @@ enum SelfTest {
         }
         pet.setUpdateAvailable(true)
         pet.advanceAnimation(3600)
-        check(pet.updateText == PetWindow.updateMessage, "update: announcement persists until update is installed")
+        check(pet.updateText.isEmpty, "update: speech returns to study after eight seconds")
         pet.preview(.studying, frame: 0)
         save(render(pet.canvasSize) { pet.paint() }, out, "update-bubble.png")
         pet.minimizeScene()
@@ -380,11 +380,11 @@ enum SelfTest {
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
         var board = Room.board(members, me: "me")
-        check(board.title == "지금 공부 중 · 3명" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
+        check(board.title == "공부 중 2 · 쉬는 중 1" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
               "board: everyone else at their desk, studying first, away and off left out: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
         board = Room.board(members, me: "me")
-        check(board.title == "지금 공부 중 · 5명" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        check(board.title == "공부 중 4 · 쉬는 중 1" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
         check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == Room.boardLines,
               "board: grows only up to boardLines")
 
@@ -626,7 +626,7 @@ enum SelfTest {
         // With the classroom: a full board, then a short one with news above my bubble.
         mine = "영어\n23분째 공부 중"
         seat = PetWindow.Seat(name: "민지", look: minji, here: true, dozing: false, text: "수학\n32분째 공부 중")
-        board = ("지금 공부 중 · 5명", ["민지 · 수학 32분", "준혁 · 영어 1시간 5분", "다온 · 국어 방금 시작", "서연 · 과학 12분", "하준 · 쉬는 중"])
+        board = ("공부 중 4 · 쉬는 중 1", ["민지 · 수학 32분", "준혁 · 영어 1시간 5분", "다온 · 국어 방금 시작", "서연 · 과학 12분", "하준 · 쉬는 중"])
         shot(.studying)
         seat = PetWindow.Seat(name: "준혁", look: junhyuk, here: false, dozing: false, text: "자리 비움")
         mine = "영어\n공부 시작!"

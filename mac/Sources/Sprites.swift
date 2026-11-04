@@ -4,13 +4,26 @@ import AppKit
 /// then one digit each for hairstyle, hair colour, top, top colour, bottoms and ribbon
 /// colour ("g213402"). An older version reads each digit modulo its own, smaller counts.
 struct Look: Equatable {
-    static let hairStyles = 5
+    static let hairStyles = 8
     static let hairColors = 5
-    static let tops = 6        // hoodie, sweater, cardigan, striped tee, uniform, heart sweater
+    static let tops = 9        // hoodie, sweater, cardigan, striped tee, uniform, heart sweater
     static let topColors = 10
     static let bottoms = 8     // 0-3 trousers, 4-7 skirt (girls only)
     static let ribbons = 6
 
+    var extra = "0000000"
+    var accessory: Int { Int(Array(extra)[0].asciiValue! - 48) }
+    var skin: Int { Int(Array(extra)[1].asciiValue! - 48) }
+    var hat: Int { Int(Array(extra)[2].asciiValue! - 48) }
+    var sleeve: Int { Int(Array(extra)[3].asciiValue! - 48) }
+    var leftHanded: Bool { Array(extra)[4] == "1" }
+    var sticker: Int { Int(Array(extra)[5].asciiValue! - 48) }
+    var bag: Int { Int(Array(extra)[6].asciiValue! - 48) }
+    func withExtras(_ value: String) -> Look {
+        var result = self
+        result.extra = value.range(of: "^[0-3][0-3][0-2][0-3][0-1][0-3][0-3]$", options: .regularExpression) != nil ? value : "0000000"
+        return result
+    }
     let girl: Bool
     let hair: Int
     let hairColor: Int
@@ -64,13 +77,14 @@ enum Sprites {
         case stretchHalf, stretchUp, stretchLeft, stretchRight, content, oops, pickUp, found, lookUp
         case teaHold, teaSip, turnPage, cheer, yawn, nodA, nodB, nodC, startle, munchA, munchB
         case think, idea, spinA, spinB, spinC, spinD
+        case restHands, blinkB, bend, recover, teaReach, teaLift, cookieSmall, crumbs, yawnStart, yawnEnd, readA, readB, bookmark, lookLeft, lookRight
     }
 
     /// A visiting friend: walking over, waving at an empty desk, or with the right arm
     /// held out to tap (the arm itself comes from `reachLayers`).
     enum Visiting: CaseIterable { case walk, wave, reach }
 
-    private enum Eyes { case open, closed, happy, up }
+    private enum Eyes { case open, closed, happy, up, left, right }
     private enum Mouth { case small, open, smile }
 
     struct Layer {
@@ -179,14 +193,16 @@ enum Sprites {
         switch eyes {
         case .open: marks = [(1, 4, "ew"), (1, 12, "ew"), (2, 4, "ee"), (2, 12, "ee")]
         case .closed: marks = [(2, 4, "ee"), (2, 12, "ee")]
-        case .happy: marks = [(1, 4, "ee"), (1, 12, "ee"), (2, 3, "e"), (2, 6, "e"), (2, 11, "e"), (2, 14, "e")]
+        case .happy: marks = [(1, 4, "e"), (1, 12, "e"), (2, 3, "ese"), (2, 11, "ese")]
+        case .left: marks = [(1, 3, "ew"), (1, 11, "ew"), (2, 3, "ee"), (2, 11, "ee")]
+        case .right: marks = [(1, 5, "ew"), (1, 13, "ew"), (2, 5, "ee"), (2, 13, "ee")]
         case .up: marks = [(0, 4, "ew"), (0, 12, "ew"), (1, 4, "ee"), (1, 12, "ee")]
         }
         let lips: [(Int, Int, String)]
         switch mouth {
         case .small: lips = [(3, 8, "mm")]
         case .open: lips = [(3, 8, "ee"), (4, 8, "mm")]
-        case .smile: lips = [(3, 7, "m"), (3, 10, "m"), (4, 8, "mm")]
+        case .smile: lips = [(3, 7, "msm"), (4, 8, "m")]
         }
         return put(rows, marks + lips)
     }
@@ -277,17 +293,31 @@ enum Sprites {
     private static let hairpin = ["kkkk", "kRRk", "kkkk"]
 
     /// Hair hanging behind the face, then the head itself with anything worn on it.
-    private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int) -> (back: [Layer], front: [Layer]) {
+    private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int) -> ([Layer], [Layer])
+    {
         let tops = look.girl ? girlTops : boyTops
-        let head = Layer(tops[look.hair] + face(eyes, mouth), x, y)
-        if !look.girl { return ([], [head]) }
-        switch look.hair {
-        case 0: return ([Layer(longLeft, x - 3, y + 7), Layer(mirror(longLeft), x + 17, y + 7)], [head, Layer(bow, x + 11, y + 1)])
-        case 1: return ([Layer(bobLeft, x - 3, y + 7), Layer(mirror(bobLeft), x + 17, y + 7)], [head, Layer(hairpin, x + 13, y + 7)])
-        case 2: return ([Layer(pigtailLeft, x - 4, y + 9), Layer(mirror(pigtailLeft), x + 17, y + 9)], [head])
-        case 3: return ([Layer(bun, x, y), Layer(bun, x + 12, y)], [head])
-        default: return ([Layer(mirror(pigtailLeft), x + 16, y + 4)], [head])
+        let head = Layer(tops[look.hair % 5] + face(eyes, mouth), x, y)
+        var back: [Layer] = []
+        var front: [Layer] = [head]
+        if look.girl && look.hair % 5 == 0 { back.append(Layer(longLeft, x - 3, y + 7)); back.append(Layer(mirror(longLeft), x + 17, y + 7))
         }
+        if look.hair == 5 { back.append(Layer(["kRk", "khk", "kHk", "khk", "kHk", "khk", "kRk", ".k."], x + 16, y + 12)) }
+        else if look.hair == 6 { front[0] = Layer(boyTops[1] + face(eyes, mouth), x, y) }
+        else if look.hair == 7 || look.girl && look.hair == 1 { back.append(Layer(bobLeft, x - 3, y + 7)); back.append(Layer(mirror(bobLeft), x + 17, y + 7))
+        }
+        else if look.girl && look.hair == 2 { back.append(Layer(pigtailLeft, x - 4, y + 9)); back.append(Layer(mirror(pigtailLeft), x + 17, y + 9))
+        }
+        else if look.girl && look.hair == 3 { front.append(Layer(bun, x, y)); front.append(Layer(bun, x + 12, y))
+        }
+        else if look.girl && look.hair == 4 { back.append(Layer(mirror(pigtailLeft), x + 16, y + 4)) }
+        if look.girl && look.hair == 0 { front.append(Layer(bow, x + 11, y + 1)) }
+        if look.accessory == 1 { front.append(Layer(["kkkk.k.kkkk", "k..k.k.k..k", "kkkk...kkkk"], x + 3, y + 10)) }
+        if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
+        if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
+        }
+        if look.hat == 1 { front.append(Layer(["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"], x + 1, y + 1)) }
+        if look.hat == 2 { front.append(Layer(["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."], x - 1, y + 1)) }
+        return (back, front)
     }
 
     // ---- Bodies ---------------------------------------------------------------------
@@ -385,6 +415,15 @@ enum Sprites {
                 paint(row, 9, "R")
                 paint(row, 10, "R")
             }
+        case 6:
+            for col in 5...14 { paint(1, col, "C") }
+            paint(2, 7, "C"); paint(2, 12, "C"); paint(3, 9, "R"); paint(3, 10, "R")
+        case 7:
+            for row in 0..<7 { paint(row, 7, "C") }
+            paint(2, 7, "p")
+        case 8:
+            for col in 6...13 { paint(1, col, "C") }
+            paint(2, 6, "C"); paint(2, 13, "C")
         default: // sweater with a heart on the chest
             for col in 7...12 { paint(1, col, "a") }
             for (row, from, to) in [(2, 7, 8), (2, 11, 12), (3, 7, 12), (4, 8, 11), (5, 9, 10)] {
@@ -397,7 +436,9 @@ enum Sprites {
     /// A body with either hanging arm taken off, for poses that draw that arm themselves.
     private static func body(_ look: Look, sitting: Bool, leftArm: Bool = false, rightArm: Bool = false) -> [String] {
         let shape = sitting ? sittingBody : look.skirt ? Array(standingBody.prefix(8)) + skirtRows : standingBody
-        return dress(shape, look.top).enumerated().map { i, row in
+        var dressed = dress(shape, look.top)
+        if look.sleeve > 0 { dressed = put(dressed, [(6, 3, look.sleeve == 3 ? "RR" : "CC"), (6, 15, look.sleeve == 3 ? "RR" : "CC")]) }
+        return dressed.enumerated().map { i, row in
             if i < 3 || i > 7 { return row }
             let cells = Array(row)
             let left = leftArm ? "....." + String(cells[5..<15]) : String(cells[0..<15])
@@ -508,6 +549,7 @@ enum Sprites {
     private static let cookie = [".kkk.", "klDlk", "kDllk", "kllDk", ".kkk."]
     private static let bitten = [".kk..", "klDk.", "kDllk", "kllDk", ".kkk."]
     private static let turningPage = ["......bk......", ".....bbk......", "kkkkkbbkkkkkkk", "kbbbbbkkbbbbbk", "kBBBBBBBBBBBBk"]
+    static let awaySign = ["..kk.............kk...", ".kbbk...........kbbk..", "kbbbbkkkkkkkkkkkbbbkk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kbbbbbbbbbbbbbbbbbbbk.", "kkkkkkkkkkkkkkkkkkkkk.", ".kddddddddddddddddddkk", "..kkkkkkkkkkkkkkkkkk.."]
     static let heart = [".ff.ff.", "fFFfFFf", "fFFFFFf", ".fFFFf.", "..fFf..", "...f..."]
 
     static func butterfly(_ folded: Bool) -> [String] {
@@ -552,7 +594,7 @@ enum Sprites {
     static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, decor: Decor? = nil) -> [Layer] {
         let d = decor ?? Decor()
         var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop)
-        if lift != 0 { layers = layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
+        if lift != 0 { layers = layers.map { $0.grid == desk || $0.grid == book || $0.grid == laptopOpen || $0.grid == laptopShut ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
         layers.insert(Layer(d.lit ? lampOn : lampOff, 1, 11), at: 0)
@@ -564,8 +606,23 @@ enum Sprites {
             Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
         ], at: at)
         if d.away { return layers }
-        layers.insert(Layer(bags[d.seed % bags.count], 42, 28), at: at)
-        if d.drink != .none { layers.insert(drinkLayer(d.drink), at: at) }
+        let bag: [String]
+        switch look.bag {
+        case 1: bag = ["..kk..", ".kRRk.", "kMMMMk", "kMMMMk", ".kkkk."]
+        case 2: bag = [".kkkkkk.", "kMMMMMMk", "kMMppMMk", "kMMMMMMk", ".kkkkkk."]
+        case 3: bag = [".k..k.", ".k..k.", "kkkkkk", "kMMMMk", "kMMMMk", ".kkkk."]
+        default: bag = bags[d.seed % bags.count]
+        }
+        let bagColor = String(Array("ztgprV")[d.seed % 6])
+        layers.insert(Layer(bag.map { $0.replacingOccurrences(of: "M", with: bagColor) }, 42, 28), at: at)
+        if look.sticker > 0 { layers.append(Layer(bigStickers[[0,1,3,4][look.sticker]], d.laptop ? 17 : 21, d.laptop ? 22 : 25)) }
+        if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
+            layers.removeAll { $0.grid == teacup }
+            let drink = drinkArt[(d.drink == .none ? Drink.mug : d.drink).rawValue]
+            let x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
+            let y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
+            layers.append(Layer(drink, x, y))
+        } else if d.drink != .none { layers.insert(drinkLayer(d.drink), at: at) }
         return layers
     }
 
@@ -632,7 +689,18 @@ enum Sprites {
     /// The classroom's window, `w`×`h` pixels, any size from about 20×16: the sky of the hour
     /// (0 night, 1 dawn, 2 day, 3 sunset) with its sun, moon, clouds or stars at the right, and
     /// the tree in its season (0 spring, 1 summer, 2 autumn, 3 winter) high in the left corner.
+    private static var windowCache: [String: [String]] = [:]
+    private static var windowSize = ""
     static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int) -> [String] {
+        let size = "\(w)x\(h)"
+        if windowSize != size { windowCache.removeAll(); windowSize = size }
+        let key = "\(sky)-\(season)"
+        if let grid = windowCache[key] { return grid }
+        let grid = buildWindow(w, h, sky: sky, season: season)
+        windowCache[key] = grid
+        return grid
+    }
+    private static func buildWindow(_ w: Int, _ h: Int, sky: Int, season: Int) -> [String] {
         var grid = Array(repeating: Array(repeating: Array("1234")[sky], count: w), count: h)
         func put(_ x: Int, _ y: Int, _ c: Character) { if x > 0 && x < w - 1 && y > 0 && y < h - 2 { grid[y][x] = c } }
         func stamp(_ art: [String], _ x0: Int, _ y0: Int, _ c: Character) {
@@ -687,6 +755,9 @@ enum Sprites {
         let drift = season == 3 ? w * h / 30 : season == 0 || season == 2 ? 3 : 0
         for i in 0..<drift { put(2 + (i * 11 + 5) % (w - 4), 1 + (i * 7 + 3) % (h - 4), season == 3 ? "w" : dark) }
 
+        if season == 1 { put(w - 4, h / 3 - 1, "G"); put(w - 5, h / 3 - 2, "i"); put(w - 3, h / 3 - 2, "i") }
+        if season == 2 { put(w - 5, h - 3, "t"); put(w - 4, h - 3, "y"); put(w - 4, h - 4, "p") }
+        if season == 3 { for i in 1...4 { put(w - 1 - i, h - 2 - i, "i"); put(w - 2 - i, h - 2 - i, "w") } }
         // Mullions every 16 pixels or so, a transom, then the frame and the sill.
         let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
         for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
@@ -710,7 +781,7 @@ enum Sprites {
             let (back, head) = headLayers(look, .open, .small, 10, 12)
             var shifted = shift([Layer(body(look, sitting: true), 6, 22)] + back + head + [Layer(pencilHand, 28, 30)])
             shifted.insert(Layer(desk, 0, 27), at: 1)
-            return shifted
+            return shifted + shift([Layer(laptop ? laptopOpen : book, laptop ? 6 : 9, laptop ? 20 : 24)])
         }
         if pose == .dozeA || pose == .dozeB {
             // Head down on the desk, so the desk goes underneath it.
@@ -743,6 +814,24 @@ enum Sprites {
         var mark: [String]? = alert ? exclaim : nil
 
         switch pose {
+        case .restHands: rightHand = Layer(hand, 19, 24)
+        case .blinkB: eyes = .closed; rightHand = Layer(pencilHand, 18, 22)
+        case .lookLeft: eyes = .left
+        case .lookRight: eyes = .right
+        case .bend: headY = 6; rightHand = Layer(hand, 24, 26); eyes = .closed
+        case .recover: headY = 5; rightHand = Layer(pencilHand, 22, 21)
+        case .teaReach: rightHand = Layer(hand, 24, 24)
+        case .teaLift: rightHand = nil; front.append(Layer(teacup, 18, 19)); front.append(Layer(hand, 19, 23))
+        case .cookieSmall:
+            leftHand = nil; leftArm = true; front.append(Layer([".kk.", "klDk", ".kk."], 10, 16))
+            front.append(arm(look, (9,22), (10,21), (11,19)))
+        case .crumbs: front.append(Layer(["l.l", ".l."], 12, 25))
+        case .yawnStart: eyes = .closed; mouth = .open
+        case .yawnEnd: leftHand = Layer(hand, 9, 22)
+        case .readA, .readB: rightHand = Layer(hand, pose == .readA ? 12 : 16, 24)
+        case .bookmark:
+            bookLayer = Layer(turningPage, 9, 23); rightHand = Layer(hand, 17, 23)
+            front.append(Layer(["RR", "RR", "RR", "R."], 17, 23))
         case .writeB:
             rightHand = Layer(pencilHand, 18, 22)
         case .blink:
@@ -777,7 +866,7 @@ enum Sprites {
                 behind.append(arm(look, (9, 22), (5, 15), (3, 5)))
             }
         case .content:
-            eyes = .happy
+            eyes = .open
             mouth = .smile
         case .oops:
             mouth = .open
@@ -838,7 +927,7 @@ enum Sprites {
             front.append(arm(look, (21, 22), (24, 21), (24, 18)))
             mark = question
         case .idea:
-            eyes = .happy
+            eyes = .open
             mouth = .smile
             mark = exclaim
         case .spinA, .spinB, .spinC, .spinD:
@@ -859,14 +948,18 @@ enum Sprites {
         var lying = [bookLayer]
         if laptop {
             lying = [Layer(laptopOpen, 6, 20)]
-            let up = pose == .writeB ? 1 : 0
+            let up = pose == .writeB || pose == .blinkB ? 1 : 0
             if let l = leftHand, l.grid == hand, l.x == 7 { leftHand = Layer(hand, 4, 23 + up) }
+            if pose == .turnPage || pose == .bookmark { leftHand = Layer(hand, 4, 24); rightHand = Layer(hand, 16, 25) }
             if let r = rightHand, r.grid == pencilHand { rightHand = Layer(hand, 21, 24 - up) }
         }
         var onDesk: [Layer] = []
         if let left = leftHand { onDesk.append(left) }
         if let right = rightHand { onDesk.append(right) }
         onDesk += front
+        if look.leftHanded && [.writeA, .writeB, .blink, .blinkB, .readA, .readB].contains(pose) {
+            onDesk = onDesk.map { Layer(mirror($0.grid), 32 - $0.x - $0.grid[0].count, $0.y) }
+        }
         if let mark = mark { onDesk.append(Layer(mark, mark == question ? 28 : 26, 1)) }
         func move(_ l: Layer) -> Layer { Layer(l.grid, l.x + sway, l.y - rise) }
         // Person, then the desk in front of their lap, then what lies on the desk.
@@ -883,6 +976,7 @@ enum Sprites {
             Layer(body(look, sitting: false, leftArm: left, rightArm: !walking && !left), 6, 16),
             Layer(legs(look, lifted: walking ? (alt ? 1 : 2) : 0), 6, 27),
         ] + back
+        if walking { layers.append(arm(look, (9, 18), (alt ? 7 : 10, 22), (alt ? 6 : 11, 25))) }
         if left { layers.append(arm(look, (9, 18), (5, 15), alt ? (4, 8) : (2, 9))) }
         else if pose == .wave { layers.append(arm(look, (21, 18), (25, 15), alt ? (26, 8) : (28, 9))) }
         return shift(layers + head)
@@ -989,6 +1083,7 @@ enum Sprites {
         let hair = hairColorSet[look.hairColor]
         let top3 = topColorSet[look.topColor]
         var colors = palette
+        colors["s"] = color([0xFFE0C8, 0xE9B591, 0xBD8361, 0x83523E][look.skin])
         colors["h"] = color(hair.0)
         colors["H"] = color(hair.1)
         colors["A"] = color(top3.0)

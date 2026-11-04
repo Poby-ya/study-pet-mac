@@ -51,7 +51,7 @@ final class SettingsWindow: NSWindow {
         let buttons = NSStackView(views: [check, install])
         buttons.spacing = 12
         stack.addArrangedSubview(buttons)
-        let note = NSTextField(wrappingLabelWithString: "새 버전은 앱 시작 시와 매시간 확인해 알려 드려요.\n업데이트할 때 공부 기록을 저장하고 재실행 후 이어갑니다.")
+        let note = NSTextField(wrappingLabelWithString: "앱이 켜져 있으면 새 버전 배포 소식을 바로 받아요.\n업데이트할 때 공부 기록을 저장하고 재실행 후 이어갑니다.")
         note.textColor = .secondaryLabelColor
         stack.addArrangedSubview(note)
         updater.changed = { [weak self] in self?.refresh() }

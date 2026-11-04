@@ -7,12 +7,13 @@ struct Member {
     var subject = ""
     var state = "off" // studying, paused, off
     var girl = false
+    var extra = ""
     var style = ""     // Look.code; empty from versions before random looks
     var minutes = 0
     var updated: Int64 = 0 // server clock, ms
     var drink: Sprites.Drink = .none // from desks/{uid}; none from older versions or rules
     var laptop = false
-    var look: Look { Look.parse(style, girl: girl) }
+    var look: Look { Look.parse(style, girl: girl).withExtras(extra) }
 }
 
 /// A friend came over to wake you up.
@@ -21,10 +22,11 @@ struct Poke {
     var name = ""
     var message = ""
     var girl = false
+    var extra = ""
     var style = ""
     var at: Int64 = 0
     var missed = false // it was waiting when we connected: sent while the app was off
-    var look: Look { Look.parse(style, girl: girl) }
+    var look: Look { Look.parse(style, girl: girl).withExtras(extra) }
 }
 
 struct RoomError: Error {
@@ -283,6 +285,7 @@ final class Room: @unchecked Sendable {
     /// whose owner hasn't published the rules that allow it then shows plain desks, and nothing breaks.
     func publish(_ status: [String: Any]) {
         var member = status
+        if let extra = member.removeValue(forKey: "extra") { write("PUT", "\(roomPath)/wardrobe/\(me)", extra, quiet: true) }
         let desk = member.removeValue(forKey: "desk") as? Int
         write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
         if let desk, desk != sentDesk {
@@ -491,13 +494,14 @@ final class Room: @unchecked Sendable {
 
     static func members(_ tree: [String: Any]) -> [Member] {
         let all = tree["members"] as? [String: Any] ?? [:]
+        let wardrobe = tree["wardrobe"] as? [String: String] ?? [:]
         let desks = tree["desks"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             let desk = Int(num(desks, id))
             let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
-                          style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
+                          extra: wardrobe[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
                           drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1)
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
@@ -555,7 +559,7 @@ final class Room: @unchecked Sendable {
             let what = m.subject.isEmpty ? "" : m.subject + " "
             return m.minutes < 1 ? "\(m.name) · \(what)방금 시작" : "\(m.name) · \(what)\(Records.duration(Double(m.minutes)))"
         }
-        return (here.isEmpty ? "지금 공부 중" : "지금 공부 중 · \(here.count)명", lines)
+        return ("공부 중 \(here.filter { $0.state == "studying" }.count) · 쉬는 중 \(here.filter { $0.state == "paused" }.count)", lines)
     }
 
     /// Who went from away (or not in the room) to studying between two snapshots.

@@ -1,4 +1,6 @@
 import AppKit
+import Network
+import Darwin
 import Carbon.HIToolbox
 import ServiceManagement
 
@@ -73,6 +75,18 @@ final class AppController: NSObject, NSMenuDelegate {
     private var help: HelpWindow?
     private var settingsWindow: SettingsWindow?
     private let updater = Updater()
+    private let releaseChannel = ReleaseChannel()
+    private let updateNotifications = UpdateNotifications()
+    private let networkMonitor = NWPathMonitor()
+    private var signalledTag = ""
+    private var wakeObserver: NSObjectProtocol?
+    private var segmentClock = 0.0
+    private static func continuousSeconds() -> Double {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return Double(mach_continuous_time()) * Double(info.numer) / Double(info.denom) / 1_000_000_000
+    }
+    private func segmentEnd(_ start: Date) -> Date { start.addingTimeInterval(max(0, Self.continuousSeconds() - segmentClock)) }
     private var updateCheck: Timer?
     private var pendingCommit: Segment?
     private var room: StudyRooms?
@@ -139,6 +153,17 @@ final class AppController: NSObject, NSMenuDelegate {
         let check = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.updater.check() }
         RunLoop.main.add(check, forMode: .common)
         updateCheck = check
+        updateNotifications.open = { [weak self] in self?.showSettings() }
+        releaseChannel.start { [weak self] tag in
+            guard let self, tag != self.signalledTag else { return }
+            self.signalledTag = tag
+            self.updater.check()
+        }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.updater.check() }
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            if path.status == .satisfied { DispatchQueue.main.async { self?.updater.check() } }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "StudyPet.reconnect"))
     }
 
     private var nickname: String { Settings.get("name") }
@@ -188,6 +213,12 @@ final class AppController: NSObject, NSMenuDelegate {
         if !onlyWhenIdle || state == .off { showPlanner() }
     }
 
+    private func startHeartbeat() {
+        heartbeat?.invalidate()
+        let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
+    }
     private func start(_ picked: String) {
         guard state == .off, tryCommit() else { return }
         do { try Records.recoverOpen() } catch { alert("지난 기록을 먼저 저장해야 해요.\n" + describe(error)); return }
@@ -196,9 +227,7 @@ final class AppController: NSObject, NSMenuDelegate {
         banked = 0
         state = .studying
         openSegment()
-        let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
-        RunLoop.main.add(timer, forMode: .common)
-        heartbeat = timer
+        startHeartbeat()
         companyAt = Date().addingTimeInterval(AppController.companyEvery)
         clearWaitingPoke()
         pet.appear(.studying)
@@ -212,6 +241,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
+        pet.subjectChanged()
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
@@ -268,19 +298,20 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func openSegment() {
+        segmentClock = Self.continuousSeconds()
         segmentStart = Date()
         saveOpen()
     }
 
     private func saveOpen() {
         guard let start = segmentStart else { return }
-        safely("기록 저장") { try Records.saveOpen(start: start, lastSeen: Date(), subject: self.subject) }
+        safely("기록 저장") { try Records.saveOpen(start: start, lastSeen: self.segmentEnd(start), subject: self.subject) }
     }
 
     /// Writes the running segment to sessions.csv. Safe to call when nothing is running.
     @discardableResult private func closeSegment() -> Bool {
         if let start = segmentStart {
-            let end = Date()
+            let end = segmentEnd(start)
             pendingCommit = Segment(start: start, end: end, subject: subject)
             segmentStart = nil
             banked += end.timeIntervalSince(start)
@@ -294,7 +325,7 @@ final class AppController: NSObject, NSMenuDelegate {
         catch { alert("기록을 저장하지 못했어요. 다시 시작하거나 그만하기를 누르면 재시도해요.\n\n" + describe(error)); return false }
     }
 
-    private var elapsed: TimeInterval { banked + (segmentStart.map { Date().timeIntervalSince($0) } ?? 0) }
+    private var elapsed: TimeInterval { banked + (segmentStart.map { segmentEnd($0).timeIntervalSince($0) } ?? 0) }
 
     private func bubble() -> String {
         if state == .studying {
@@ -309,8 +340,11 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     /// One button rolls a complete new look.
+    @objc private func chooseSeason(_ sender: NSMenuItem) { safely("계절 저장") { try Settings.set("season", sender.representedObject as? String ?? ""); pet.redraw() } }
+    @objc private func toggleLargeText() { safely("글자 크기 저장") { try Settings.set("largeText", Settings.get("largeText") == "1" ? "" : "1"); pet.redraw() } }
     @objc private func switchLook() {
-        pet.look = Look.random(girl: Bool.random())
+        guard let selected = AppearanceWindow.choose(pet.look) else { return }
+        pet.look = selected
         statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil)
         publish()
     }
@@ -389,6 +423,7 @@ final class AppController: NSObject, NSMenuDelegate {
             "name": nickname,
             "look": pet.look.girl ? "girl" : "boy",
             "style": pet.look.code,
+            "extra": pet.look.extra,
             "state": state == .studying ? "studying" : state == .paused ? "paused" : "off",
             "subject": state == .off ? "" : subject,
             "minutes": min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
@@ -540,7 +575,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func seatView(_ key: String) -> PetWindow.Seat? {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
         let here = Room.isHere(mate, Room.latest(members))
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink, laptop: mate.laptop)
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink, laptop: mate.laptop, id: mate.id)
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
@@ -554,7 +589,8 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id) } } }
 
     private func pokeMember(_ mate: Member) {
-        guard let room, Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { return }
+        guard let room else { return }
+        guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
         let message = Room.pokeMessage(mate, here: here)
@@ -649,7 +685,15 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
-        menu.addItem(item("랜덤 꾸미기", #selector(switchLook)))
+        if updater.available { menu.addItem(item("새 버전 설치…", #selector(showSettings))) }
+        let seasons = NSMenuItem(title: "창밖 계절", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for (label, value) in [("실제 계절 따라가기", ""), ("봄", "0"), ("여름", "1"), ("가을", "2"), ("겨울", "3")] {
+            let entry = item(label, #selector(chooseSeason(_:))); entry.representedObject = value; entry.state = Settings.get("season") == value ? .on : .off; submenu.addItem(entry)
+        }
+        seasons.submenu = submenu; menu.addItem(seasons)
+        let large = item("글자 크게", #selector(toggleLargeText)); large.state = Settings.get("largeText") == "1" ? .on : .off; menu.addItem(large)
+        menu.addItem(item("캐릭터 꾸미기…", #selector(switchLook)))
         menu.addItem(item(pet.laptop ? "책상에 책 놓기" : "책상에 노트북 놓기", #selector(toggleLaptop)))
         menu.addItem(.separator())
         menu.addItem(item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)))
@@ -744,6 +788,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     private func showUpdateNotice(_ tag: String) {
+        updateNotifications.show(tag)
         statusItem.button?.toolTip = "공부 친구 · 새 버전 \(tag) · 설정 → 업데이트"
     }
 
@@ -779,9 +824,7 @@ final class AppController: NSObject, NSMenuDelegate {
             banked = saved.seconds
             state = saved.state == "studying" ? .studying : .paused
             if state == .studying { openSegment() }
-            let timer = Timer(timeInterval: 60, target: self, selector: #selector(beat), userInfo: nil, repeats: true)
-            RunLoop.main.add(timer, forMode: .common)
-            heartbeat = timer
+            startHeartbeat()
             companyAt = Date().addingTimeInterval(AppController.companyEvery)
             pet.appear(state == .studying ? .studying : .dozing)
         }
@@ -801,7 +844,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         var segments: [Segment] = []
         safely("기록 읽기") { segments = try Records.load() }
-        if let start = segmentStart { segments.append(Segment(start: start, end: Date(), subject: subject)) }
+        if let start = segmentStart { segments.append(Segment(start: start, end: segmentEnd(start), subject: subject)) }
         let window = StatsWindow(segments: segments)
         stats = window
         NSApp.activate(ignoringOtherApps: true)
@@ -826,6 +869,8 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     func shutDown() {
+        releaseChannel.stop(); networkMonitor.cancel(); updateCheck?.invalidate()
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         closeSegment()
         if state != .off { state = .off; publish() }
         room?.flush()

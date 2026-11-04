@@ -4,21 +4,28 @@ import AppKit
 /// period, and line charts of the daily and monthly totals, like StatsWindow.cs.
 final class StatsWindow: NSWindow {
     let tabs = NSTabView()
-    private let daily: [Date: [String: Double]]
-    private let until: Date
+    private var daily: [Date: [String: Double]]
+    private var until = Date()
+    private var periodIndex = 1
+    private var live: Timer?
     private var periodStarts: [Date] = []
     private let donut = Donut()
 
     init(segments: [Segment]) {
         daily = Records.daily(segments)
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 760, height: 480), styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                   backing: .buffered, defer: false)
+        rebuild(); center()
+    }
+    private func rebuild() {
+        let selected = tabs.selectedTabViewItem?.identifier as? String
+        for tab in tabs.tabViewItems { tabs.removeTabViewItem(tab) }
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         until = calendar.date(byAdding: .day, value: 1, to: today)!
-        let weekday = calendar.component(.weekday, from: today) // Sunday is 1
-        let week = calendar.date(byAdding: .day, value: -((weekday + 5) % 7), to: today)! // weeks start on Monday
+        let weekday = calendar.component(.weekday, from: today)
+        let week = calendar.date(byAdding: .day, value: -((weekday + 5) % 7), to: today)!
         let month = calendar.dateInterval(of: .month, for: today)!.start
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 760, height: 480), styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                   backing: .buffered, defer: false)
         title = "공부 기록"
         isReleasedWhenClosed = false
 
@@ -38,13 +45,13 @@ final class StatsWindow: NSWindow {
         let toggles = NSSegmentedControl(labels: ["오늘", "이번 주", "이번 달", "전체"], trackingMode: .selectOne,
                                          target: self, action: #selector(periodChanged(_:)))
         toggles.frame.origin = NSPoint(x: 8, y: 6)
-        toggles.selectedSegment = 1 // this week
+        toggles.selectedSegment = periodIndex // this week
         donut.frame = NSRect(x: 0, y: 40, width: 720, height: 340)
         donut.autoresizingMask = [.width, .height]
         subjects.addSubview(toggles)
         subjects.addSubview(donut)
         tabs.addTabViewItem(page("과목별", subjects))
-        showPeriod(week)
+        showPeriod(periodStarts[periodIndex])
 
         let days = (0..<30).map { i -> (String, Double) in
             let d = calendar.date(byAdding: .day, value: i - 29, to: today)!
@@ -59,12 +66,20 @@ final class StatsWindow: NSWindow {
 
         content.addSubview(tabs)
         contentView = content
-        center()
+        if let selected { tabs.selectTabViewItem(withIdentifier: selected) }
     }
 
+    func follow(_ source: @escaping () -> [Segment]) {
+        live = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self, self.isVisible else { return }
+            self.daily = Records.daily(source()); self.rebuild()
+        }
+        RunLoop.main.add(live!, forMode: .common)
+    }
+    deinit { live?.invalidate() }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    @objc private func periodChanged(_ sender: NSSegmentedControl) { showPeriod(periodStarts[sender.selectedSegment]) }
+    @objc private func periodChanged(_ sender: NSSegmentedControl) { periodIndex = sender.selectedSegment; showPeriod(periodStarts[periodIndex]) }
 
     private func showPeriod(_ from: Date) {
         var minutes: [String: Double] = [:]
@@ -150,6 +165,14 @@ private final class LineChart: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 720, height: 380))
     }
 
+    func follow(_ source: @escaping () -> [Segment]) {
+        live = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self, self.isVisible else { return }
+            self.daily = Records.daily(source()); self.rebuild()
+        }
+        RunLoop.main.add(live!, forMode: .common)
+    }
+    deinit { live?.invalidate() }
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override var isFlipped: Bool { true }
