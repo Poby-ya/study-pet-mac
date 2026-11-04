@@ -111,7 +111,31 @@ enum Sprites {
         "V": color(0xB29BDB),
         "u": color(0xFFF8E9), // wing highlights
         "n": color(0x775B78), // tiny body
+        "o": color(0x7A4E36), // coffee
+        "O": color(0xA87452), // coffee shine
+        "i": color(0xDCF0F8), // ice, glass
+        "t": color(0xE25252), // can
+        "x": color(0xC9CED6), // can metal
+        "y": color(0xF2B23A), // beer
+        "g": color(0x6CC08A), // soju bottle
+        "G": color(0x489866), // soju cap, bottle shade
     ]
+
+    /// A drink at the right end of the desk, picked at random for each study session.
+    enum Drink: Int { case none, icedCoffee, mug, can, beer, soju }
+    static let drinks = 5
+
+    private static let drinkArt: [[String]] = [
+        [],
+        ["....kk.", "....k..", "kkkkkkk", "kiiiiik", ".koiok.", ".kiook.", ".kooik.", ".koiok.", ".koook.", ".kkkkk."],
+        ["kkkkkk..", "koooOk..", "kwwwwkkk", "kwwwwk.k", "kwwwwkkk", "kwwwwk..", ".kkkk..."],
+        [".kkkk.", "kxxxxk", "kttttk", "ktwwtk", "ktwwtk", "kttttk", "kxxxxk", ".kkkk."],
+        ["kkkkkk", "kwwwbk", "kyyyyk", "kyiyyk", "kyyiyk", "kyyyyk", ".kyyk.", ".kkkk."],
+        [".kkkk.", ".kGGk.", ".kggk.", ".kggk.", "kggggk", "kwwwwk", "kwzzwk", "kwwwwk", "kggggk", "kgGggk", ".kkkk."],
+    ]
+
+    /// Standing on the desk top, in desk coordinates (not shifted by dx).
+    private static func drinkLayer(_ drink: Drink) -> Layer { Layer(drinkArt[drink.rawValue], 36, 27 - drinkArt[drink.rawValue].count) }
 
     // (base, shine): dark brown, black, light brown, auburn, honey
     private static let hairColorSet = [(0x5A3E36, 0x8A6352), (0x2E2A33, 0x555060), (0x8B5E3C, 0xB8865C), (0x8E452F, 0xBC6C4E), (0xD09C52, 0xEEC884)]
@@ -499,6 +523,7 @@ enum Sprites {
     static func grids(_ look: Look) -> [[String]] {
         var all: [[String]] = []
         for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
+        all += drinkArt.dropFirst()
         for pose in Visiting.allCases {
             for alt in [false, true] {
                 all += visitor(look, pose, alt: alt).map(\.grid)
@@ -513,11 +538,13 @@ enum Sprites {
 
     /// A pet at its desk. `alert` adds the "!" of a pet being tapped awake; `lift` raises
     /// the person (not the desk) by that many rows, for a startled little jump.
-    static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0) -> [Layer] {
+    static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, drink: Drink = .none) -> [Layer] {
         if pose == .empty { return [Layer(desk, 0, 27)] }
-        let layers = composeAt(pose, look, alert: alert)
-        if lift == 0 { return layers }
-        return layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) }
+        var layers = composeAt(pose, look, alert: alert)
+        if lift != 0 { layers = layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
+        // Just above the desk: in front of the person, behind hands and whatever they hold.
+        if drink != .none, let at = layers.firstIndex(where: { $0.grid == desk }) { layers.insert(drinkLayer(drink), at: at + 1) }
+        return layers
     }
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool) -> [Layer] {
@@ -570,17 +597,27 @@ enum Sprites {
             leftArm = true; rightArm = true
             leftHand = nil; rightHand = nil
             eyes = .closed
-            behind.append(arm(look, (21, 22), (25, 20), (27, 15)))
-            behind.append(arm(look, (9, 22), (5, 20), (3, 15)))
+            behind.append(arm(look, (21, 22), (25, 18), (28, 13)))
+            behind.append(arm(look, (9, 22), (5, 18), (2, 13)))
         case .stretchUp, .stretchLeft, .stretchRight:
+            // Both arms up in a V, leaning with the body on the side frames.
             leftArm = true; rightArm = true
             leftHand = nil; rightHand = nil
             eyes = .happy
             mouth = .open
             rise = 1
             sway = pose == .stretchLeft ? -1 : pose == .stretchRight ? 1 : 0
-            behind.append(arm(look, (21, 22), (24, 18), (25, 9), (16, 2)))
-            behind.append(arm(look, (9, 22), (6, 18), (5, 9), (14, 2)))
+            switch pose {
+            case .stretchLeft:
+                behind.append(arm(look, (21, 22), (24, 15), (23, 5)))
+                behind.append(arm(look, (9, 22), (4, 16), (1, 8)))
+            case .stretchRight:
+                behind.append(arm(look, (21, 22), (26, 16), (29, 8)))
+                behind.append(arm(look, (9, 22), (6, 15), (7, 5)))
+            default:
+                behind.append(arm(look, (21, 22), (25, 15), (27, 5)))
+                behind.append(arm(look, (9, 22), (5, 15), (3, 5)))
+            }
         case .content:
             eyes = .happy
             mouth = .smile
@@ -693,8 +730,8 @@ enum Sprites {
 
     private static func shift(_ layers: [Layer]) -> [Layer] { layers.map { Layer($0.grid, $0.x + dx, $0.y) } }
 
-    static func draw(_ pose: Pose, _ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, alert: Bool = false, lift: Int = 0) {
-        draw(layers: compose(pose, look, alert: alert, lift: lift), look, left: left, top: top, scale: scale)
+    static func draw(_ pose: Pose, _ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, alert: Bool = false, lift: Int = 0, drink: Drink = .none) {
+        draw(layers: compose(pose, look, alert: alert, lift: lift, drink: drink), look, left: left, top: top, scale: scale)
     }
 
     /// The face alone, for the menu bar icon.
@@ -716,7 +753,7 @@ enum Sprites {
     private static let poseRows = (Pose.allCases.count + sheetColumns - 1) / sheetColumns
 
     static func sheetSize(scale: CGFloat) -> NSSize {
-        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 3) * height) * scale)
+        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 4) * height) * scale)
     }
 
     /// For eyeballing the art, laid out exactly like the Windows app's Sheet, twelve to a
@@ -755,6 +792,10 @@ enum Sprites {
         for (i, cell) in cells.enumerated() {
             let (x, y) = at(row + i)
             draw(layers: cell.0, cell.1, left: x, top: y, scale: scale)
+        }
+        for i in 1...drinks {
+            let (x, y) = at(row + sheetColumns + i - 1)
+            draw(.writeA, boy, left: x, top: y, scale: scale, drink: Drink(rawValue: i)!)
         }
     }
 

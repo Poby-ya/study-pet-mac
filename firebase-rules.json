@@ -74,6 +74,12 @@
             }
           }
         },
+        "drinks": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9"
+          }
+        },
         "names": {
           "$uid": {
             ".write": "auth != null && (newData.parent().parent().child('owner').val() == auth.uid || (auth.uid == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true))",

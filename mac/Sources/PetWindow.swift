@@ -26,6 +26,7 @@ final class PetWindow: NSPanel {
         var here: Bool
         var dozing: Bool
         var text: String
+        var drink: Sprites.Drink = .none
     }
 
     static let ink = Sprites.color(0x3A2E39)
@@ -79,6 +80,8 @@ final class PetWindow: NSPanel {
     /// A second bubble above mine for a moment, e.g. "민지가 공부를 시작했어요 !".
     var newsText: () -> String = { "" }
     var myName: () -> String = { "" }
+    /// On my desk while I'm at it; an empty desk draws none.
+    var drink: Sprites.Drink = .none
     var seatmate: () -> Seat? = { nil }
     var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
@@ -291,8 +294,8 @@ final class PetWindow: NSPanel {
         (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 360) - 336
     }
 
-    private static func writing(_ ticks: Int) -> Sprites.Pose {
-        ticks % 20 == 19 ? .blink : ticks / 2 % 2 == 0 ? .writeA : .writeB
+    private static func writing(_ ticks: Int, beat: Int = 2) -> Sprites.Pose {
+        ticks % 20 == 19 ? .blink : ticks / beat % 2 == 0 ? .writeA : .writeB
     }
 
     /// One frame (0...23) of a moment.
@@ -347,13 +350,14 @@ final class PetWindow: NSPanel {
 
     private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Self.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
 
-    // Offset by a frame, so the two pets don't move in lockstep.
+    // Each seatmate writes, blinks and dozes at their own pace, so no two pets move in lockstep.
     private func seatPose(_ seat: Seat) -> Sprites.Pose {
         if !seat.here { return .empty }
-        if seat.dozing { return (frameCount + 1) / 3 % 2 == 0 ? .dozeA : .dozeB }
+        let seed = Self.seatSeed(seat)
+        if seat.dozing { return (frameCount + seed) / (3 + seed % 2) % 2 == 0 ? .dozeA : .dozeB }
         let moment = seatMoment(seat)
-        if moment > 0 { return Self.momentPose(moment, (frameCount + Self.seatSeed(seat) * 97) % 360 - 336, frameCount + 1) }
-        return (frameCount + 1) / 2 % 2 == 0 ? .writeA : .writeB
+        if moment > 0 { return Self.momentPose(moment, (frameCount + seed * 97) % 360 - 336, frameCount + 1) }
+        return Self.writing(frameCount + seed, beat: 2 + seed % 3)
     }
 
     /// Draws one frame into the current (flipped) graphics context.
@@ -387,12 +391,12 @@ final class PetWindow: NSPanel {
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 && leavingTicks[i] < 10
                 ? (leavingTicks[i] < 2 ? .stand : Int(leavingTicks[i]) % 2 == 0 ? .waveA : .waveB) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
-            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale)
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale, drink: seat.drink)
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !(leavingTicks[i] >= 0 && leavingTicks[i] < 10) && !gone { drawAwaySign(x) }
         }
-        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0)
+        Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0, drink: drink)
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()

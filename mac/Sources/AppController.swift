@@ -370,8 +370,21 @@ final class AppController: NSObject, NSMenuDelegate {
         return value
     }
 
+    /// Held while studying: the screen may switch itself off, but the Mac must not fall
+    /// asleep, or friends see an empty desk. A closed lid still sleeps.
+    private var awake: NSObjectProtocol?
+
     private func publish() {
+        if state == .studying, awake == nil {
+            awake = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "공부 중")
+        } else if state != .studying, let activity = awake {
+            ProcessInfo.processInfo.endActivity(activity)
+            awake = nil
+        }
+        // A new drink for each study session: cleared on stopping, picked on starting.
+        if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
         room?.publish([
+            "drink": state == .off ? 0 : pet.drink.rawValue,
             "name": nickname,
             "look": pet.look.girl ? "girl" : "boy",
             "style": pet.look.code,
@@ -526,7 +539,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func seatView(_ key: String) -> PetWindow.Seat? {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
         let here = Room.isHere(mate, Room.latest(members))
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here))
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink)
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {

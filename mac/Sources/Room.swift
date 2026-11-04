@@ -10,6 +10,7 @@ struct Member {
     var style = ""     // Look.code; empty from versions before random looks
     var minutes = 0
     var updated: Int64 = 0 // server clock, ms
+    var drink: Sprites.Drink = .none // from drinks/{uid}; none from older versions or rules
     var look: Look { Look.parse(style, girl: girl) }
 }
 
@@ -277,7 +278,19 @@ final class Room: @unchecked Sendable {
 
     private var roomPath: String { "rooms/" + invite.roomId }
 
-    func publish(_ status: [String: Any]) { write("PATCH", "", ["\(roomPath)/members/\(me)": status, "\(roomPath)/names/\(me)": status["name"] ?? ""]) }
+    /// `status` may carry a "drink", which goes to drinks/{me} on its own and quietly: a room
+    /// whose owner hasn't published the rules that allow it then shows no drink, and nothing breaks.
+    func publish(_ status: [String: Any]) {
+        var member = status
+        let drink = member.removeValue(forKey: "drink") as? Int
+        write("PATCH", "", ["\(roomPath)/members/\(me)": member, "\(roomPath)/names/\(me)": member["name"] ?? ""])
+        if let drink, drink != sentDrink {
+            sentDrink = drink
+            write("PUT", "\(roomPath)/drinks/\(me)", drink, quiet: true)
+        }
+    }
+
+    private var sentDrink: Int?
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
 
@@ -346,7 +359,7 @@ final class Room: @unchecked Sendable {
 
     // ---- In the room ---------------------------------------------------------------
 
-    private func write(_ method: String, _ path: String, _ body: Any?) {
+    private func write(_ method: String, _ path: String, _ body: Any?, quiet: Bool = false) {
         let data = body.flatMap(Room.json)
         writeLock.lock()
         defer { writeLock.unlock() }
@@ -359,7 +372,7 @@ final class Room: @unchecked Sendable {
                 let token = try await self.token()
                 _ = try await Room.call(method, self.invite.url(path, token), data)
             } catch {
-                self.report(describe(error))
+                if !quiet { self.report(describe(error)) }
             }
         }
     }
@@ -477,10 +490,12 @@ final class Room: @unchecked Sendable {
 
     static func members(_ tree: [String: Any]) -> [Member] {
         let all = tree["members"] as? [String: Any] ?? [:]
+        let drinks = tree["drinks"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
-                          style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"))
+                          style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
+                          drink: Sprites.Drink(rawValue: Int(num(drinks, id))) ?? .none)
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
             if let name = value as? String, !result.contains(where: { $0.id == id }) { result.append(Member(id: id, name: name)) }

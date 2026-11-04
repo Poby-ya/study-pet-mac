@@ -53,6 +53,14 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertFails(get(ref(outsider, 'access/guest')));
     await assertFails(set(ref(host, `rooms/${first}/approved/host`), null));
     await assertFails(set(ref(guest, `rooms/${second}/members/host`), status));
+    // The desk drink: my own, a small number, and never as part of members/.
+    await assertSucceeds(set(ref(guest, `rooms/${first}/drinks/guest`), 5));
+    assert.equal((await get(ref(host, `rooms/${first}/drinks/guest`))).val(), 5);
+    await assertFails(set(ref(guest, `rooms/${first}/drinks/host`), 1));
+    await assertFails(set(ref(guest, `rooms/${first}/drinks/guest`), 'beer'));
+    await assertFails(set(ref(guest, `rooms/${first}/drinks/guest`), 10));
+    await assertFails(set(ref(outsider, `rooms/${first}/drinks/outsider`), 1));
+    await assertFails(set(ref(guest, `rooms/${first}/members/guest`), { ...status, drink: 1 }));
     const poke = { from: 'guest', name: '친구', look: 'girl', message: '같이 공부하자 !', at: serverTimestamp() };
     await assertSucceeds(set(ref(guest, `rooms/${second}/pokes/host`), poke));
     await assertFails(set(ref(guest, `rooms/${second}/pokes/outsider`), poke));
