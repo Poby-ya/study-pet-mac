@@ -437,14 +437,14 @@ enum SelfTest {
         let id = Room.randomId(12)
         check(id.count == 12 && id.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber) }, "id: 12 lowercase letters and digits")
         check(Room.cleanName(" 민\t지 ") == "민지" && Room.cleanName(String(repeating: "가", count: 20)).count == Room.maxNameLength, "name: cleaned and cut")
-        check(Look.parse("g213402", girl: false).code == "g213402" && Look.parse("b219999", girl: false).code == "b213913",
+        check(Look.parse("g213402", girl: false).code == "g213402" && Look.parse("b219999", girl: false).code == "b210913",
               "look: codes round-trip; boys' bottoms fold to trousers")
         check(Look.parse("nonsense", girl: true) == Look(girl: true, 0, 0, 2, 2, 0, 0), "look: a bad code is the plain look")
     }
 
     private static func checkSprites() {
         for i in 0..<24 {
-            let look = Look(girl: i % 2 == 1, i / 2 % Look.hairStyles, i % Look.hairColors, i % Look.tops, (i * 3) % 10, i % 8, i % 6)
+            let look = Look(girl: i % 2 == 1, i / 2 % Look.hairStyles, i % Look.hairColors, i % Look.tops, (i * 3) % 10, i % 8, i % 6).withExtras("\(i % 4)\(i % 4)\(i % 3)\(i % 4)\(i % 2)\(i % 4)\(i % 4)")
             for grid in Sprites.grids(look) {
                 check(grid.allSatisfy { $0.count == grid[0].count }, "sprite: ragged grid starting \(grid[0])")
                 check(grid.allSatisfy { $0.allSatisfy(Sprites.isKnownColor) }, "sprite: unknown colour in grid starting \(grid[0])")

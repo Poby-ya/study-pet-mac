@@ -46,6 +46,7 @@ final class Updater {
     static var current: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0" }
     static var errorURL: URL { Records.folder.appendingPathComponent("update-error.txt") }
     private(set) var release: UpdateRelease?
+    private var checkAgain = false
     private(set) var checking = false
     private(set) var installing = false
     private(set) var status = "새 버전을 자동으로 확인합니다."
@@ -55,12 +56,13 @@ final class Updater {
     var available: Bool { release.map { (UpdateRelease.version(Self.current) ?? [0, 0, 0]).lexicographicallyPrecedes($0.version) } ?? false }
 
     func check() {
-        guard !checking && !installing else { return }
+        guard !installing else { return }
+        if checking { checkAgain = true; return }
         checking = true
         status = "업데이트 확인 중…"
         changed?()
         Task { @MainActor in
-            defer { checking = false; changed?() }
+            defer { checking = false; changed?(); if checkAgain { checkAgain = false; check() } }
             do {
                 if FileManager.default.fileExists(atPath: Self.errorURL.path) {
                     status = try String(contentsOf: Self.errorURL, encoding: .utf8)

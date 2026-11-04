@@ -33,4 +33,22 @@ final class ReleaseChannel {
 
     func stop() { task?.cancel(); session.invalidateAndCancel() }
     deinit { stop() }
+
+    static func probe(_ output: String, expected: String) -> Int32 {
+        let channel = ReleaseChannel()
+        let date = ISO8601DateFormatter()
+        date.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var log = "Started " + date.string(from: Date()) + "\n"
+        var received = false
+        try? log.write(toFile: output, atomically: true, encoding: .utf8)
+        channel.start { tag in
+            log += date.string(from: Date()) + " " + tag + "\n"
+            try? log.write(toFile: output, atomically: true, encoding: .utf8)
+            if tag == expected { received = true }
+        }
+        let deadline = Date().addingTimeInterval(180)
+        while !received && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        channel.stop()
+        return received ? 0 : 1
+    }
 }

@@ -32,7 +32,7 @@ final class HelpWindow: NSWindow {
 
     static func sections() -> [(String, String)] {
         guard let url = Bundle.main.url(forResource: "help", withExtension: "txt"), let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        return text.components(separatedBy: "## ").filter { !$0.isEmpty }.compactMap { part in
+        return text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "## ").filter { !$0.isEmpty }.compactMap { part in
             guard let newline = part.firstIndex(of: "\n") else { return nil }
             return (String(part[..<newline]).trimmingCharacters(in: .whitespacesAndNewlines), String(part[part.index(after: newline)...]).trimmingCharacters(in: .whitespacesAndNewlines))
         }

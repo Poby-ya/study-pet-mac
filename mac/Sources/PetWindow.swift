@@ -709,11 +709,23 @@ final class PetWindow: NSPanel {
         }
         if hitBoard(p) { boardClicked(); return }
         if p.y >= floorY - 8 {
-            if seatmate() != nil && p.x >= seatX && p.x < seatX + deskWidth { seatmateClicked(); return }
-            if rightSeatmate() != nil && p.x >= rightX && p.x < rightX + deskWidth { rightSeatmateClicked(); return }
-            if p.x >= myX && p.x < myX + deskWidth { if mood == .away { awayClicked() } else { petClicked() }; return }
+            if let seat = seatmate(), hitSeat(p, x: seatX, actor: seat.look, pose: seatPose(seat), drink: seat.drink, laptop: seat.laptop) { seatmateClicked(); return }
+            if let seat = rightSeatmate(), hitSeat(p, x: rightX, actor: seat.look, pose: seatPose(seat), drink: seat.drink, laptop: seat.laptop) { rightSeatmateClicked(); return }
+            if hitSeat(p, x: myX, actor: look, pose: myPose, drink: drink, laptop: laptop) { if mood == .away { awayClicked() } else { petClicked() }; return }
         }
         if windowGlass.contains(p) { nextSeason() }
+    }
+
+    private func hitSeat(_ p: NSPoint, x: CGFloat, actor: Look, pose: Sprites.Pose, drink: Sprites.Drink, laptop: Bool) -> Bool {
+        let px = Int(floor((p.x - x) / scale)), py = Int(floor((p.y - floorY) / scale))
+        if px >= 1 && px < 17 && py >= 21 && py < 27 { return true }
+        if pose == .empty && px >= 17 && px < 39 && py >= 15 && py < 27 { return true }
+        return Sprites.compose(pose, actor, decor: Sprites.Decor(drink: drink, laptop: laptop)).contains { layer in
+            let row = py - layer.y, col = px - layer.x
+            guard row >= 0 && row < layer.grid.count else { return false }
+            let cells = Array(layer.grid[row])
+            return col >= 0 && col < cells.count && cells[col] != "."
+        }
     }
 
     func hitBoard(_ p: NSPoint) -> Bool {

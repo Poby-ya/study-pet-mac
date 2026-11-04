@@ -2,6 +2,7 @@ import AppKit
 
 let app = NSApplication.shared
 let arguments = CommandLine.arguments
+if arguments.count == 4 && arguments[1] == "--release-probe" { exit(ReleaseChannel.probe(arguments[2], expected: arguments[3])) }
 if arguments.count > 1 && arguments[1] == "--selftest" {
     exit(SelfTest.run(outDir: arguments.count > 2 ? arguments[2] : nil, invite: arguments.count > 3 ? arguments[3] : nil))
 }
