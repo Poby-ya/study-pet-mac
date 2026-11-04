@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   install:
-    runs-on: macos-26-intel
+    runs-on: macos-15-intel
     timeout-minutes: 10
     steps:
       - name: First install (the line friends paste)
