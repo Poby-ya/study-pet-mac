@@ -70,7 +70,8 @@ final class PetWindow: NSPanel {
     private(set) var minimized = false
     var canvasSize: NSSize {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
-        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 24, height: petSize.height)
+        // 12 on the left, 20 on the right where the last bag hangs past its desk.
+        return NSSize(width: CGFloat(count) * deskWidth + CGFloat(count - 1) * 22 + 32, height: petSize.height)
     }
     private var myX: CGFloat { hasLeft ? 12 + deskWidth + 22 : 12 }
     private var seatX: CGFloat { myX - deskWidth - 22 }
@@ -579,7 +580,7 @@ final class PetWindow: NSPanel {
         }
         Sprites.color(0xB88655).setStroke()
         seams.stroke()
-        drawWindow(NSRect(x: card.minX + 14, y: boardSpace + 4, width: card.width - 28, height: floorY + 18 * scale - boardSpace - 4))
+        drawWindow(NSRect(x: card.minX + 14, y: boardSpace + 10, width: card.width - 28, height: floorY + 18 * scale - boardSpace - 10))
         NSGraphicsContext.restoreGraphicsState()
         cardPath.lineWidth = 1
         Sprites.color(0xC9B89A).setStroke()
@@ -612,47 +613,18 @@ final class PetWindow: NSPanel {
         return hour < 5 || hour >= 19 ? 0 : hour < 7 ? 1 : hour < 17 ? 2 : 3
     }
 
-    private static let skies = [(0x1F2A4D, 0x3B4C7E), (0xF3B6A6, 0xFCE3B6), (0x86C5F2, 0xCDEBFB), (0xEE8A5E, 0xF8CB7C)]
+    /// The season of a date: 0 spring (Mar–May), 1 summer, 2 autumn, 3 winter (Dec–Feb).
+    static func seasonAt(_ time: Date) -> Int {
+        let s = Calendar.current.component(.month, from: time) % 12 / 3
+        return s == 0 ? 3 : s - 1
+    }
 
-    /// Classroom windows behind the desks, showing the sky of the hour.
-    private func drawWindow(_ r: NSRect) {
-        guard r.width >= 20, r.height >= 20 else { return }
-        let sky = Self.skyAt(clock())
-        NSGradient(starting: Sprites.color(Self.skies[sky].0), ending: Sprites.color(Self.skies[sky].1))?.draw(in: r, angle: 90)
-        if sky == 0 {
-            Sprites.color(0xFFF6D8).setFill()
-            for i in 0..<24 {
-                NSRect(x: r.minX + CGFloat((i * 53 + 17) % Int(r.width)), y: r.minY + CGFloat((i * 29 + 7) % Int(r.height * 0.7)), width: 2, height: 2).fill()
-            }
-            Sprites.color(0xFFF3C4).setFill()
-            NSBezierPath(ovalIn: NSRect(x: r.maxX - 30, y: r.minY + 8, width: 14, height: 14)).fill()
-            Sprites.color(Self.skies[0].0).setFill()
-            NSBezierPath(ovalIn: NSRect(x: r.maxX - 26, y: r.minY + 6, width: 14, height: 14)).fill()
-        } else if sky == 2 {
-            NSColor.white.withAlphaComponent(235.0 / 255).setFill()
-            for (cx, cy) in [(0.22, 0.22), (0.68, 0.12)] {
-                let x = r.minX + r.width * cx, y = r.minY + r.height * cy
-                NSBezierPath(ovalIn: NSRect(x: x, y: y + 3, width: 26, height: 9)).fill()
-                NSBezierPath(ovalIn: NSRect(x: x + 6, y: y, width: 14, height: 10)).fill()
-            }
-        } else {
-            Sprites.color(sky == 1 ? 0xFFE9A8 : 0xFFC85A).setFill()
-            NSBezierPath(ovalIn: NSRect(x: r.minX + r.width * (sky == 1 ? 0.2 : 0.7), y: r.minY + r.height * 0.25, width: 18, height: 18)).fill()
-        }
-        // Frames: a transom across the top, mullions every pane, and a sill.
-        let frames = NSBezierPath()
-        frames.lineWidth = 3
-        let count = max(1, Int((r.width / 48).rounded()))
-        for i in 1..<count {
-            let x = r.minX + r.width * CGFloat(i) / CGFloat(count)
-            frames.move(to: NSPoint(x: x, y: r.minY)); frames.line(to: NSPoint(x: x, y: r.maxY))
-        }
-        frames.move(to: NSPoint(x: r.minX, y: r.minY + r.height * 0.32)); frames.line(to: NSPoint(x: r.maxX, y: r.minY + r.height * 0.32))
-        frames.appendRect(r)
-        PetWindow.wood.setStroke()
-        frames.stroke()
-        Sprites.color(0x8B5E3C).setFill()
-        NSRect(x: r.minX - 3, y: r.maxY, width: r.width + 6, height: 3).fill()
+    /// The classroom's window, a little narrower than the wall: the hour's sky and the season's tree.
+    private func drawWindow(_ wall: NSRect) {
+        let w = Int(wall.width * 0.72 / scale), h = Int(wall.height / scale)
+        guard w >= 20, h >= 16 else { return }
+        Sprites.drawWindow(w, h, sky: Self.skyAt(clock()), season: Self.seasonAt(clock()),
+                           left: (wall.minX + (wall.width - CGFloat(w) * scale) / 2).rounded(.down), top: wall.minY, scale: scale)
     }
 
     // ---- Mouse ----------------------------------------------------------------------

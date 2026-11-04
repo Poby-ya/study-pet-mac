@@ -528,7 +528,8 @@ enum Sprites {
         var all: [[String]] = []
         for pose in Pose.allCases { all += compose(pose, look, alert: true).map(\.grid) }
         all += drinkArt.dropFirst()
-        all += [lampOff, lampOn, glow, laptopOpen, screenLight, laptopShut] + bags + stickers
+        all += [lampOff, lampOn, beam, laptopOpen, screenLight, laptopShut] + bags + bigStickers + smallStickers
+        for sky in 0..<4 { for season in 0..<4 { all.append(windowGrid(40, 30, sky: sky, season: season)) } }
         for pose in Visiting.allCases {
             for alt in [false, true] {
                 all += visitor(look, pose, alt: alt).map(\.grid)
@@ -551,12 +552,16 @@ enum Sprites {
         if lift != 0 { layers = layers.map { $0.grid == desk ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
-        layers.insert(contentsOf: (d.lit ? [Layer(glow, 1, 11)] : []) + [Layer(d.lit ? lampOn : lampOff, 3, 14)], at: 0)
+        layers.insert(contentsOf: (d.lit ? [Layer(beam, 1, 17)] : []) + [Layer(d.lit ? lampOn : lampOff, 1, 11)], at: 0)
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
-        layers.insert(Layer(stickers[d.seed / bags.count % stickers.count], 30, 31), at: at)
+        let big = d.seed % bigStickers.count
+        layers.insert(contentsOf: [
+            Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
+            Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
+        ], at: at)
         if d.away { return layers }
-        layers.insert(Layer(bags[d.seed % bags.count], 40, 28), at: at)
+        layers.insert(Layer(bags[d.seed % bags.count], 42, 28), at: at)
         if d.drink != .none { layers.insert(drinkLayer(d.drink), at: at) }
         return layers
     }
@@ -572,24 +577,84 @@ enum Sprites {
         var away = false
     }
 
-    // A retro bulb lamp behind the nameplate; glow is its light at night.
-    private static let lampOff = ["..kkk..", ".kiiik.", "kiwiiik", "kiiiiik", ".kiiik.", "..kxk..", "..kxk..", "...k...", "...k...", "...k...", "...k...", ".kkkkk.", "kOOOOOk"]
+    // A desk lamp behind the nameplate: base, a stem curving over into a shade that points
+    // down at the desk. Lit, its bulb shows and beam falls from the shade.
+    private static let lampOff = [
+        "...kkk......", "..k...k.....", "..k...kkkkk.", "..k..kwwwwwk", "..k.kwwwwwwk", "..k.kkkkkkkk", "..k....ii...", "..k.........",
+        "..k.........", "..k.........", "..k.........", "..k.........", "..k.........", "..k.........", ".kkk........", "kwwwk.......",
+    ]
     private static let lampOn = lampOff.map { $0.replacingOccurrences(of: "i", with: "Y") }
-    private static let glow = ["...LLLLL...", ".LLLLLLLLL.", ".LLLLLLLLL.", "LLLLLLLLLLL", "LLLLLLLLLLL", "LLLLLLLLLLL", "LLLLLLLLLLL", "LLLLLLLLLLL", ".LLLLLLLLL.", ".LLLLLLLLL.", "...LLLLL..."]
+    private static let beam = [".....LLLLL..", "....LLLLLLL.", "....LLLLLLLL", "...LLLLLLLLL", "...LLLLLLLLL"]
 
-    // A backpack on the hook at the desk's right side, in one of six colours.
+    // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
     private static let bags = "ztgprV".map { c in
-        ["..kk..", ".k..k.", "kkkkkk", "kMMMMk", "kMMMMk", "kMMMMk", "kkkkkk", "kMwwMk", "kMMMMk", ".kkkk."].map { $0.replacingOccurrences(of: "M", with: String(c)) }
+        [".kk....", "k..k...", "k..kk..", "kkkMMk.", "kMMMMMk", "kMMMMMk", "kMMMkkk", "kMMMkMk", "kMMMkMk", ".kkkkk."].map { $0.replacingOccurrences(of: "M", with: String(c)) }
     }
 
-    // On the desk's front: heart, star, smiley, clover, flower.
-    private static let stickers = [
+    // Stickers on the desk's front, a few per desk: heart, star, smiley, clover, flower; and two little ones.
+    private static let bigStickers = [
         [".r.r.", "rrrrr", ".rrr.", "..r.."],
         ["..p..", "ppppp", ".ppp.", ".p.p."],
         [".ppp.", "pkpkp", "pkkkp", ".ppp."],
         [".g.g.", "ggggg", ".ggg.", "..G.."],
         [".F.F.", "FFpFF", ".FFF.", "..g.."],
     ]
+    private static let smallStickers = [["r.r", "rrr", ".r."], [".p.", "ppp", "p.p"]]
+
+    /// The classroom's window, `w`×`h` pixels, any size from about 20×16: the sky of the hour
+    /// (0 night, 1 dawn, 2 day, 3 sunset) with its sun, moon, clouds or stars at the right, and
+    /// the tree in its season (0 spring, 1 summer, 2 autumn, 3 winter) high in the left corner.
+    static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int) -> [String] {
+        var grid = Array(repeating: Array(repeating: Array("1234")[sky], count: w), count: h)
+        func put(_ x: Int, _ y: Int, _ c: Character) { if x > 0 && x < w - 1 && y > 0 && y < h - 2 { grid[y][x] = c } }
+        func stamp(_ art: [String], _ x0: Int, _ y0: Int, _ c: Character) {
+            for (y, row) in art.enumerated() { for (x, ch) in row.enumerated() where ch != "." { put(x0 + x, y0 + y, c) } }
+        }
+        if sky == 0 {
+            for i in 0..<(w * h / 100) { put(w / 3 + (i * 7 + 3) % (w * 2 / 3 - 1), 1 + (i * 5 + 2) % (h * 2 / 3), "Y") }
+            stamp([".YY", "YY.", "YY.", ".YY"], w - 7, 3, "Y")
+        } else if sky == 2 {
+            let cloud = ["..www...", ".wwwwww.", "wwwwwwww"]
+            stamp(cloud, w - 11, 3, "w")
+            stamp(cloud, w / 2 - 2, h / 3 + 1, "w")
+        } else {
+            stamp([".pp.", "pppp", "pppp", ".pp."], w - 9, 3, sky == 1 ? "Y" : "p")
+        }
+
+        // The tree: a trunk up from the sill, its crown in the season's colours, high up
+        // in the corner where speech bubbles and heads don't hide it.
+        let rx = max(5, w / 6), ry = max(4, h / 5), cx = rx, cy = ry
+        for y in cy..<(h - 2) { put(cx, y, "o"); put(cx + 1, y, "o") }
+        let (leaf, accent): (Character, Character) = season == 0 ? ("F", "r") : season == 1 ? ("g", "G") : season == 2 ? ("y", "t") : ("o", "w")
+        if season == 3 {
+            // Bare branches with snow on them.
+            for i in 1...(ry + 1) { put(cx - i, cy - i, "o"); put(cx + 1 + i, cy - i, "o"); put(cx - i, cy - i - 1, "w"); put(cx + 1 + i, cy - i - 1, "w") }
+            for i in 1...ry { put(cx, cy - i, "o"); put(cx + 1, cy - i, "o") }
+            put(cx, cy - ry - 1, "w"); put(cx + 1, cy - ry - 1, "w")
+        } else {
+            for y in (cy - ry)...(cy + ry) {
+                for x in (cx - rx)...(cx + 1 + rx) {
+                    let dx = (Double(x - cx) - 0.5) / (Double(rx) + 0.5), dy = Double(y - cy) / (Double(ry) + 0.5)
+                    if dx * dx + dy * dy <= 1 { put(x, y, (x * 3 + y * 5) % 7 == 0 ? accent : leaf) }
+                }
+            }
+        }
+        // Drifting: a few petals or leaves, or snow everywhere.
+        let drift = season == 3 ? w * h / 30 : season == 0 || season == 2 ? 3 : 0
+        for i in 0..<drift { put(2 + (i * 11 + 5) % (w - 4), 1 + (i * 7 + 3) % (h - 4), season == 3 ? "w" : accent) }
+
+        // Mullions every 16 pixels or so, a transom, then the frame and the sill.
+        let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
+        for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
+        for x in 1..<(w - 1) { grid[h / 3][x] = "d" }
+        for x in 0..<w { grid[0][x] = "k"; grid[h - 2][x] = "k"; grid[h - 1][x] = "D" }
+        for y in 0..<(h - 1) { grid[y][0] = "k"; grid[y][w - 1] = "k" }
+        return grid.map { String($0) }
+    }
+
+    static func drawWindow(_ w: Int, _ h: Int, sky: Int, season: Int, left: CGFloat, top: CGFloat, scale: CGFloat) {
+        draw(layers: [Layer(windowGrid(w, h, sky: sky, season: season), 0, 0)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale)
+    }
 
     // A laptop seen from the front of the desk: the back of its lid, its light at night, and shut for a nap.
     private static let laptopOpen = [".kkkkkkkkkkkkkkkk.", ".kxxxxxxxwwxxxxxk.", ".kxxxxxxxwwxxxxxk.", ".kxxxxxxxxxxxxxxk.", ".kkkkkkkkkkkkkkkk.", "kxxxxxxxxxxxxxxxxk"]
@@ -813,7 +878,7 @@ enum Sprites {
     private static let poseRows = (Pose.allCases.count + sheetColumns - 1) / sheetColumns
 
     static func sheetSize(scale: CGFloat) -> NSSize {
-        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 4) * height) * scale)
+        NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 5) * height) * scale)
     }
 
     /// For eyeballing the art, laid out exactly like the Windows app's Sheet, twelve to a
@@ -871,6 +936,11 @@ enum Sprites {
         for (i, d) in desks.enumerated() {
             let (x, y) = at(row + sheetColumns + i)
             draw(d.0, d.1, left: x, top: y, scale: scale, alert: d.3 > 0, lift: d.3, decor: d.2)
+        }
+        // Windows: every season, each under another sky.
+        for (i, (sky, season)) in [(2, 0), (1, 0), (2, 1), (0, 1), (3, 2), (2, 2), (0, 3), (2, 3)].enumerated() {
+            let (x, y) = at(row + 2 * sheetColumns + i)
+            drawWindow(40, 34, sky: sky, season: season, left: x + 2 * scale, top: y + 2 * scale, scale: scale)
         }
     }
 
