@@ -110,7 +110,7 @@ enum SelfTest {
         pet.bubbleText = { "영어\n23분째 공부 중" }
         pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
         pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: true, dozing: true, text: "국어 · 5분\n잠깐 쉬는 중") }
-        for percent in [50, 75, 100, 125, 150] {
+        for percent in PetWindow.displaySizes {
             pet.setDisplaySize(percent)
             pet.preview(.studying, frame: 0)
             pet.orderFrontRegardless()

@@ -35,9 +35,9 @@ final class SettingsWindow: NSWindow {
         stack.addArrangedSubview(startup)
         stack.addArrangedSubview(background)
         let sizeLabel = NSTextField(labelWithString: "캐릭터 크기")
-        let sizes = [50, 75, 100, 125, 150]
+        let sizes = PetWindow.displaySizes
         sizeChoice.addItems(withTitles: sizes.map { "\($0)%" })
-        sizeChoice.selectItem(at: sizes.firstIndex(of: Int(Settings.get("petSize")) ?? 75) ?? 1)
+        sizeChoice.selectItem(at: sizes.firstIndex(of: Int(Settings.get("petSize")) ?? 75) ?? 5)
         sizeChoice.target = self; sizeChoice.action = #selector(changeSize)
         let sizeRow = NSStackView(views: [sizeLabel, sizeChoice]); sizeRow.spacing = 12
         stack.addArrangedSubview(sizeRow)
@@ -65,7 +65,7 @@ final class SettingsWindow: NSWindow {
         install.isEnabled = updater.available && !updater.checking && !updater.installing
     }
     @objc private func changeSize() {
-        let percent = [50, 75, 100, 125, 150][sizeChoice.indexOfSelectedItem]
+        let percent = PetWindow.displaySizes[sizeChoice.indexOfSelectedItem]
         do { try Settings.set("petSize", String(percent)); resize(percent) }
         catch { let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
     }

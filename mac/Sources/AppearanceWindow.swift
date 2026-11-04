@@ -18,11 +18,11 @@ final class AppearanceWindow: NSWindow {
             ["후드", "니트", "카디건", "줄무늬", "재킷", "하트 니트", "세일러", "멜빵", "배색 칼라"],
             ["파랑", "민트", "분홍", "노랑", "회색", "라벤더", "남색", "베이지", "빨강", "올리브"],
             (1...8).map { "하의 \($0)" }, ["분홍", "빨강", "노랑", "민트", "남색", "흰색"],
-            ["없음", "둥근 안경", "별 머리핀", "헤드폰"], ["기본", "피부색 2", "피부색 3", "피부색 4"],
+            ["없음", "별 머리핀", "헤드폰"], ["기본", "피부색 2", "피부색 3", "피부색 4"],
             ["없음", "비니", "베레모"], ["기본", "접은 소매", "긴소매", "손목 밴드"],
             ["오른손", "왼손"], ["없음", "별", "클로버", "귤 조각"], ["기본", "복주머니", "메신저백", "에코백"], ["남자", "여자"]
         ]
-        let initial = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
+        let initial = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory < 2 ? 0 : look.accessory - 1, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
         let saved = Array(Settings.get("appearanceLocks"))
         for i in values.indices {
             let y = CGFloat(620 - i * 28)
@@ -31,6 +31,7 @@ final class AppearanceWindow: NSWindow {
             choice.addItems(withTitles: values[i]); choice.selectItem(at: initial[i]); choice.target = self; choice.action = #selector(changed)
             let lock = NSButton(checkboxWithTitle: "잠금", target: nil, action: nil); lock.frame = NSRect(x: 375, y: y, width: 90, height: 26)
             lock.state = i < saved.count && saved[i] == "1" ? .on : .off
+            if i == 7 { lock.state = .on; lock.isEnabled = false; lock.title = "직접 선택" }
             choices.append(choice); locks.append(lock); contentView?.addSubview(label); contentView?.addSubview(choice); contentView?.addSubview(lock)
         }
         contentView?.addSubview(preview)
@@ -42,7 +43,7 @@ final class AppearanceWindow: NSWindow {
     required init?(coder: NSCoder) { fatalError("not used") }
     private func read() -> Look {
         let v = choices.map { $0.indexOfSelectedItem }
-        return Look(girl: v[13] == 1, v[0], v[1], v[2], v[3], v[4], v[5]).withExtras(v[6...12].map(String.init).joined())
+        return Look(girl: v[13] == 1, v[0], v[1], v[2], v[3], v[4], v[5]).withExtras((6...12).map { String($0 == 6 ? [0, 2, 3][v[$0]] : v[$0]) }.joined())
     }
     @objc private func changed() {
         let look = read()

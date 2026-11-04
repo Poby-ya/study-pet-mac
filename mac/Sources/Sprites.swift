@@ -314,7 +314,6 @@ enum Sprites {
         if look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
         back = back.map { Layer($0.grid, $0.x + lag, $0.y) }
         if look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
-        if look.accessory == 1 { front.append(Layer([".kk.....kk.", "k..k...k..k", ".kk.kkk.kk."], x + 3, y + 10)) }
         if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
         if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
         }

@@ -77,7 +77,8 @@ final class PetWindow: NSPanel {
     }
     private var previousSeats: [Seat?] = [nil, nil]
     private var leavingTicks = [-1.0, -1.0]
-    private(set) var sizePercent = [50, 75, 100, 125, 150].contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
+    static let displaySizes = Array(stride(from: 50, through: 150, by: 5))
+    private(set) var sizePercent = PetWindow.displaySizes.contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
     private var dragFrom: NSPoint?
     private var dragOrigin = NSPoint.zero
     private var dragged = false
@@ -151,7 +152,7 @@ final class PetWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func setDisplaySize(_ percent: Int) {
-        guard [50, 75, 100, 125, 150].contains(percent) else { return }
+        guard PetWindow.displaySizes.contains(percent) else { return }
         sizePercent = percent
         redraw()
     }
