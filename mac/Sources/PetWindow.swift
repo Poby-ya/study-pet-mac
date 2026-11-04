@@ -722,7 +722,7 @@ final class PetWindow: NSPanel {
     private func hitSeat(_ p: NSPoint, x: CGFloat, actor: Look, pose: Sprites.Pose, drink: Sprites.Drink, laptop: Bool) -> Bool {
         let px = Int(floor((p.x - x) / scale)), py = Int(floor((p.y - floorY) / scale))
         if px >= 1 && px < 17 && py >= 21 && py < 27 { return true }
-        if pose == .empty && px >= 17 && px < 39 && py >= 15 && py < 27 { return true }
+        if pose == .empty && px >= 17 && px < 39 && py >= 9 && py < 27 { return true }
         return Sprites.compose(pose, actor, decor: Sprites.Decor(drink: drink, laptop: laptop)).contains { layer in
             let row = py - layer.y, col = px - layer.x
             guard row >= 0 && row < layer.grid.count else { return false }
