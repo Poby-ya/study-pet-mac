@@ -97,6 +97,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private var updateCheck: Timer?
     private var pendingCommit: Segment?
     private var room: StudyRooms?
+    private var roomConnection=""
     private var members: [Member] = []
     private var interactions = FriendInteractions()
     private var roomSeen = false         // the first snapshot after connecting is the baseline, not news
@@ -376,7 +377,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     private func connect() {
         room?.dispose()
-        room = nil
+        room = nil;roomConnection=""
         members = []; interactions = FriendInteractions()
         roomSeen = false
         pendingCheck?.invalidate()
@@ -393,7 +394,12 @@ final class AppController: NSObject, NSMenuDelegate {
             pendingCheck = check
             return
         }
-        if nickname.isEmpty || myId.isEmpty { return }
+        connectRoomView(invite)
+    }
+    private func connectRoomView(_ invite: Invite) {
+        if nickname.isEmpty || myId.isEmpty || Settings.get("pending") == "1" {return}
+        if room != nil && roomConnection == invite.code {return}
+        room?.dispose();members=[];interactions=FriendInteractions();roomSeen=false;roomConnection=invite.code
         let auth = self.auth
         let joined = StudyRooms(invite: invite, me: myId, token: { [weak self] in
             guard let self else { throw RoomError("연결이 종료됐어요.") }; return try await self.roomToken(auth)
@@ -613,12 +619,12 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
         guard let value = sender.representedObject as? [String: String], let id = value["id"], let key = value["key"] else { return }
         let other = key == "seatmate" ? "seatmateRight" : "seatmate"
-        safely("옆자리 저장") { try Settings.setMany((key, id), (other, Settings.get(other) == id ? "" : Settings.get(other))) }
+        safely("옆자리 저장") { try Settings.setMany((key, id), (other, Settings.get(other) == id ? "" : Settings.get(other)));profileDirty=deviceSync != nil;profileEdit += 1;syncNow() }
     }
 
     private func pokeSeatmate(_ key: String) { if let mate = findSeatmate(key) { pokeMember(mate) } }
     @objc private func pokePerson(_ sender: NSMenuItem) { if let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) { pokeMember(mate) } }
-    @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id) } } }
+    @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id);profileDirty=deviceSync != nil;profileEdit += 1;syncNow() } } }
 
     private func pokeMember(_ mate: Member) {
         guard let room else { return }
@@ -826,9 +832,11 @@ final class AppController: NSObject, NSMenuDelegate {
             defer { syncBusy = false }
             do {
                 try await current.pull()
+                if current.account == (await auth?.uid),!DeviceSync.obj(current.data,"profile").isEmpty {var local=SocialProfile.capture();local["invite"]=Settings.get("room");let missing=SocialProfile.missing(DeviceSync.obj(current.data,"profile"),local);if !missing.isEmpty {try await current.change("profile",fields:["profile":missing])}}
                 if profileDirty {
                     let edit = profileEdit
-                    let profile: [String:Any] = ["name":nickname,"style":pet.look.code,"extra":pet.look.extra,"customization":(pet.look.customization ?? Customization.legacy(pet.look)).data(),"desk":pet.drink.rawValue + (pet.laptop ? 10 : 0),"invite":Settings.get("room")]
+                    var profile: [String:Any] = ["name":nickname,"style":pet.look.code,"extra":pet.look.extra,"customization":(pet.look.customization ?? Customization.legacy(pet.look)).data(),"desk":pet.drink.rawValue + (pet.laptop ? 10 : 0),"invite":Settings.get("room")]
+                    profile.merge(SocialProfile.capture()) {_,value in value}
                     try await current.change("profile",fields:["profile":profile])
                     if profileEdit == edit { profileDirty = false }
                 }
@@ -854,6 +862,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let active = sync.active, profile = DeviceSync.obj(sync.data,"profile")
         if !profileDirty && !DeviceSync.str(profile,"name").isEmpty { try Settings.set("name",DeviceSync.str(profile,"name")) }
         if !profileDirty && !DeviceSync.str(profile,"style").isEmpty { let next=Look.parse(DeviceSync.str(profile,"style"),girl:false).withExtras(DeviceSync.str(profile,"extra"));pet.look=next.withCustomization(Customization.parse(profile["customization"],next)) }
+        if !profileDirty {try SocialProfile.apply(profile);if let shared=Invite.parse(DeviceSync.str(profile,"invite")),shared.database == sync.database {try Settings.set("room",shared.code)};if let restored=Invite.parse(Settings.get("room")) ?? Invite.parse(sync.defaultRoomCode) {connectRoomView(restored)};if let id=profile["viewRoom"] as? String,let room,room.choices.contains(where:{$0.id == id}),room.selected != id {try room.select(id)}}
         let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none
         let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
         let changed = state != next; state = next; subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0

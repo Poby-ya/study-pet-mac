@@ -284,6 +284,7 @@ final class PetWindow: NSPanel {
         frameCount = atFrame
         tick = atFrame
         animationSeconds = Double(atFrame) / 4; moodSeconds = animationSeconds
+        if atMood == .leaving {departureLook=look;departureLaptop=laptop}
         visitTick = atVisitTick
         visitLook = friend
         visitText = friendText
@@ -475,7 +476,7 @@ final class PetWindow: NSPanel {
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Self.departurePose(leavingTicks[i]) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
-            let lit = night && seat.here && !seat.dozing && !gone
+            let lit = night && seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
@@ -483,7 +484,7 @@ final class PetWindow: NSPanel {
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
             if lit { lamps.append(x) }
         }
-        let myLamp = night && mood == .studying && !outgoing
+        let myLamp = night && mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
         if myLamp { lamps.append(myX) }
         Sprites.draw(outgoing ? .empty : myPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), hairLag: hairLag(-1, myPose))
@@ -677,7 +678,7 @@ final class PetWindow: NSPanel {
         PetWindow.wainscot.setFill()
         NSRect(x: card.minX, y: floorY + 20 * scale, width: card.width, height: card.height).fill()
         let floorTop = floorY + 35 * scale
-        PetWindow.floorWood.setFill()
+        (look.customization?.on("floor") == true ? Sprites.color(0xECD7AE) : PetWindow.floorWood).setFill()
         NSRect(x: card.minX, y: floorTop, width: card.width, height: card.maxY - floorTop).fill()
         let seams = NSBezierPath()
         seams.lineWidth = 1

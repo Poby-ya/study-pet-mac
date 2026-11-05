@@ -44,7 +44,7 @@ final class DeviceLinkWindow: NSWindow {
         guard self.finishForLink() else { return }
         try await self.prepare(); guard let sync = self.sync, let auth = self.auth else { return }
         try await sync.pull()
-        try await sync.importRecords(["name":Settings.get("name"),"style":Settings.get("style"),"extra":Settings.get("lookExtras"),"desk":Settings.get("laptop") == "1" ? 11 : 1,"invite":Settings.get("room")])
+        var profile=SocialProfile.capture();profile.merge(["name":Settings.get("name"),"style":Settings.get("style"),"extra":Settings.get("lookExtras"),"customization":Customization.parse(Settings.get("customization"),Look.parse(Settings.get("style"),girl:false).withExtras(Settings.get("lookExtras"))).data(),"desk":Settings.get("laptop") == "1" ? 11 : 1,"invite":Settings.get("room")]) {_,value in value};try await sync.importRecords(profile)
         try Settings.set("cloudSync","1"); self.connected()
         self.offered = Room.randomId(10).uppercased(); self.requested = ""
         _ = try await sync.request("pairings/"+self.offered,"PUT",["issuer":await auth.uid,"account":sync.account,"created":Room.serverTime])

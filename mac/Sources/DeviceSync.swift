@@ -73,7 +73,10 @@ final class DeviceSync {
         }
         try await change("import",fields:["importId":"legacy","segments":segments])
         if Self.obj(data,"profile").isEmpty { try await change("profile",fields:["profile":profile]) }
+        else if account == (await auth.uid) {let missing=SocialProfile.missing(Self.obj(data,"profile"),profile);if !missing.isEmpty {try await change("profile",fields:["profile":missing])}}
     }
+    var database: String {invite.database}
+    var defaultRoomCode: String {invite.code}
     var elapsed: Double {
         guard !active.isEmpty else { return 0 }
         let closed = Self.obj(data,"segments").values.compactMap { $0 as? [String:Any] }.filter { Self.str($0,"session") == Self.str(active,"id") }.reduce(Int64(0)) { $0 + Self.num($1,"end") - Self.num($1,"start") }

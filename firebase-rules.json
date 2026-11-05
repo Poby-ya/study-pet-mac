@@ -122,7 +122,7 @@
                   ".validate": "newData.isBoolean()"
                 },
                 "value": {
-                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 8"
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 7"
                 },
                 "$other": {
                   ".validate": false

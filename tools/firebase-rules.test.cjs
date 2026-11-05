@@ -48,6 +48,19 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertSucceeds(set(ref(guest, `rooms/${first}/wardrobe/guest`), '1323133'));
     await assertFails(set(ref(guest, `rooms/${first}/wardrobe/host`), '1323133'));
     await assertFails(set(ref(guest, `rooms/${first}/wardrobe/guest`), '9999999'));
+    const custom={version:1,slots:{hat:{enabled:true,value:12},documentSticker:{enabled:false,value:4},deskStickers:{enabled:true,value:1}}};
+    const customPath='rooms/'+first+'/customization/guest';
+    await assertSucceeds(set(ref(guest,customPath),custom));
+    await assertFails(set(ref(outsider,customPath),custom));
+    await assertFails(set(ref(host,customPath),custom));
+    await assertFails(set(ref(guest,customPath+'/slots/hat/value'),13));
+    await assertFails(set(ref(guest,customPath+'/slots/hat/value'),1.5));
+    await assertFails(set(ref(guest,customPath+'/slots/hat/enabled'),'yes'));
+    await assertFails(set(ref(guest,customPath+'/slots/floor'),{enabled:true,value:1}));
+    await assertFails(set(ref(guest,customPath+'/slots/hat/locked'),true));
+    await assertFails(set(ref(guest,customPath+'/version'),2));
+    assert.equal((await get(ref(host,customPath+'/slots/hat/value'))).val(),12);
+
     await assertSucceeds(set(ref(guest, `rooms/${first}/versions/guest`), '0.5.1'));
     await assertFails(set(ref(guest, `rooms/${first}/versions/host`), '0.5.1'));
     await assertFails(set(ref(outsider, `rooms/${first}/versions/outsider`), '0.5.1'));

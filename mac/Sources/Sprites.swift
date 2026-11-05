@@ -629,10 +629,10 @@ enum Sprites {
                 Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
             ], at: at)
         }
-        if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{bigStickers.contains($0.grid)||smallStickers.contains($0.grid)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(25,31),(31,32),(35,31),(4,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop"),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
+        if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{bigStickers.contains($0.grid)||smallStickers.contains($0.grid)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(25,31),(31,32),(35,31),(4,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop",clock:d.clock),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
         if d.away { return layers }
         layers.insert(Layer(bags[look.bag], 42, 28), at: at)
-        if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { let sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker); layers.append(Layer(sticker,d.laptop ? 23 : 21,d.laptop ? 21 : 25)) }
+        if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { var sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker);let isNew=(custom?.value("documentSticker") ?? 0)>=4;if isNew {let height=d.laptop ? 4 : 3;sticker=(0..<height).map { y in sticker[Int((Double(y)*Double(sticker.count-1)/Double(height-1)).rounded(.toNearestOrEven))] }};layers.append(Layer(sticker,d.laptop ? 23 : 21,isNew ? (d.laptop ? 20 : 24) : (d.laptop ? 21 : 25))) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
             let kind: Drink = d.drink == .none ? .mug : d.drink
@@ -656,6 +656,7 @@ enum Sprites {
         var lit = false
         var away = false
         var packed = false
+        var clock = Date()
     }
 
     // A desk lamp behind the nameplate: base, a stem curving over into a shade tilted toward

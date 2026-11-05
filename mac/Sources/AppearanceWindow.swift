@@ -1,6 +1,6 @@
 import AppKit
 private final class AppearanceContent: NSView { override var isFlipped: Bool { true } }
-final class AppearanceWindow: NSWindow {
+final class AppearanceWindow: NSWindow, NSWindowDelegate {
     private var values: [Int]
     private var custom: Customization
     private var selected: Look
@@ -14,14 +14,14 @@ final class AppearanceWindow: NSWindow {
     init(_ look: Look) {
         values=[look.hair,look.hairColor,look.top,look.topColor,look.bottom,look.ribbon,0,look.skin,0,look.sleeve,look.leftHanded ? 1 : 0,0,look.bag,look.girl ? 1 : 0]
         custom=(look.customization ?? Customization.legacy(look)).copy();selected=look;ribbon=look.additions & 1
-        let saved=Array(Settings.get("appearanceLocks"));for i in [1,3,4,5,9,12] {baseLocks[i]=i<saved.count && saved[i] == "1"}
+        let saved=Array(Settings.get("appearanceLocks"));if look.customization == nil {for (key,index) in [("hair",0),("top",2),("hat",8),("documentSticker",11),("deskStickers",11)] {custom.slots[key]!.locked=saved.count>index && saved[index] == "1"}};for i in [1,3,4,5,9,12] {baseLocks[i]=i<saved.count && saved[i] == "1"}
         let height=min(640,(NSScreen.main?.visibleFrame.height ?? 760)-50)
         super.init(contentRect:NSRect(x:0,y:0,width:528,height:height),styleMask:[.titled,.closable],backing:.buffered,defer:false)
-        title="꾸미기";isReleasedWhenClosed=false;let root=AppearanceContent(frame:NSRect(x:0,y:0,width:528,height:height));contentView=root
+        title="꾸미기";isReleasedWhenClosed=false;delegate=self;let root=AppearanceContent(frame:NSRect(x:0,y:0,width:528,height:height));contentView=root
         let tabs=NSSegmentedControl(labels:["캐릭터","책상","교실"],trackingMode:.selectOne,target:self,action:#selector(tabChanged(_:)));tabs.selectedSegment=0;tabs.frame=NSRect(x:16,y:12,width:496,height:30);root.addSubview(tabs)
         scroll.frame=NSRect(x:0,y:50,width:528,height:height-260);scroll.hasVerticalScroller=true;scroll.documentView=body;root.addSubview(scroll)
         preview.frame=NSRect(x:20,y:height-202,width:468,height:150);root.addSubview(preview)
-        for (title,x,action) in [("랜덤 뽑기",20,#selector(roll)),("적용",330,#selector(apply)),("취소",425,#selector(cancel))] {let b=NSButton(title:title,target:self,action:action);b.frame=NSRect(x:x,y:height-42,width:90,height:30);root.addSubview(b);if title == "적용" {b.keyEquivalent="\r"};if title == "취소" {b.keyEquivalent="\u{1b}"}}
+        for (title,x,action) in [("랜덤 뽑기",20,#selector(roll)),("적용",330,#selector(apply)),("취소",425,#selector(cancel))] {let b=NSButton(title:title,target:self,action:action);b.frame=NSRect(x:CGFloat(x),y:height-42,width:90,height:30);root.addSubview(b);if title == "적용" {b.keyEquivalent="\r"};if title == "취소" {b.keyEquivalent="\u{1b}"}}
         rebuild();center()
     }
     required init?(coder: NSCoder) {fatalError("not used")}
@@ -52,6 +52,7 @@ final class AppearanceWindow: NSWindow {
     private func changed() {let look=read(),isRoom=group == "classroom";preview.image=NSImage(size:NSSize(width:468,height:150),flipped:true){_ in if isRoom {self.custom.drawRoom(look,NSRect(x:8,y:4,width:452,height:140),Date())}else{for (i,pose) in [Sprites.Pose.writeA,.dozeA,.waveA].enumerated(){Sprites.draw(pose,look,left:CGFloat(i*156),top:12,scale:3,decor:Sprites.Decor(seed:7))}};return true}}
     @objc private func roll() {custom.roll(group);let counts=[8,5,9,10,values[13]==1 ? 8 : 4,6,0,4,0,4,0,4,4];for i in (group == "character" ? [1,3,4,5,9] : group == "desk" ? [12] : []) where baseLocks[i] != true && (i != 5 || ribbon != 0) {values[i]=Int.random(in:0..<counts[i])};changed()}
     @objc private func apply() {do {try Settings.set("appearanceLocks",(0..<14).map{baseLocks[$0] == true ? "1" : "0"}.joined());selected=read();applied=true;NSApp.stopModal()}catch{let a=NSAlert();a.messageText="설정을 저장하지 못했어요.";a.informativeText=error.localizedDescription;a.runModal()}}
+    func windowShouldClose(_ sender: NSWindow) -> Bool {NSApp.stopModal();return true}
     @objc private func cancel() {NSApp.stopModal()}
     static func choose(_ look: Look) -> Look? {let window=AppearanceWindow(look);NSApp.activate(ignoringOtherApps:true);NSApp.runModal(for:window);window.orderOut(nil);return window.applied ? window.selected : nil}
 }
