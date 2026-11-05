@@ -313,7 +313,7 @@ enum SelfTest {
         let empty = render(pet.canvasSize) { pet.paint() }
         func lowerPixels(_ rep: NSBitmapImageRep) -> [UInt8] {
             var pixels: [UInt8] = []
-            for y in (empty.pixelsHigh-10-44)..<(empty.pixelsHigh-10) {
+            for y in (empty.pixelsHigh-10-28)..<(empty.pixelsHigh-10) {
                 for x in 0..<empty.pixelsWide where empty.bitmapData![y * empty.bytesPerRow + x * 4 + 3] > 0 {
                     let start = rep.bitmapData!.advanced(by: y * rep.bytesPerRow + x * 4)
                     pixels.append(contentsOf: UnsafeBufferPointer(start: start, count: 4))
