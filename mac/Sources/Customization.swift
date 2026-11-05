@@ -4,7 +4,7 @@ final class Customization: Equatable {
     struct Choice { var enabled: Bool; var value: Int; var locked = false }
     struct Category { var key: String; var title: String; var group: String; var optional: Bool; var legacy: Int; var art: [[String:Any]]; var count: Int { legacy + art.count + 1 } }
     private static let catalog: [String:Any] = {
-        guard let url=Bundle.main.url(forResource:"customization",withExtension:"json"),let data=try? Data(contentsOf:url),let obj=try? JSONSerialization.jsonObject(with:data) as? [String:Any],let slots=obj["slots"] as? [[String:Any]] else { fatalError("Missing customization catalog") }
+        guard let url=Bundle.main.url(forResource:"customization",withExtension:"json"),let data=try? Data(contentsOf:url),let obj=try? JSONSerialization.jsonObject(with:data) as? [String:Any] ,obj["slots"] is [[String:Any]] else { fatalError("Missing customization catalog") }
         return obj
     }()
     static func artwork(_ key: String,_ fallback: [String]) -> [String] { (catalog["baseArt"] as? [String:[String]])?[key] ?? fallback }
@@ -67,7 +67,7 @@ final class Customization: Equatable {
         let rows=grid.map{Array($0)}
         return (0..<h).map { y in String((0..<w).map{x in rows[y*rows.count/h][x*rows[0].count/w]}) }
     }
-    static func floor(_ rect: NSRect,_ scale: CGFloat,_ light: Bool) {
+    static func drawFloor(_ rect: NSRect,_ scale: CGFloat,_ light: Bool) {
         Sprites.color(light ? 0xEFDCB9 : 0xDEC7A5).setFill();rect.fill()
         let seams=NSBezierPath();seams.lineWidth=1
         var row=0
@@ -91,7 +91,7 @@ final class Customization: Equatable {
         if preview {
             let scale=max(1,min(rect.width/226,rect.height/85).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
             Sprites.color(0xEFE7D8).setFill();rect.fill()
-            Self.floor(NSRect(x:rect.minX,y:y+69*scale,width:rect.width,height:max(0,rect.maxY-y-69*scale)),scale,on("floor"))
+            Self.drawFloor(NSRect(x:rect.minX,y:y+69*scale,width:rect.width,height:max(0,rect.maxY-y-69*scale)),scale,on("floor"))
             Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:18*scale).fill()
             Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:14*scale).fill()
             Sprites.color(0xEEEBD5).setFill();NSRect(x:x+90*scale,y:y+7*scale,width:46*scale,height:2*scale).fill()

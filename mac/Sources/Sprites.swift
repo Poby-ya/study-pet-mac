@@ -682,12 +682,13 @@ enum Sprites {
     ]
 
     /// The light of a lit lamp, for drawing after everything else at that desk.
-    static func drawLampLight(left: CGFloat, top: CGFloat, scale: CGFloat) {
-        color(0xFFD855).withAlphaComponent(100.0 / 255).setFill()
-        for (row, line) in beam.enumerated() {
-            for (col, c) in line.enumerated() where c == "L" {
-                NSRect(x: left + CGFloat(1 + col) * scale, y: top + CGFloat(16 + row) * scale, width: scale, height: scale).fill(using: .sourceOver)
-            }
+    static func drawLampLight(left: CGFloat,top: CGFloat,scale: CGFloat,lamp: Int=0) {
+        let origins=[(13,16),(10,16),(7,18),(7,18),(7,17),(9,14),(7,22),(10,15)]
+        let (ox,oy)=origins[max(0,min(7,lamp))]
+        for y in oy...27 {
+            let t=Double(y-oy)/Double(27-oy),cx=ox+Int(floor(5*t+0.5)),radius=Int(floor(2+7*t+0.5))
+            NSColor(calibratedRed:1,green:226.0/255,blue:150.0/255,alpha:CGFloat(floor(46-24*t+0.5))/255).setFill()
+            NSRect(x:left+CGFloat(max(0,cx-radius))*scale,y:top+CGFloat(y)*scale,width:CGFloat(min(43,cx+radius)-max(0,cx-radius)+1)*scale,height:scale).fill(using:.sourceOver)
         }
     }
 

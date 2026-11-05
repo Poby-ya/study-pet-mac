@@ -465,7 +465,7 @@ final class PetWindow: NSPanel {
         if mood == .leaving { drawDepartureWalker(departureLook ?? look, origin: myX, tick: moodSeconds * 4) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
-        var lamps: [CGFloat] = []
+        var lamps: [(CGFloat,Int)] = []
         for i in 0..<2 {
             guard var seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
             if previousSeats[i]?.id != seat.id {leavingTicks[i] = -1;departingSeats[i]=nil}
@@ -482,10 +482,10 @@ final class PetWindow: NSPanel {
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
-            if lit { lamps.append(x) }
+            if lit { lamps.append((x,seat.look.customization?.value("lamp") ?? 0)) }
         }
         let myLamp = night && mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
-        if myLamp { lamps.append(myX) }
+        if myLamp { lamps.append((myX,look.customization?.value("lamp") ?? 0)) }
         Sprites.draw(outgoing ? .empty : myPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), hairLag: hairLag(-1, myPose))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
@@ -500,7 +500,7 @@ final class PetWindow: NSPanel {
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
-        for x in lamps { Sprites.drawLampLight(left: x, top: floorY, scale: scale) }
+        for (x,kind) in lamps { Sprites.drawLampLight(left:x,top:floorY,scale:scale,lamp:kind) }
         effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
@@ -677,7 +677,7 @@ final class PetWindow: NSPanel {
         PetWindow.wainscot.setFill()
         NSRect(x: card.minX, y: floorY + 20 * scale, width: card.width, height: card.height).fill()
         let floorTop = floorY + 35 * scale
-        Customization.floor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true)
+        Customization.drawFloor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true)
         drawWindow(NSRect(x: card.minX + 14, y: boardSpace + 10, width: card.width - 28, height: floorY + 18 * scale - boardSpace - 10))
         NSGraphicsContext.restoreGraphicsState()
         cardPath.lineWidth = 1
