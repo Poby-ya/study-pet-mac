@@ -31,6 +31,15 @@ enum SelfTest {
                 for (name,pose) in [("WriteA",Sprites.Pose.writeA),("DozeA",.dozeA),("WaveA",.waveA),("Empty",.empty)] {for laptop in [false,true] {let d=Sprites.Decor(laptop:laptop,seed:7,away:pose == .empty,clock:date);fixtures.append(["style":look.code,"extras":look.extra,"customization":c.data(),"pose":name,"decor":["drink":0,"laptop":laptop,"seed":7,"lit":false,"away":pose == .empty,"clock":"2026-11-05T20:10:00"],"pixels":flatten(Sprites.compose(pose,look,decor:d))])}}
             }
         }
+        for i in 0..<48 {
+            let c=legacy.copy()
+            for (index,s) in Customization.categories.enumerated() {let minimum=s.optional && s.key != "lamp" && s.key != "deskStickers" ? 1 : 0;c.slots[s.key]!.enabled=true;c.slots[s.key]!.value=minimum+(i*7+index*3)%(s.count-minimum)}
+            let look=c.legacyLook(Look(girl:i%2==0,2,1,1,2,i%2==0 ? 4 : 0,0).withExtras("00000007"))
+            for (name,pose) in [("WriteA",Sprites.Pose.writeA),("DozeA",.dozeA),("WaveA",.waveA),("Empty",.empty)] {for laptop in [false,true] {
+                let d=Sprites.Decor(laptop:laptop,seed:7,away:pose == .empty,clock:date)
+                fixtures.append(["style":look.code,"extras":look.extra,"customization":c.data(),"pose":name,"decor":["drink":0,"laptop":laptop,"seed":7,"lit":false,"away":pose == .empty,"clock":"2026-11-05T20:10:00"],"pixels":flatten(Sprites.compose(pose,look,decor:d)),"visitor":flatten(Sprites.visitor(look,.walk,alt:true))])
+            }}
+        }
         save(image,out,"customization.png")
         for document in [false,true] {for desk in [false,true] {let c=legacy.copy();c.slots["documentSticker"]!.enabled=document;c.slots["deskStickers"]!.enabled=desk;let restored=Customization.parse(c.json,basic);check(restored.on("documentSticker")==document && restored.on("deskStickers")==desk,"customization: independent sticker flags round-trip")}}
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
