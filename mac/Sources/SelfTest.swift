@@ -251,6 +251,10 @@ enum SelfTest {
     }
 
     private static func checkPresentation(_ out: URL) {
+        let area = NSRect(x: 0, y: 0, width: 1920, height: 1080)
+        let high = PetWindow.clampDesk(NSPoint(x: 100, y: 2000), area: area, size: NSSize(width: 600, height: 600), deskTop: 540)
+        check(high.y == 1020, "position: the desk reaches the top edge with the transparent area off screen")
+        check(PetWindow.clampDesk(NSPoint(x: 100, y: 200), area: area, size: NSSize(width: 600, height: 600), deskTop: 540).y == 200, "position: an ordinary saved position is preserved")
         let pet = PetWindow()
         pet.myName = { "지우" }
         pet.bubbleText = { "영어\n23분째 공부 중" }

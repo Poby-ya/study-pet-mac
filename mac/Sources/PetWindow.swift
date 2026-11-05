@@ -164,6 +164,13 @@ final class PetWindow: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+
+    static func clampDesk(_ desired: NSPoint, area: NSRect, size: NSSize, deskTop: CGFloat) -> NSPoint {
+        NSPoint(x: max(area.minX, min(desired.x, max(area.minX, area.maxX - size.width))),
+                y: max(area.minY - size.height + 24, min(desired.y, area.maxY - size.height + deskTop)))
+    }
+    private var displayedDeskTop: CGFloat { (floorY + 27 * scale) * frame.width / canvasSize.width }
 
     func setDisplaySize(_ percent: Int) {
         guard PetWindow.displaySizes.contains(percent) else { return }
@@ -182,7 +189,7 @@ final class PetWindow: NSPanel {
         if frame.size != size { setContentSize(size) }
         contentView?.frame = NSRect(origin: .zero, size: size)
         contentView?.bounds = NSRect(origin: .zero, size: canvasSize)
-        setFrameOrigin(NSPoint(x: max(area.minX, min(x, area.maxX - size.width)), y: max(area.minY, min(old.minY, area.maxY - size.height))))
+        setFrameOrigin(Self.clampDesk(NSPoint(x: x, y: old.minY), area: area, size: size, deskTop: displayedDeskTop))
     }
 
     func minimizeScene() {
@@ -766,7 +773,10 @@ final class PetWindow: NSPanel {
         guard let from = dragFrom else { return }
         let now = NSEvent.mouseLocation
         if abs(now.x - from.x) + abs(now.y - from.y) > 3 { dragged = true }
-        if dragged { setFrameOrigin(NSPoint(x: dragOrigin.x + now.x - from.x, y: dragOrigin.y + now.y - from.y)) }
+        if dragged {
+            let area = NSScreen.screens.first(where: { $0.frame.contains(now) })?.visibleFrame ?? NSScreen.main!.visibleFrame
+            setFrameOrigin(Self.clampDesk(NSPoint(x: dragOrigin.x + now.x - from.x, y: dragOrigin.y + now.y - from.y), area: area, size: frame.size, deskTop: displayedDeskTop))
+        }
     }
 
     fileprivate func mouseUp(at p: NSPoint) {
@@ -820,7 +830,7 @@ final class PetWindow: NSPanel {
         guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(spot) }) else { return nil }
         // Pulled fully on screen: the window may have grown between versions, or the Dock moved.
         let area = screen.visibleFrame
-        return NSPoint(x: max(area.minX, min(x, area.maxX - frame.width)), y: max(area.minY, min(y, area.maxY - frame.height)))
+        return Self.clampDesk(NSPoint(x: x, y: y), area: area, size: frame.size, deskTop: displayedDeskTop)
     }
 
     private func defaultLocation() -> NSPoint {
