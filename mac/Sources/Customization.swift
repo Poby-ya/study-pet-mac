@@ -3,8 +3,13 @@ import CoreFoundation
 final class Customization: Equatable {
     struct Choice { var enabled: Bool; var value: Int; var locked = false }
     struct Category { var key: String; var title: String; var group: String; var optional: Bool; var legacy: Int; var art: [[String:Any]]; var count: Int { legacy + art.count + 1 } }
-    static let categories: [Category] = {
+    private static let catalog: [String:Any] = {
         guard let url=Bundle.main.url(forResource:"customization",withExtension:"json"),let data=try? Data(contentsOf:url),let obj=try? JSONSerialization.jsonObject(with:data) as? [String:Any],let slots=obj["slots"] as? [[String:Any]] else { fatalError("Missing customization catalog") }
+        return obj
+    }()
+    static func artwork(_ key: String,_ fallback: [String]) -> [String] { (catalog["baseArt"] as? [String:[String]])?[key] ?? fallback }
+    static let categories: [Category] = {
+        let slots=catalog["slots"] as! [[String:Any]]
         return slots.map { Category(key:$0["key"] as! String,title:$0["title"] as! String,group:$0["group"] as! String,optional:$0["optional"] as! Bool,legacy:$0["legacy"] as! Int,art:$0["variants"] as! [[String:Any]]) }
     }()
     var slots: [String:Choice] = [:]
@@ -37,7 +42,7 @@ final class Customization: Equatable {
         if key == "prop" && value(key) == 7 {grid=Self.digital(grid,clock,compact:true)}
         return [Sprites.Layer(grid,x+(art["x"] as! Int),y+(art["y"] as! Int))]
     }
-    func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { ["hair","head","hat","ear","neck","badge"].flatMap{layers($0,x,y)} }
+    func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { ["head","hat","ear","neck","badge"].flatMap{layers($0,x,y)} }
     func legacyLook(_ look: Look) -> Look {
         var hair=value("hair");if hair>=8 {hair=Self.categories.first{$0.key == "hair"}!.art.first{$0["id"] as? Int == hair}!["base"] as! Int};let top=value("top")<9 ? value("top") : 0
         var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]=on("documentSticker") ? Character(String(min(3,value("documentSticker")))) : "0"
@@ -48,14 +53,68 @@ final class Customization: Equatable {
         var rows=source.map{Array($0)}
         let second=Calendar.current.component(.second,from:date)
         let fraction=date.timeIntervalSince1970-floor(date.timeIntervalSince1970)
-        let dx=Int(floor(sin((Double(second)+fraction)*Double.pi)*3+0.5))
-        for y in 29..<rows.count {for x in 0..<rows[y].count {rows[y][x]="."}}
-        for y in 29...39 {let x=15+Int(floor(Double(dx)*Double(y-29)/10.0+0.5));rows[y][x]="k"}
-        for y in 37..<42 {for x in (12+dx)..<(19+dx) {rows[y][x]="p"}}
+        let dx=Int(floor(sin((Double(second)+fraction)*Double.pi)*2+0.5))
+        for y in 29..<39 {for x in 11..<20 {rows[y][x]="k"}}
+        for y in 29...35 {let x=15+Int(floor(Double(dx)*Double(y-29)/6.0+0.5));rows[y][x]="y"}
+        for y in 34..<38 {for x in (13+dx)..<(18+dx) {rows[y][x]="p"}}
+        rows[34][14+dx]="Y"
         return rows.map{String($0)}
     }
     static let digits="111/101/101/101/111 010/110/010/010/111 111/001/111/100/111 111/001/111/001/111 101/101/111/001/001 111/100/111/001/111 111/100/111/101/111 111/001/010/010/010 111/101/111/101/111 111/101/111/001/111".split(separator:" ").map{$0.split(separator:"/").map{Array($0)}}
-    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? (n%2)*3 : 7+n*4)+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : "G"}}}};return rows.map{String($0)} }
-    func drawClock(_ look: Look,_ x: CGFloat,_ y: CGFloat,_ scale: CGFloat,_ date: Date) {let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let art=layers("clock",clock:date);if art.isEmpty {Sprites.drawClock(parts.hour ?? 0,parts.minute ?? 0,left:x,top:y,scale:scale);return};let grid=value("clock")==2 ? Self.digital(art[0].grid,date) : art[0].grid;Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:scale);if value("clock")==1 {Sprites.drawClock(parts.hour ?? 0,parts.minute ?? 0,left:x,top:y,scale:scale)}}
-    func drawRoom(_ look: Look,_ rect: NSRect,_ date: Date,preview: Bool=true) {let scale=max(1,min(rect.width/112,rect.height/62).rounded(.down)),x=rect.minX+(rect.width-112*scale)/2,y=rect.minY;if preview {Sprites.color(0xECE4D5).setFill();rect.fill();Sprites.drawWindow(98,52,sky:PetWindow.skyAt(date),season:PetWindow.seasonAt(date),left:x+7*scale,top:y+5*scale,scale:scale,scene:0)};for key in ["window","wall","hangingPlant","lights"] {let dx=key == "wall" ? -17 : key == "hangingPlant" ? 99 : 0,dy=key == "wall" ? 10 : key == "hangingPlant" ? 1 : 0;var art=layers(key);let hour=Calendar.current.component(.hour,from:date);if key == "lights" && hour>=6 && hour<18 {art=art.map{Sprites.Layer($0.grid.map{$0.replacingOccurrences(of:"Y",with:"w")},$0.x,$0.y)}};Sprites.draw(layers:art,look,left:x+CGFloat(dx)*scale,top:y+CGFloat(dy)*scale,scale:scale)};if preview && on("floor") {Sprites.color(0xECD7AE).setFill();NSRect(x:rect.minX,y:rect.maxY-12,width:rect.width,height:12).fill()};if preview {drawClock(look,x+4*scale,y+5*scale,scale,date)}}
+    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? 1+(n%2)*3 : 7+n*4)+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : compact ? "G" : "1"}}}};return rows.map{String($0)} }
+
+    static func resize(_ grid: [String],_ w: Int,_ h: Int) -> [String] {
+        let rows=grid.map{Array($0)}
+        return (0..<h).map { y in String((0..<w).map{x in rows[y*rows.count/h][x*rows[0].count/w]}) }
+    }
+    static func floor(_ rect: NSRect,_ scale: CGFloat,_ light: Bool) {
+        Sprites.color(light ? 0xEFDCB9 : 0xDEC7A5).setFill();rect.fill()
+        let seams=NSBezierPath();seams.lineWidth=1
+        var row=0
+        while CGFloat(row)*8*scale<rect.height {
+            let y=rect.minY+CGFloat(row)*8*scale
+            seams.move(to:NSPoint(x:rect.minX,y:y));seams.line(to:NSPoint(x:rect.maxX,y:y))
+            var x=rect.minX+CGFloat(row%2==0 ? 12 : 28)*scale
+            while x<rect.maxX {seams.move(to:NSPoint(x:x,y:y));seams.line(to:NSPoint(x:x,y:min(rect.maxY,y+8*scale)));x+=40*scale}
+            row+=1
+        }
+        Sprites.color(light ? 0xDCC6A2 : 0xC8AF8F).setStroke();seams.stroke()
+    }
+    func drawClock(_ look: Look,_ x: CGFloat,_ y: CGFloat,_ scale: CGFloat,_ date: Date) {
+        let parts=Calendar.current.dateComponents([.hour,.minute],from:date),art=layers("clock",clock:date)
+        if art.isEmpty {Sprites.drawClock(parts.hour ?? 0,parts.minute ?? 0,left:x,top:y,scale:scale);return}
+        let grid=value("clock")==2 ? Self.digital(art[0].grid,date) : art[0].grid
+        Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:scale)
+        if value("clock")==1 {let face=Self.resize(Sprites.clockGrid(parts.hour ?? 0,parts.minute ?? 0),19,19);Sprites.draw(layers:[Sprites.Layer(face,6,5)],look,left:x,top:y,scale:scale)}
+    }
+    func drawRoom(_ look: Look,_ rect: NSRect,_ date: Date,preview: Bool=true) {
+        if preview {
+            let scale=max(1,min(rect.width/226,rect.height/85).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
+            Sprites.color(0xEFE7D8).setFill();rect.fill()
+            Self.floor(NSRect(x:rect.minX,y:y+69*scale,width:rect.width,height:max(0,rect.maxY-y-69*scale)),scale,on("floor"))
+            Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:18*scale).fill()
+            Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:14*scale).fill()
+            Sprites.color(0xEEEBD5).setFill();NSRect(x:x+90*scale,y:y+7*scale,width:46*scale,height:2*scale).fill()
+            let glass=Self.resize(Sprites.windowGrid(98,52,sky:PetWindow.skyAt(date),season:PetWindow.seasonAt(date),scene:0),98,32)
+            Sprites.draw(layers:[Sprites.Layer(glass,0,0)],look,left:x+64*scale,top:y+22*scale,scale:scale)
+            drawRoom(look,NSRect(x:x+64*scale,y:y+22*scale,width:98*scale,height:32*scale),date,preview:false)
+            drawClock(look,x+16*scale,y+22*scale,scale,date)
+            for i in 0..<3 {Sprites.draw(i==1 ? .writeA : .empty,look,left:x+CGFloat(20+i*70)*scale,top:y+40*scale,scale:scale,decor:Sprites.Decor(seed:7,away:i != 1))}
+            return
+        }
+        let unit=max(1,min(rect.width/98,rect.height/32).rounded(.down))
+        for key in ["window","wall","hangingPlant","lights"] {
+            guard let layer=layers(key).first else {continue}
+            var grid=layer.grid,x=rect.minX,y=rect.minY
+            if key == "window" || key == "lights" {
+                let hour=Calendar.current.component(.hour,from:date)
+                if key == "lights" && hour>=6 && hour<18 {grid=grid.map{$0.replacingOccurrences(of:"Y",with:"b")}}
+                grid=Self.resize(grid,Int(rect.width/unit)+14,key == "window" ? Int(rect.height/unit)+6 : 10)
+                x-=7*unit;y-=3*unit
+            }
+            if key == "wall" {x=rect.maxX+8*unit;y+=24*unit}
+            if key == "hangingPlant" {x=rect.maxX-4*unit;y+=2*unit}
+            Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:unit)
+        }
+    }
 }

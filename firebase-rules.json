@@ -254,7 +254,7 @@
                   ".validate": "newData.isBoolean()"
                 },
                 "value": {
-                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 3"
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 2"
                 },
                 "$other": {
                   ".validate": false

@@ -18,16 +18,16 @@ enum SelfTest {
     private static func checkCustomization(_ out: URL) {
         let basic=Look(girl:true,2,1,1,2,4,0).withExtras("00000000"),legacy=Customization.legacy(Look(girl:true,2,1,1,2,4,0).withExtras("00000000"))
         let entries=Customization.categories.filter{$0.key != "deskStickers"}.flatMap { s in s.art.map { (s,$0) } }
-        check(entries.count==65,"customization: exactly 65 approved designs")
+        check(entries.count==64,"customization: exactly 64 approved designs")
         let calendar=Calendar(identifier:.gregorian),date=calendar.date(from:DateComponents(year:2026,month:11,day:5,hour:20,minute:10))!
         var fixtures: [[String:Any]]=[]
         func flatten(_ layers: [Sprites.Layer]) -> [String] {var rows=Array(repeating:Array(repeating:Character("."),count:64),count:64);for l in layers {for (y,line) in l.grid.enumerated(){for (x,c) in line.enumerated() where c != "." {let xx=x+l.x,yy=y+l.y;if xx>=0 && xx<64 && yy>=0 && yy<64 {rows[yy][xx]=c}}}};return rows.map{String($0)}}
-        let image=render(NSSize(width:1100,height:CGFloat((entries.count+4)/5*220))) {
-            Sprites.color(0xF6EEDF).setFill();NSRect(x:0,y:0,width:1100,height:CGFloat((entries.count+4)/5*220)).fill()
+        let image=render(NSSize(width:1100,height:CGFloat((entries.count+4)/5*240))) {
+            Sprites.color(0xF6EEDF).setFill();NSRect(x:0,y:0,width:1100,height:CGFloat((entries.count+4)/5*240)).fill()
             for (i,entry) in entries.enumerated() {let s=entry.0,art=entry.1,c=legacy.copy();c.slots[s.key]!.enabled=true;c.slots[s.key]!.value=art["id"] as! Int;let look=c.legacyLook(basic),grid=art["grid"] as! [String];check(grid.allSatisfy{$0.count==grid[0].count && $0.allSatisfy{Sprites.isKnownColor($0)}},"customization: rectangular known pixels "+s.key)
-                let x=CGFloat(i%5*220),y=CGFloat(i/5*220)
+                let x=CGFloat(i%5*220),y=CGFloat(i/5*240)
                 if s.group == "classroom" {c.drawRoom(look,NSRect(x:x+20,y:y+4,width:175,height:120),date)}else{Sprites.draw(.writeA,look,left:x+10,top:y+10,scale:4,decor:Sprites.Decor(drink:.mug,seed:7,lit:true,clock:date))}
-                (art["title"] as! String).draw(in:NSRect(x:x+8,y:y+172,width:208,height:42),withAttributes:[.font:NSFont.systemFont(ofSize:12),.foregroundColor:NSColor.black])
+                (art["title"] as! String).draw(in:NSRect(x:x+8,y:y+196,width:208,height:42),withAttributes:[.font:NSFont.systemFont(ofSize:12),.foregroundColor:NSColor.black])
                 for (name,pose) in [("WriteA",Sprites.Pose.writeA),("DozeA",.dozeA),("WaveA",.waveA),("Empty",.empty)] {for laptop in [false,true] {let d=Sprites.Decor(laptop:laptop,seed:7,away:pose == .empty,clock:date);fixtures.append(["style":look.code,"extras":look.extra,"customization":c.data(),"pose":name,"decor":["drink":0,"laptop":laptop,"seed":7,"lit":false,"away":pose == .empty,"clock":"2026-11-05T20:10:00"],"pixels":flatten(Sprites.compose(pose,look,decor:d))])}}
             }
         }

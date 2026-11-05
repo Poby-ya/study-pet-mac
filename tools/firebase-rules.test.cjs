@@ -59,6 +59,8 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertFails(set(ref(guest,customPath+'/slots/floor'),{enabled:true,value:1}));
     await assertFails(set(ref(guest,customPath+'/slots/hat/locked'),true));
     await assertFails(set(ref(guest,customPath+'/version'),2));
+    await assertSucceeds(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:2}));
+    await assertFails(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:3}));
     assert.equal((await get(ref(host,customPath+'/slots/hat/value'))).val(),12);
 
     await assertSucceeds(set(ref(guest, `rooms/${first}/versions/guest`), '0.5.1'));

@@ -161,7 +161,7 @@ enum Sprites {
         [".kkkk.", "kxxxxk", "kttttk", "ktwwtk", "ktwwtk", "kttttk", "kxxxxk", ".kkkk."],
         ["kkkkkk..", "kwwwbkk.", "kyyyykkk", "kyiyyk.k", "kyyyyk.k", "kyyiykkk", "kyyyykk.", "kiiiik..", "kkkkkk.."],
         [".kkkk.", ".kGGk.", ".kggk.", ".kggk.", "kggggk", "kwwwwk", "kwzzwk", "kwwwwk", "kggggk", "kgGggk", ".kkkk."],
-    ]
+    ].enumerated().map { Customization.artwork("Drink"+String($0.offset),$0.element) }
 
     /// Standing on the desk top, in desk coordinates (not shifted by dx).
     private static func drinkLayer(_ drink: Drink) -> Layer { Layer(drinkArt[drink.rawValue], 36, 27 - drinkArt[drink.rawValue].count) }
@@ -286,30 +286,33 @@ enum Sprites {
 
     // Long hair falls past the shoulders; a bob stops at the chin; pigtails flare out
     // with a hair tie in the ribbon colour.
-    private static let longLeft = [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", ".khk", "..kk"]
-    private static let bobLeft = [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "kkhk", ".kkk"]
-    private static let pigtailLeft = ["....k", "...kh", "..kRR", ".khhk", "khhhk", "khhhk", "khhhk", "khhk.", ".kk.."]
-    private static let bun = [".kkkk.", "khhHhk", "khhhhk", "kRRRRk"]
+    private static let longLeft = Customization.artwork("LongLeft", [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", ".khk", "..kk"])
+    private static let bobLeft = Customization.artwork("BobLeft", [".khk", "khhk", "khhk", "khhk", "khhk", "khhk", "khhk", "kkhk", ".kkk"])
+    private static let pigtailLeft = Customization.artwork("PigtailLeft", ["....k", "...kh", "..kRR", ".khhk", "khhhk", "khhhk", "khhhk", "khhk.", ".kk.."])
+    private static let bun = Customization.artwork("Bun", [".kkkk.", "khhHhk", "khhhhk", "kRRRRk"])
 
-    private static let bow = [
+    private static let bow = Customization.artwork("Bow", [
         "kk...kk",
         "kRk.kRk",
         "kRRkRRk",
         "kRk.kRk",
         "kk...kk",
-    ]
+    ])
 
-    private static let hairpin = ["kkkk", "kRRk", "kkkk"]
+    private static let hairpin = Customization.artwork("Hairpin", ["kkkk", "kRRk", "kkkk"])
 
     /// Hair hanging behind the face, then the head itself with anything worn on it.
     private static func headLayers(_ look: Look, _ eyes: Eyes, _ mouth: Mouth, _ x: Int, _ y: Int, lag: Int = 0) -> ([Layer], [Layer])
     {
         let tops = look.girl ? girlTops : boyTops
-        let head = Layer(tops[look.hair % 5] + face(eyes, mouth), x, y)
+        let newHair=(look.customization?.value("hair") ?? 0)>=8
+        let crown=newHair ? Array(repeating:String(repeating:".",count:18),count:10) : tops[look.hair % 5]
+        let head = Layer(crown + face(eyes, mouth), x, y)
         var back: [Layer] = []
         var front: [Layer] = [head]
-        if look.girl && look.hair % 5 == 0 { back.append(Layer(longLeft, x - 3, y + 7)); back.append(Layer(mirror(longLeft), x + 17, y + 7))
+        if !newHair && look.girl && look.hair % 5 == 0 { back.append(Layer(longLeft, x - 3, y + 7)); back.append(Layer(mirror(longLeft), x + 17, y + 7))
         }
+        if !newHair {
         if look.hair == 5 { back.append(Layer(["kRk", "khk", "kHk", "khk", "kHk", "khk", "kRk", ".k."], x + 16, y + 12)) }
         else if look.hair == 6 { front[0] = Layer(["........kk........", ".....kkkkkkkk.....", "...kkhhhhhhHhkk...", "..khhhhhhhhhhhhk..", ".khhhhhhhhhhhHhhk.", ".ksshhhhhhhhhhhhk.", ".ksssshhhhhhhhhhk.", ".ksssssshhhhhhhhk.", ".kssssssssshhhhhk."] + face(eyes, mouth), x, y) }
         else if look.hair == 7 || look.girl && look.hair == 1 { let side = look.hair == 7 ? ["..khk", ".khhk", "khhhk", ".khhk", "khHhk", ".khhk", "khhhk", ".khhk", "khhhk", ".khhk", "..khk", "...k."] : bobLeft; back.append(Layer(side, x - (look.hair == 7 ? 4 : 3), y + 7)); back.append(Layer(mirror(side), x + 17, y + 7))
@@ -319,18 +322,20 @@ enum Sprites {
         else if look.girl && look.hair == 3 { front.append(Layer(bun, x, y)); front.append(Layer(bun, x + 12, y))
         }
         else if look.girl && look.hair == 4 { back.append(Layer(mirror(pigtailLeft), x + 16, y + 4)) }
-        if look.additions & 1 != 0 && look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
+        }
+        if !newHair && look.additions & 1 != 0 && look.girl && look.hair == 0 { front.append(Layer(bow.enumerated().map { i, row in i < 3 || lag == 0 ? row : lag > 0 ? "." + String(row.dropLast()) : String(row.dropFirst()) + "." }, x + 11, y + 1)) }
         back = back.map { Layer($0.grid, $0.x + lag, $0.y) }
-        if look.additions & 1 != 0 && look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
+        if !newHair && look.additions & 1 != 0 && look.girl && look.hair == 1 { front.append(Layer(hairpin, x + 13, y + 7)) }
         if look.additions & 1 == 0 {
             back = back.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
             front = front.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
         }
-        if (look.customization.map{$0.on("head") && $0.value("head")==1} ?? (look.accessory == 2)) { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
-        if (look.customization.map{$0.on("ear") && $0.value("ear")==1} ?? (look.accessory == 3)) { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
+        if let hairArt=look.customization {front.insert(contentsOf:hairArt.layers("hair",x,y),at:1)}
+        if (look.customization.map{$0.on("head") && $0.value("head")==1} ?? (look.accessory == 2)) { front.append(Layer(Customization.artwork("StarClip",["..p..", "ppppp", ".ppp.", ".p.p."]), x + 12, y + 5)) }
+        if (look.customization.map{$0.on("ear") && $0.value("ear")==1} ?? (look.accessory == 3)) { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(Customization.artwork("EarPad",["kRk", "kRk", "kRk", "kkk"]), x - 1, y + 9)); front.append(Layer(Customization.artwork("EarPad",["kRk", "kRk", "kRk", "kkk"]), x + 16, y + 9))
         }
-        if look.additions & 4 != 0 && look.hat == 1 { front.append(Layer(["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"], x + 1, y + 1)) }
-        if look.additions & 4 != 0 && look.hat == 2 { front.append(Layer(["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."], x - 1, y + 1)) }
+        if look.additions & 4 != 0 && look.hat == 1 { front.append(Layer(Customization.artwork("Hat1",["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"]), x + 1, y + 1)) }
+        if look.additions & 4 != 0 && look.hat == 2 { front.append(Layer(Customization.artwork("Hat2",["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."]), x - 1, y + 1)) }
         if let custom=look.customization {front += custom.headLayers(x,y)}
         return (back, front)
     }
@@ -445,6 +450,7 @@ enum Sprites {
                 for col in from...to { paint(row, col, "C") }
             }
         }
+        for y in 2..<min(8,rows.count) {for x in rows[y].indices where rows[y][x] == "A" && (x<5 || x>14 || y==7) {rows[y][x]="a"}}
         return rows.map { String($0) }
     }
 
@@ -527,7 +533,7 @@ enum Sprites {
 
     // ---- Props ----------------------------------------------------------------------
 
-    private static let desk: [String] = [
+    private static let desk: [String] = Customization.artwork("Desk", [
         r("k", 44),
         "k" + r("l", 42) + "k",
         "k" + r("d", 42) + "k",
@@ -539,13 +545,13 @@ enum Sprites {
         "." + r("k", 42) + ".",
         ".kDk" + r(".", 36) + "kDk.",
         ".kkk" + r(".", 36) + "kkk.",
-    ]
+    ])
 
-    private static let book = [
+    private static let book = Customization.artwork("Book", [
         "kkkkkkkkkkkkkk",
         "kbbbbbkkbbbbbk",
         "kBBBBBBBBBBBBk",
-    ]
+    ])
 
     private static let hand = [".kk.", "kssk", ".kk."]
 
@@ -661,20 +667,12 @@ enum Sprites {
 
     // A desk lamp behind the nameplate: base, a stem curving over into a shade tilted toward
     // the book. Lit, its bulb shows in the opening and beam slants down from it.
-    private static let lampOff = [
+    private static let lampOff = Customization.artwork("LampOff", [
         "...kkk........", "..k...kkk.....", "..k....kwk....", "..k...kwwwkk..", "..k....kwwwik.", "..k....kwwik..", "..k.....kwk...", "..k.....kk....",
         "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", "..k...........", ".kkk..........", "kwwwk.........",
-    ]
+    ])
     // Lit, the inside of the shade's mouth glows too, so it reads at a glance.
-    private static let lampOn = lampOff.enumerated().map { y, row -> String in
-        switch y {
-        case 3: return "..k...kwwYkk.."
-        case 4: return "..k....kwYYYk."
-        case 5: return "..k....kYYYk.."
-        case 6: return "..k.....kYk..."
-        default: return row
-        }
-    }
+    private static let lampOn = Customization.artwork("LampOn",lampOff)
     // The lamp's light, from the shade's mouth down to the book and the desk top under it.
     // Drawn last and see-through, over the nameplate and whoever sits there.
     private static let beam = [
@@ -728,14 +726,12 @@ enum Sprites {
         if open { draw(layers: [Layer(["kkkkk","kkkkk"], 1, 3)], look, left: left, top: top, scale: scale) }
     }
 
-    private static let bags = "ztgprV".map { c in
-        [".kk....", "k..k...", "k..kk..", "kkkMMk.", "kMMMMMk", "kMMMMMk", "kMMMkkk", "kMMMkMk", "kMMMkMk", ".kkkkk."].map { $0.replacingOccurrences(of: "M", with: String(c)) }
-    }
+    private static let bags = "ztgprV".map { c in Customization.artwork("Bag",[]).map{$0.replacingOccurrences(of:"M",with:String(c)).replacingOccurrences(of:"H",with:"i")} }
 
     // Stickers on the desk's front, a few per desk: heart, star, smiley, clover, flower; and two little ones.
     private static let bigStickers = [
         [".r.r.", "rrrrr", ".rrr.", "..r.."],
-        ["..p..", "ppppp", ".ppp.", ".p.p."],
+        Customization.artwork("StarClip",["..p..", "ppppp", ".ppp.", ".p.p."]),
         [".ppp.", "pkpkp", "pkkkp", ".ppp."],
         [".g.g.", "ggggg", ".ggg.", "..G.."],
         [".F.F.", "FFpFF", ".FFF.", "..g.."],
@@ -816,7 +812,7 @@ enum Sprites {
                         // A ragged edge with gaps the branches show through.
                         if d2 > q * q - q && (x * 5 + y * 3) % 4 == 0 { break }
                         let s = dx + dy
-                        put(x, y, s > q / 2 ? dark : s < -q / 2 || (x * 3 + y * 5) % 11 == 0 ? light : mid)
+                        put(x, y, s > q / 2 ? dark : s < -q / 2 || (x * 3 + y * 5) % 37 == 0 ? light : mid)
                         break
                     }
                 }
@@ -873,9 +869,9 @@ enum Sprites {
         }
         if scene != 0 && season == 3 { for i in 0..<(w*h/60) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
         // Mullions every 16 pixels or so, a transom, then the frame and the sill.
-        let panes = max(1, Int((Double(w - 2) / 16).rounded(.toNearestOrEven)))
+        let panes = max(1, Int((Double(w - 2) / 34).rounded(.toNearestOrEven)))
         for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
-        for x in 1..<(w - 1) { grid[h / 3][x] = "d" }
+        for x in 1..<(w - 1) { grid[h / 3][x] = "d";grid[h/3+1][x]="l";grid[h-3][x]="l" }
         for x in 0..<w { grid[0][x] = "k"; grid[h - 2][x] = "k"; grid[h - 1][x] = "D" }
         for y in 0..<(h - 1) { grid[y][0] = "k"; grid[y][w - 1] = "k" }
         return grid.map { String($0) }
@@ -887,8 +883,8 @@ enum Sprites {
 
     // A laptop seen from the front of the desk: the back of its lid, and shut for a nap.
     // The lid leans back (its top edge narrower), over a darker hinge and the base's front edge.
-    private static let laptopOpen = ["...kkkkkkkkkkkk...", "..kxxxxxxxxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxxxxxxxxk..", ".kkXXXXXXXXXXXXkk.", "kXXXXXXXXXXXXXXXXk"]
-    private static let laptopShut = ["kkkkkkkkkkkkkk", "kxxxxxxxxxxxxk", "kkkkkkkkkkkkkk"]
+    private static let laptopOpen = Customization.artwork("LaptopOpen", ["...kkkkkkkkkkkk...", "..kxxxxxxxxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxwwxxxxxk..", "..kxxxxxxxxxxxxk..", ".kkXXXXXXXXXXXXkk.", "kXXXXXXXXXXXXXXXXk"])
+    private static let laptopShut = Customization.artwork("LaptopShut", ["kkkkkkkkkkkkkk", "kxxxxxxxxxxxxk", "kkkkkkkkkkkkkk"])
 
     private static func composeAt(_ pose: Pose, _ look: Look, alert: Bool, laptop: Bool, hairLag: Int) -> [Layer] {
         var pose = pose
