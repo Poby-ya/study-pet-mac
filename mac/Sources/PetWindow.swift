@@ -545,7 +545,7 @@ final class PetWindow: NSPanel {
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
         if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=tick>=4 && tick<10 ? Departure.item(tick) : bag;Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int((target.0+1).rounded()),targetY:Int((target.1+1).rounded()),leftHand:tick>=10)}}
-        if tick>=12 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))}
+        if tick>=12 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)));if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:29,targetY:26)}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18

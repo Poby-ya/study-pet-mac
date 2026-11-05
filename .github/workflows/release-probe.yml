@@ -17,7 +17,7 @@ jobs:
       - run: mac/build/StudyPet.app/Contents/MacOS/StudyPet --release-probe "$PWD/release-probe.txt" "$EXPECTED_TAG"
         env:
           EXPECTED_TAG: ${{ inputs.tag }}
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: release-probe

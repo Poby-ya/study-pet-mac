@@ -65,7 +65,7 @@ jobs:
         run: bash -n mac/install-mac.sh
       - name: In-app updater and session restoration
         run: bash mac/test-updater.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: selftest
@@ -74,7 +74,7 @@ jobs:
             selftest-intel/selftest.txt
             mock.log
             install-http.log
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: StudyPet-mac
           path: |
