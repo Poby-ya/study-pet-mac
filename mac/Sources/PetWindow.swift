@@ -8,7 +8,7 @@ private let boardLine: CGFloat = 24
 private let boardSpace = 48 + CGFloat(Room.boardLines) * boardLine
 private let bubbleArea: CGFloat = 112 // room for an update reminder above a visitor's bubble
 private let floorY = boardSpace + bubbleArea // top of the desks' grid
-let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites.height) * scale + 48)
+let petSize = NSSize(width: 3 * deskWidth + 72, height: floorY + CGFloat(Sprites.height) * scale + 10)
 
 /// A little classroom, drawn like the Windows app's PetWindow.cs: my desk in the centre
 /// and pinned friends on the left and right, each with a nameplate and a speech bubble, and
@@ -47,9 +47,9 @@ final class PetWindow: NSPanel {
     private static let wood = Sprites.color(0xA8744A)
     private static let slate = Sprites.color(0x2F5D50)
     private static let chalk = Sprites.color(0xEEF2E6)
-    private static let plateFace = Sprites.color(0xFFF8E9)
-    private static let plateTop = Sprites.color(0xECD9BC)
-    private static let plateText = Sprites.color(0x57493C)
+    private static let plateFace = Sprites.color(0x4A3326)
+    private static let plateTop = Sprites.color(0x7A563E)
+    private static let plateText = Sprites.color(0xFFE9B8)
 
     private var timer: Timer?
     private var lastStepSeconds = 0.0, animationSeconds = 0.0, moodSeconds = 0.0
@@ -100,7 +100,7 @@ final class PetWindow: NSPanel {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
         // 12 on the left, 20 on the right where the last bag hangs past its desk.
         let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * deskGap + 32
-        return NSSize(width: max(width, 330 * max(boardFactor,textFactor)), height: floorY + CGFloat(Sprites.height) * scale + 12*scale*nameFactor)
+        return NSSize(width: max(width, 330 * max(boardFactor,textFactor)), height: floorY + CGFloat(Sprites.height) * scale + 10)
     }
     private var deskGap: CGFloat { max(22,190 * max(1,textFactor) - deskWidth) }
     private var deskInset: CGFloat { max(12,(canvasSize.width - CGFloat(1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskWidth - CGFloat((hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskGap)/2) }
@@ -640,16 +640,16 @@ final class PetWindow: NSPanel {
         return box.minY
     }
 
-    /// A separate name label below the desk leaves the work surface clear.
+    /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
     private func drawNameplate(_ name: String, deskX: CGFloat) {
         if name.isEmpty { return }
         let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * nameFactor)
-        // Keep enlarged labels outside the sprite and its desk props.
-        let maxName: CGFloat = min(36,26 * nameFactor)
+        // Between the desk's left edge and the person's hand (cols 1..16).
+        let maxName: CGFloat = min(20,15 * nameFactor)
         let w = min(maxName * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
-        let x = deskX + (CGFloat(Sprites.width)*scale-w)/2
+        let x = deskX + scale + (maxName * scale - w) / 2
         let labelHeight = max(5 * scale, font.ascender - font.descender + 2)
-        let face = NSRect(x: x, y: floorY + 40 * scale, width: w, height: labelHeight)
+        let face = NSRect(x: x, y: floorY + 27 * scale - labelHeight, width: w, height: labelHeight)
         PetWindow.plateTop.setFill()
         NSRect(x: x + scale / 2, y: face.minY - scale, width: w - scale, height: scale + 1).fill()
         PetWindow.plateFace.setFill()

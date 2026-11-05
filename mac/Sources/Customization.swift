@@ -89,17 +89,17 @@ final class Customization: Equatable {
     }
     func drawRoom(_ look: Look,_ rect: NSRect,_ date: Date,preview: Bool=true) {
         if preview {
-            let scale=max(1,min(rect.width/226,rect.height/85).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
+            let scale=max(1,min(rect.width/226,rect.height/70).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
             Sprites.color(0xEFE7D8).setFill();rect.fill()
-            Self.drawFloor(NSRect(x:rect.minX,y:y+69*scale,width:rect.width,height:max(0,rect.maxY-y-69*scale)),scale,on("floor"))
-            Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:18*scale).fill()
-            Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:14*scale).fill()
+            Self.drawFloor(NSRect(x:rect.minX,y:y+58*scale,width:rect.width,height:max(0,rect.maxY-y-58*scale)),scale,on("floor"))
+            Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:14*scale).fill()
+            Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:10*scale).fill()
             Sprites.color(0xEEEBD5).setFill();NSRect(x:x+90*scale,y:y+7*scale,width:46*scale,height:2*scale).fill()
             let glass=Self.resize(Sprites.windowGrid(98,52,sky:PetWindow.skyAt(date),season:PetWindow.seasonAt(date),scene:0),98,32)
-            Sprites.draw(layers:[Sprites.Layer(glass,0,0)],look,left:x+64*scale,top:y+22*scale,scale:scale)
-            drawRoom(look,NSRect(x:x+64*scale,y:y+22*scale,width:98*scale,height:32*scale),date,preview:false)
-            drawClock(look,x+16*scale,y+22*scale,scale,date)
-            for i in 0..<3 {Sprites.draw(i==1 ? .writeA : .empty,look,left:x+CGFloat(20+i*70)*scale,top:y+40*scale,scale:scale,decor:Sprites.Decor(seed:7,away:i != 1))}
+            Sprites.draw(layers:[Sprites.Layer(glass,0,0)],look,left:x+64*scale,top:y+18*scale,scale:scale)
+            drawRoom(look,NSRect(x:x+64*scale,y:y+18*scale,width:98*scale,height:32*scale),date,preview:false)
+            drawClock(look,x+16*scale,y+18*scale,max(1,scale/2),date)
+            for i in 0..<3 {Sprites.draw(i==1 ? .writeA : .empty,look,left:x+CGFloat(20+i*70)*scale,top:y+32*scale,scale:scale,decor:Sprites.Decor(seed:7,away:i != 1))}
             return
         }
         let unit=max(1,min(rect.width/98,rect.height/32).rounded(.down))

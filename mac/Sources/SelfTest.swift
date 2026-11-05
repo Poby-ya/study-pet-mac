@@ -311,11 +311,9 @@ enum SelfTest {
         pet.setDisplaySize(100)
         pet.preview(.away, frame: 2)
         let empty = render(pet.canvasSize) { pet.paint() }
-        let labelFooter=Int(48*CGFloat(DisplayPreferences.percent("nameTextSize"))/100)
-        let deskBottom=empty.pixelsHigh-labelFooter
         func lowerPixels(_ rep: NSBitmapImageRep) -> [UInt8] {
             var pixels: [UInt8] = []
-            for y in (deskBottom-44)..<deskBottom {
+            for y in (empty.pixelsHigh-10-44)..<(empty.pixelsHigh-10) {
                 for x in 0..<empty.pixelsWide where empty.bitmapData![y * empty.bytesPerRow + x * 4 + 3] > 0 {
                     let start = rep.bitmapData!.advanced(by: y * rep.bytesPerRow + x * 4)
                     pixels.append(contentsOf: UnsafeBufferPointer(start: start, count: 4))
@@ -324,7 +322,7 @@ enum SelfTest {
             return pixels
         }
         func feetVisible(_ rep: NSBitmapImageRep) -> Bool {
-            for y in (deskBottom-44)..<deskBottom {
+            for y in (empty.pixelsHigh-10-44)..<(empty.pixelsHigh-10) {
                 for x in 0..<empty.pixelsWide {
                     if empty.bitmapData![y * empty.bytesPerRow + x * 4 + 3] == 0 && rep.bitmapData![y * rep.bytesPerRow + x * 4 + 3] > 0 { return true }
                 }
