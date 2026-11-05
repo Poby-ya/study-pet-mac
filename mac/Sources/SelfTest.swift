@@ -233,6 +233,13 @@ enum SelfTest {
             pet.preview(.studying, frame: at)
             save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
         }
+        pet.preview(.studying,frame:0)
+        for _ in 0..<8 {pet.advanceAnimation(25);pet.setMood(.studying)}
+        pet.advanceAnimation(5)
+        let syncedTick=Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int
+        check(syncedTick==820 && PetWindow.momentPose(7,4,820) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
+        pet.setMood(.dozing)
+        check((Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int)==0,"sync: a real mood change still starts its transition")
         pet.appear(.studying)
         pet.minimizeScene()
         pet.visit(mixed[0], text: "화이팅!", side: 0)

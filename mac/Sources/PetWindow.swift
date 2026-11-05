@@ -234,6 +234,7 @@ final class PetWindow: NSPanel {
     }
 
     func setMood(_ newMood: Mood) {
+        if mood == newMood { redraw(); return }
         transitionFrom = myPose
         mood = newMood
         tick = 0
@@ -351,8 +352,11 @@ final class PetWindow: NSPanel {
     }
 
     private static func writing(_ ticks: Int, beat: Int = 2) -> Sprites.Pose {
-        ticks % 48 >= 36 && ticks % 48 < 39 ? .pageLift : ticks % 48 >= 39 && ticks % 48 < 42 ? .turnPage : ticks % 48 >= 42 && ticks % 48 < 45 ? .pageSettle :
-        ticks % 12 >= 8 ? .restHands : ticks % 20 == 19 ? (ticks / beat % 2 == 0 ? .blink : .blinkB) : ticks / beat % 2 == 0 ? .writeA : .writeB
+        let page = ticks % 48
+        if page >= 36 && page < 39 { return .pageLift }
+        if page >= 39 && page < 42 { return .turnPage }
+        if page >= 42 && page < 45 { return .pageSettle }
+        return ticks % 12 >= 8 ? .restHands : ticks % 20 == 19 ? (ticks / beat % 2 == 0 ? .blink : .blinkB) : ticks / beat % 2 == 0 ? .writeA : .writeB
     }
 
     /// One frame (0...23) of a moment.
