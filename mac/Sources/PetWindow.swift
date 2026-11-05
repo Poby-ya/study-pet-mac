@@ -561,7 +561,6 @@ final class PetWindow: NSPanel {
             }
         }
         NSGraphicsContext.current?.shouldAntialias = antialias
-        guard height == 18 else { return }
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.9 * scale), color: PetWindow.ink,
                  in: NSRect(x: x + CGFloat(left + 1) * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
     }

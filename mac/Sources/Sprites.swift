@@ -699,7 +699,25 @@ enum Sprites {
         if turn>=1 {return (0..<source[0].count).map { x in String(source.reversed().map { $0[x] }) }}
         let angle=turn * Double.pi/2,cosine=cos(angle),sine=sin(angle),w=source[0].count,h=source.count
         let width=Int(ceil(Double(w)*cosine+Double(h)*sine)),height=Int(ceil(Double(w)*sine+Double(h)*cosine))
-        return (0..<height).map { y in String((0..<width).map { x -> Character in let dx=Double(x)-Double(width-1)/2,dy=Double(y)-Double(height-1)/2;let xx=Int(floor(cosine*dx+sine*dy+Double(w-1)/2+0.5)),yy=Int(floor(-sine*dx+cosine*dy+Double(h-1)/2+0.5));return xx>=0 && xx<w && yy>=0 && yy<h ? source[yy][xx] : "." }) }
+        let sourceCenterX=Double(w-1)/2.0
+        let sourceCenterY=Double(h-1)/2.0
+        let targetCenterX=Double(width-1)/2.0
+        let targetCenterY=Double(height-1)/2.0
+        var result: [String]=[]
+        for y in 0..<height {
+            var row: [Character]=[]
+            for x in 0..<width {
+                let dx=Double(x)-targetCenterX
+                let dy=Double(y)-targetCenterY
+                let sourceX=cosine*dx+sine*dy+sourceCenterX
+                let sourceY=(-sine)*dx+cosine*dy+sourceCenterY
+                let xx=Int(floor(sourceX+0.5))
+                let yy=Int(floor(sourceY+0.5))
+                if xx>=0 && xx<w && yy>=0 && yy<h {row.append(source[yy][xx])}else{row.append(".")}
+            }
+            result.append(String(row))
+        }
+        return result
     }
     static func drawPackingItem(_ look: Look, laptop: Bool, left: CGFloat, top: CGFloat, scale: CGFloat, turn: Double=1) {
         draw(layers: [Layer(packingItemGrid(laptop,turn:turn), 0, 0)], look, left: left, top: top, scale: scale)
