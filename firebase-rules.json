@@ -176,7 +176,7 @@
     "deviceAccounts": {
       "$device": {
         ".read": "auth != null && auth.uid == $device",
-        ".write": "auth != null && !data.exists() && newData.hasChildren(['account','pair']) && newData.child('account').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && root.child('pairings').child(newData.child('pair').val()).child('issuer').val() == auth.uid && root.child('pairings').child(newData.child('pair').val()).child('candidate').val() == $device && root.child('pairings').child(newData.child('pair').val()).child('created').val() > now - 600000",
+        ".write": "(auth != null && !data.exists() && newData.hasChildren(['account','pair']) && newData.child('account').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && root.child('pairings').child(newData.child('pair').val()).child('issuer').val() == auth.uid && root.child('pairings').child(newData.child('pair').val()).child('candidate').val() == $device && root.child('pairings').child(newData.child('pair').val()).child('created').val() > now - 600000) || (auth != null && !newData.exists() && data.child('account').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))",
         "account": {
           ".validate": "newData.isString()"
         },

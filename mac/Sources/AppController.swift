@@ -807,9 +807,16 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     @objc private func showDeviceLink() {
-        if deviceSync == nil && state != .off { alert("공부를 마친 뒤 처음 기기를 연결해 주세요."); return }
-        if deviceLink == nil { deviceLink = DeviceLinkWindow(connected:{ [weak self] in self?.connect() }) }
+        if deviceLink == nil { deviceLink = DeviceLinkWindow(connected:{ [weak self] in self?.connect() }, finishForLink:{ [weak self] in self?.finishForLink() ?? false }) }
         NSApp.activate(ignoringOtherApps:true); deviceLink?.makeKeyAndOrderFront(nil)
+    }
+    private func finishForLink() -> Bool {
+        if deviceSync != nil || state == .off { return true }
+        let prompt = NSAlert()
+        prompt.messageText = "공부를 마친 뒤 연결할 수 있어요. 지금 공부를 마치겠습니까?"
+        prompt.addButton(withTitle: "공부 마치고 연결"); prompt.addButton(withTitle: "취소")
+        guard prompt.runModal() == .alertFirstButtonReturn else { return false }
+        stop(); return state == .off
     }
     private func syncNow() {
         guard let current = deviceSync, !syncBusy, !quitting else { return }; syncBusy = true

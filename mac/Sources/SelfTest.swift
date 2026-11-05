@@ -494,14 +494,14 @@ enum SelfTest {
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
         var board = Room.board(members, me: "me")
-        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중", "서연 · 노는 중", "하늘 · 노는 중"],
+        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
               "board: study, rest and absent people keep individual rows: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
         board = Room.board(members, me: "me")
-        check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == Room.boardLines && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
         check(Room.board([], me: "me").title == "공부 중 0 / 쉬는 중 0 / 노는 중 0", "board: empty room counts are explicit")
-        check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == Room.boardLines,
-              "board: grows only up to boardLines")
+        check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == 9,
+              "board: nine active people fit in five rows")
 
         let before = Array(members.prefix(4))
         let after = [m("me", "나", "studying", 0), m("a", "민지", "studying", 0, 33, "수학"), m("b", "준혁", "studying", 0, 65),

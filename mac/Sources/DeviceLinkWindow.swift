@@ -9,8 +9,9 @@ final class DeviceLinkWindow: NSWindow {
     private var offered = "", requested = ""
     private var timer: Timer?
     private var busy = false
-    init(connected: @escaping () -> Void) {
-        self.connected = connected
+    private let finishForLink: () -> Bool
+    init(connected: @escaping () -> Void, finishForLink: @escaping () -> Bool) {
+        self.connected = connected; self.finishForLink = finishForLink
         super.init(contentRect:NSRect(x:0,y:0,width:500,height:410),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         title = "계정·기기 연결"; isReleasedWhenClosed = false
         let note = NSTextField(wrappingLabelWithString:"사용하던 기기에서 코드를 만들고 새 기기에 입력하세요.\n코드는 10분 동안 한 번만 사용할 수 있어요.\n새 기기는 이 기기에서 승인한 뒤 연결됩니다.")
@@ -40,6 +41,7 @@ final class DeviceLinkWindow: NSWindow {
     }
     private func startTimer() { timer?.invalidate(); timer = Timer.scheduledTimer(withTimeInterval:2.5,repeats:true) { [weak self] _ in Task { @MainActor in guard let self, self.isVisible else { return }; self.run { try await self.check() } } } }
     @objc private func createCode() { run {
+        guard self.finishForLink() else { return }
         try await self.prepare(); guard let sync = self.sync, let auth = self.auth else { return }
         try await sync.pull()
         try await sync.importRecords(["name":Settings.get("name"),"style":Settings.get("style"),"extra":Settings.get("lookExtras"),"desk":Settings.get("laptop") == "1" ? 11 : 1,"invite":Settings.get("room")])
@@ -51,9 +53,10 @@ final class DeviceLinkWindow: NSWindow {
     @objc private func useCode() { run {
         guard Settings.get("cloudSync") != "1" else { throw RoomError("이미 연결된 기기예요.") }
         let alert = NSAlert(); alert.messageText = "이 기기의 기록을 백업하고 원래 계정의 기록을 불러올까요?"; alert.addButton(withTitle:"연결"); alert.addButton(withTitle:"취소"); guard alert.runModal() == .alertFirstButtonReturn else { return }
-        try await self.prepare(); guard let sync = self.sync, let auth = self.auth else { return }
         self.requested = self.code.stringValue.replacingOccurrences(of:"-",with:"").trimmingCharacters(in:.whitespacesAndNewlines).uppercased()
         guard matches(self.requested,"^[A-Z0-9]{10}$") else { throw RoomError("연결 코드 10자리를 확인해 주세요.") }
+        guard self.finishForLink() else { return }
+        try await self.prepare(); guard let sync = self.sync, let auth = self.auth else { return }
         let uid = await auth.uid
         _ = try await sync.request("pairings/"+self.requested+"/candidate","PUT",uid)
         self.offered = ""; self.status.stringValue = "원래 기기에서 승인해 주세요. 요청 기기 " + String(uid.prefix(6)); self.startTimer()
@@ -68,6 +71,7 @@ final class DeviceLinkWindow: NSWindow {
             guard alert.runModal() == .alertFirstButtonReturn else { _ = try await sync.request("pairings/"+key,"DELETE"); status.stringValue = "연결을 거절했어요."; return }
             _ = try await sync.request("","PATCH",["deviceAccounts/"+candidate:["account":sync.account,"pair":key],"pairings/"+key+"/accepted":true]); status.stringValue = "연결을 승인했어요. 같은 자리와 기록을 사용해요."
         } else if pair["accepted"] as? Bool == true {
+            guard finishForLink() else { timer?.invalidate(); return }
             let uid = await auth.uid; let mapping = try await sync.request("deviceAccounts/"+uid).value
             try Settings.set("linkedUid",DeviceSync.str(mapping,"account")); try await prepare(); guard let current = self.sync else { return }; try await current.pull()
             try Settings.setMany(("cloudSync","1"),("room",DeviceSync.str(DeviceSync.obj(current.data,"profile"),"invite")),("pending","")); try current.mirror(); timer?.invalidate(); connected(); status.stringValue = "기기 연결이 완료됐어요."

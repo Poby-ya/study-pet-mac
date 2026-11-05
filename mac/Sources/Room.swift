@@ -558,9 +558,7 @@ final class Room: @unchecked Sendable {
             if a.minutes != b.minutes { return a.minutes > b.minutes }
             return a.name < b.name
         }
-        let ordered = here + members.filter { !isHere($0, newest) }.sorted { $0.name < $1.name }
-        let lines = ordered.prefix(boardLines).map { m -> String in
-            if !isHere(m, newest) { return "\(m.name) · 노는 중" }
+        let lines = here.prefix(2 * boardLines).map { m -> String in
             if m.state == "paused" { return "\(m.name) · 쉬는 중" }
             let what = m.subject.isEmpty ? "" : m.subject + " "
             return m.minutes < 1 ? "\(m.name) · \(what)방금 시작" : "\(m.name) · \(what)\(Records.duration(Double(m.minutes)))"

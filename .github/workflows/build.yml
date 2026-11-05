@@ -7,13 +7,10 @@ on:
 permissions:
   contents: read
 jobs:
-  build:
-    runs-on: macos-15-intel
-    timeout-minutes: 20
+  rules:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Build
-        run: bash mac/build.sh
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
@@ -23,6 +20,13 @@ jobs:
           java-version: '21'
       - name: Firebase rules regression tests
         run: npm ci --prefix tools && npm --prefix tools run test:rules
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        run: bash mac/build.sh
       - name: Self-test with the mock Firebase
         run: |
           node tools/mock-firebase.js > mock.log 2>&1 &

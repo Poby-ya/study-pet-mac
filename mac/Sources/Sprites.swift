@@ -71,7 +71,6 @@ enum Sprites {
     static let width = 44
     static let height = 38
     static let clockSize = 31
-    static let awaySignLeft = 11
 
     /// The person sits a little right of the desk's middle, leaving the left end of the
     /// desk top free for the nameplate (cols 1..16).

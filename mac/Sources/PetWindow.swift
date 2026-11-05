@@ -520,16 +520,17 @@ final class PetWindow: NSPanel {
         let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
         NSGraphicsContext.current?.shouldAntialias = false
         let grid = Array(Sprites.awaySign.suffix(height))
+        let left = Int(((1 + min(20, 15 * nameFactor) + CGFloat(Sprites.width - 22)) / 2).rounded())
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
                 (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : c == "u" ? Sprites.color(0xFFF9E7) : Sprites.color(0xFFF1B8)).setFill()
-                NSRect(x: x + CGFloat(Sprites.awaySignLeft + col) * scale, y: top + CGFloat(y) * scale, width: scale, height: scale).fill()
+                NSRect(x: x + CGFloat(left + col) * scale, y: top + CGFloat(y) * scale, width: scale, height: scale).fill()
             }
         }
         NSGraphicsContext.current?.shouldAntialias = antialias
         guard height == 18 else { return }
         drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.9 * scale), color: PetWindow.ink,
-                 in: NSRect(x: x + CGFloat(Sprites.awaySignLeft + 1) * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
+                 in: NSRect(x: x + CGFloat(left + 1) * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its
@@ -612,7 +613,7 @@ final class PetWindow: NSPanel {
         if name.isEmpty { return }
         let font = NSFont.boldSystemFont(ofSize: 3.4 * scale * nameFactor)
         // Between the desk's left edge and the person's hand (cols 1..16).
-        let maxName: CGFloat = min(40,15 * nameFactor)
+        let maxName: CGFloat = min(20,15 * nameFactor)
         let w = min(maxName * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
         let x = deskX + scale + (maxName * scale - w) / 2
         let labelHeight = max(5 * scale, font.ascender - font.descender + 2)
@@ -629,7 +630,8 @@ final class PetWindow: NSPanel {
     /// The classroom behind the desks: a wall with a chalkboard (one line per person, so it
     /// grows), wainscoting and a wooden floor, all on one rounded card.
     private func drawClassroom(_ title: String, _ lines: [String]) {
-        let shownLines = CGFloat(max(1, lines.count))
+        let columns = lines.count >= 4 ? 2 : 1
+        let shownLines = CGFloat((lines.count + columns - 1) / columns)
         let boardBottom = boardSpace - 18
         let titleLines = title.components(separatedBy: "\n")
         let boardTop = boardBottom - ((shownLines + CGFloat(titleLines.count)) * boardLine + 32)
@@ -676,13 +678,13 @@ final class PetWindow: NSPanel {
         let textX = slate.minX + 10
         let textW = slate.width - 20
         for (n, header) in titleLines.enumerated() {
-            drawLine(header, font: .boldSystemFont(ofSize: 14 * boardFactor), color: faint,
-                     in: NSRect(x: textX, y: slate.minY + 6 + CGFloat(n) * boardLine, width: textW, height: boardLine), align: .left)
+            drawLine(header, font: .boldSystemFont(ofSize: (n == 0 && titleLines.count > 1 ? 19 : 14) * boardFactor), color: n == 0 ? PetWindow.chalk : faint,
+                     in: NSRect(x: textX, y: slate.minY + 6 + CGFloat(n) * boardLine, width: textW, height: boardLine), align: .center)
         }
-        let shown = lines.isEmpty ? ["아직 아무도 없어요"] : lines
-        for (i, line) in shown.enumerated() {
-            drawLine(line, font: .systemFont(ofSize: 16 * boardFactor), color: lines.isEmpty ? faint : PetWindow.chalk,
-                     in: NSRect(x: textX, y: slate.minY + CGFloat(titleLines.count) * boardLine + 10 + CGFloat(i) * boardLine, width: textW, height: boardLine), align: .left)
+        let cellWidth = textW / CGFloat(columns)
+        for (i, line) in lines.enumerated() {
+            drawLine(line, font: .systemFont(ofSize: 16 * boardFactor), color: PetWindow.chalk,
+                     in: NSRect(x: textX + CGFloat(i % columns) * cellWidth, y: slate.minY + CGFloat(titleLines.count) * boardLine + 10 + CGFloat(i / columns) * boardLine, width: cellWidth, height: boardLine), align: .center)
         }
     }
 
@@ -770,8 +772,9 @@ final class PetWindow: NSPanel {
 
     func hitBoard(_ p: NSPoint) -> Bool {
         guard let board = board() else { return false }
-        let bottom = boardSpace - 6
-        let top = bottom - ((CGFloat(max(1, board.lines.count)) + 1) * boardLine + 12)
+        let bottom = boardSpace - 18
+        let rows = board.lines.count >= 4 ? (board.lines.count + 1) / 2 : board.lines.count
+        let top = bottom - (CGFloat(rows + board.title.components(separatedBy: "\n").count) * boardLine + 32)
         return NSRect(x: 18, y: top, width: canvasSize.width - 36, height: bottom - top).contains(p)
     }
 
