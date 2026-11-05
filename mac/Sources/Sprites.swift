@@ -880,7 +880,7 @@ enum Sprites {
         if scene != 0 && season == 3 { for i in 0..<(w*h/60) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
         if sky == 2 {for y in 1..<(h-2) {for x in 1..<(w-1) where grid[y][x] == "9" {grid[y][x]="M"}}}
         if sky == 0 {for y in 1..<(h-2) {for x in 1..<(w-1) {
-            switch grid[y][x] {case "6":grid[y][x]="I";case "5","g","G","8","L":grid[y][x]="K";case "7":grid[y][x]="Q";case "9":grid[y][x]="j";case "N","0":grid[y][x]="M";case "F","r":grid[y][x]="f";case "T":grid[y][x]="U";case "w","b":grid[y][x]="i";default:break}
+            switch grid[y][x] {case "6":grid[y][x]="I";case "5","g","G","8","L":grid[y][x]="K";case "7","y":grid[y][x]="Q";case "9","t":grid[y][x]="j";case "N","0","p":grid[y][x]="M";case "F","r":grid[y][x]="f";case "T":grid[y][x]="U";case "w","b":grid[y][x]="i";default:break}
         }}}
         if sky == 1 || sky == 3 {for y in 1..<(h-2) {for x in 1..<(w-1) {switch grid[y][x] {case "6":grid[y][x]="E";case "7":grid[y][x]="M";case "9":grid[y][x]="Q";case "5":grid[y][x]="L";case "g","L":grid[y][x]="8";case "0":grid[y][x]="N";default:break}}}}
         // Mullions and sill.
