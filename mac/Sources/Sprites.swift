@@ -1167,7 +1167,7 @@ enum Sprites {
         var grid = Array(repeating: Array(repeating: Character("."), count: clockSize), count: clockSize)
         for y in 0..<clockSize { for x in 0..<clockSize {
             let radius = (x-center)*(x-center)+(y-center)*(y-center)
-            if radius <= 225 { grid[y][x] = radius >= 196 ? "d" : "b" }
+            if radius <= 210 { grid[y][x] = radius >= 169 ? "d" : "b" }
         } }
         for tick in 0..<12 {
             let angle = Double(tick) * .pi / 6
