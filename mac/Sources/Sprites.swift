@@ -864,7 +864,7 @@ enum Sprites {
         } else if scene == 4 {
             box(1,h/2,w-2,h/2,grass); tree(max(5,h/6),h/2+4,max(4,h/7)); tree(w-max(6,h/6),h/2+2,max(3,h/8))
             for y in 0..<(h/3) { for x in 1..<(w-1) { let dx=x-w/2; let dy=y-h/6; if dx*dx*4+dy*dy*16 < w*w/2 { put(x,h/2+4+y,season == 3 ? "i" : "6") } } }
-            let bridge=h*2/3; for x in (w/3)..<(w*2/3) { let y=bridge-min(2,min(x-w/3,w*2/3-1-x)); box(x,y,1,2,"0"); put(x,y+2,"D"); if x%3 == 0 { box(x,y-2,1,2,"b") } }
+            let bridge=h*2/3,bank=w/7;for x in bank..<(w-bank) {let y=bridge-min(3,min(x-bank,w-bank-1-x));box(x,y,1,2,"0");put(x,y+2,"D");if x%4==0 {box(x,y-3,1,3,"b")}}
             art(["..p..",".pwp.","ggggg"],w-12,h-6); art([".w.","pww",".ww"],w/3,h-8)
             for x in stride(from:3,to:w-3,by:8) { put(x,h-4,"8"); put(x,h-5,season == 0 ? "F" : season == 1 ? "p" : season == 2 ? "T" : "w") }
         } else {
