@@ -120,7 +120,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.seatmate = { [unowned self] in self.seatView("seatmate") }
         pet.rightSeatmate = { [unowned self] in self.seatView("seatmateRight") }
         pet.myName = { Settings.get("name") }
-        pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next() } }
+        pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next();self.profileDirty=self.deviceSync != nil;self.profileEdit += 1;self.syncNow() } }
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
         pet.laptop = Settings.get("laptop") == "1"
         pet.board = { [unowned self] in
