@@ -79,6 +79,8 @@ final class Customization: Equatable {
             row+=1
         }
         Sprites.color(light ? 0xDCC6A2 : 0xC8AF8F).setStroke();seams.stroke()
+        Sprites.color(0x936F4F).setFill();NSRect(x:rect.minX,y:rect.minY-2*scale,width:rect.width,height:2*scale).fill()
+        Sprites.color(0xC29D74).setFill();NSRect(x:rect.minX,y:rect.minY-2*scale,width:rect.width,height:scale).fill()
     }
     func drawClock(_ look: Look,_ x: CGFloat,_ y: CGFloat,_ scale: CGFloat,_ date: Date) {
         let parts=Calendar.current.dateComponents([.hour,.minute],from:date),art=layers("clock",clock:date)

@@ -338,19 +338,20 @@ final class PetWindow: NSPanel {
 
     static let moments = 12
 
-    /// Every 90 seconds of study a 6-second moment plays: a stretch, a dropped pencil, a
+    /// Every 30 seconds of study a 6-second moment plays: a stretch, a dropped pencil, a
     /// butterfly and so on, 1...moments, or 0 for none. Seatmates get their own `seed`, so
     /// they act at other times and in another order. The same as the Windows app.
     static func studyMoment(_ ticks: Int, seed: Int = 0) -> Int {
         let t = ticks + seed * 97
-        return t % 360 >= 336 ? (t / 360 + seed) % moments + 1 : 0
+        return t % 120 >= 96 ? (t / 120 + seed) % moments + 1 : 0
     }
 
     private static func momentPhase(_ ticks: Double, _ seed: Int) -> Double {
-        (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 360) - 336
+        (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 120) - 96
     }
 
     private static func writing(_ ticks: Int, beat: Int = 2) -> Sprites.Pose {
+        ticks % 48 >= 36 && ticks % 48 < 39 ? .pageLift : ticks % 48 >= 39 && ticks % 48 < 42 ? .turnPage : ticks % 48 >= 42 && ticks % 48 < 45 ? .pageSettle :
         ticks % 12 >= 8 ? .restHands : ticks % 20 == 19 ? (ticks / beat % 2 == 0 ? .blink : .blinkB) : ticks / beat % 2 == 0 ? .writeA : .writeB
     }
 
@@ -360,7 +361,7 @@ final class PetWindow: NSPanel {
         [.oops, .oops, .oops, .bend, .bend, .bend, .pickUp, .pickUp, .pickUp, .pickUp, .pickUp, .recover, .recover, .recover, .found, .found, .found, .content, .content, .content, .writeA, .writeA, .writeA, .writeA],
         [.lookRight, .lookRight, .lookRight, .lookRight, .lookRight, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .content, .content, .content, .content, .content, .content, .content, .content, .lookUp, .lookUp, .restHands, .restHands],
         [.teaReach, .teaReach, .teaReach, .teaHold, .teaHold, .teaLift, .teaLift, .teaSip, .teaSip, .teaSip, .teaSip, .teaSip, .teaLift, .teaLift, .teaHold, .teaHold, .teaReach, .teaReach, .content, .content, .content, .content, .content, .content],
-        [.readA, .readA, .readA, .readA, .readB, .readB, .readB, .readB, .turnPage, .turnPage, .turnPage, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
+        [.readA, .readA, .readA, .readB, .readB, .readB, .pageLift, .pageLift, .pageLift, .pageLift, .turnPage, .turnPage, .turnPage, .turnPage, .pageSettle, .pageSettle, .pageSettle, .pageSettle, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA],
         [.cheer, .cheer, .cheer, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content],
         [.yawnStart, .yawnStart, .yawnStart, .yawn, .yawn, .yawn, .yawn, .yawn, .yawnEnd, .yawnEnd, .yawnEnd, .restHands, .restHands, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
         [.nodA, .nodA, .nodA, .nodA, .nodB, .nodB, .nodB, .nodC, .nodC, .nodC, .startle, .startle, .recover, .recover, .recover, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
@@ -394,9 +395,9 @@ final class PetWindow: NSPanel {
     }
 
     private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
-    private var momentFrame: Int { tick % 360 - 336 }
+    private var momentFrame: Int { tick % 120 - 96 }
     private var momentText: String {
-        if laptop && [2,5,10,11,12].contains(moment) { return moment == 2 ? "잠깐 화면 읽기" : [5,12].contains(moment) ? "한 줄 내려보기" : moment == 10 ? "다시 집중!" : "손목 잠깐 쉬기" }; return Self.momentLine(moment, momentFrame)
+        if laptop && [5,12].contains(moment) { return moment == 2 ? "잠깐 화면 읽기" : [5,12].contains(moment) ? "한 줄 내려보기" : moment == 10 ? "다시 집중!" : "손목 잠깐 쉬기" }; return Self.momentLine(moment, momentFrame)
     }
 
     func subjectChanged() { subjectChangedAt = animationSeconds; redraw() }
@@ -433,7 +434,7 @@ final class PetWindow: NSPanel {
         let seed = Self.seatSeed(seat)
         if seat.dozing { return (frameCount + seed) / (3 + seed % 2) % 2 == 0 ? .dozeA : .dozeB }
         let moment = seatMoment(seat)
-        if moment > 0 { return Self.momentPose(moment, (frameCount + seed * 97) % 360 - 336, frameCount + 1) }
+        if moment > 0 { return Self.momentPose(moment, (frameCount + seed * 97) % 120 - 96, frameCount + 1) }
         return Self.writing(frameCount + seed, beat: 2 + seed % 3)
     }
 
@@ -563,8 +564,8 @@ final class PetWindow: NSPanel {
             }
         }
         NSGraphicsContext.current?.shouldAntialias = antialias
-        drawLine("자리 비움", font: .systemFont(ofSize: 3.4 * scale, weight: .regular), color: PetWindow.ink,
-                 in: NSRect(x: x + CGFloat(left + 1) * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
+        drawLine("자리 비움", font: .systemFont(ofSize: 3.5 * scale, weight: .bold), color: PetWindow.ink,
+                 in: NSRect(x: x + CGFloat(left + 1) * scale, y: top + scale, width: 20 * scale, height: 9 * scale))
     }
 
     /// Flutters in from the right (phase 0..12 of the moment), rests on the head with its

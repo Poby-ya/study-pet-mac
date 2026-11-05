@@ -18,7 +18,7 @@ enum SelfTest {
     private static func checkCustomization(_ out: URL) {
         let basic=Look(girl:true,2,1,1,2,4,0).withExtras("00000000"),legacy=Customization.legacy(Look(girl:true,2,1,1,2,4,0).withExtras("00000000"))
         let entries=Customization.categories.filter{$0.key != "deskStickers"}.flatMap { s in s.art.map { (s,$0) } }
-        check(entries.count==64,"customization: exactly 64 approved designs")
+        check(entries.count==61,"customization: exactly 61 approved designs")
         let calendar=Calendar(identifier:.gregorian),date=calendar.date(from:DateComponents(year:2026,month:11,day:5,hour:20,minute:10))!
         var fixtures: [[String:Any]]=[]
         func flatten(_ layers: [Sprites.Layer]) -> [String] {var rows=Array(repeating:Array(repeating:Character("."),count:64),count:64);for l in layers {for (y,line) in l.grid.enumerated(){for (x,c) in line.enumerated() where c != "." {let xx=x+l.x,yy=y+l.y;if xx>=0 && xx<64 && yy>=0 && yy<64 {rows[yy][xx]=c}}}};return rows.map{String($0)}}
@@ -44,10 +44,6 @@ enum SelfTest {
         for document in [false,true] {for desk in [false,true] {let c=legacy.copy();c.slots["documentSticker"]!.enabled=document;c.slots["deskStickers"]!.enabled=desk;let restored=Customization.parse(c.json,basic);check(restored.on("documentSticker")==document && restored.on("deskStickers")==desk,"customization: independent sticker flags round-trip")}}
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
         check(Sprites.compose(.empty,basic).first!.grid[0].count==Sprites.width,"desk: visible art matches layout width")
-        let chair=legacy.copy();chair.slots["chair"]!.enabled=true;chair.slots["chair"]!.value=2
-        check(chair.layers("chair").allSatisfy{$0.y+$0.grid.count<=27},"chair: no feet below the desk")
-        chair.slots["chair"]!.enabled=false
-        check(Customization.parse(chair.json,basic).layers("chair").isEmpty,"chair: none survives save and reload")
         check(Departure.bag(18).0==10 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
         for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(Departure.pose(t) == .pack && abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
         do {try JSONSerialization.data(withJSONObject:fixtures).write(to:out.appendingPathComponent("customization-fixtures.json"))}catch{check(false,"customization fixture export failed")}
@@ -184,9 +180,9 @@ enum SelfTest {
     private static func checkPetControls(_ out: URL) {
         check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
-        check([335, 336, 359, 360, 696, 1056, 1080].map { PetWindow.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
-        check([1416, 1776, 2136, 2496, 3936, 4296].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 12], "moments: all twelve play before the cycle repeats")
-        check((0..<3600).filter { PetWindow.studyMoment($0, seed: 37) > 0 }.count == 240 && !(0..<3600).allSatisfy { PetWindow.studyMoment($0, seed: 37) == PetWindow.studyMoment($0) },
+        check([95, 96, 119, 120, 216, 336, 360].map { PetWindow.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
+        check([456, 576, 696, 816, 1296, 1416].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 12], "moments: all twelve play before the cycle repeats")
+        check((0..<3600).filter { PetWindow.studyMoment($0, seed: 37) > 0 }.count == 720 && !(0..<3600).allSatisfy { PetWindow.studyMoment($0, seed: 37) == PetWindow.studyMoment($0) },
               "moments: a seatmate acts as often as me, on their own schedule")
         check((1...PetWindow.moments).allSatisfy { m in !PetWindow.momentLine(m, 0).isEmpty }, "moments: every moment has a line")
         save(render(NSSize(width: 136, height: 64)) {
@@ -233,7 +229,7 @@ enum SelfTest {
         check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
         // A few frames of each moment, with both seatmates mid-moment too.
         pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
-        for at in (0..<PetWindow.moments).flatMap({ m in [4, 14].map { m * 360 + 336 + $0 } }) {
+        for at in (0..<PetWindow.moments).flatMap({ m in [4, 14].map { m * 120 + 96 + $0 } }) {
             pet.preview(.studying, frame: at)
             save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
         }
