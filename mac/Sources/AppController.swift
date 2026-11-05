@@ -452,6 +452,7 @@ final class AppController: NSObject, NSMenuDelegate {
             "look": pet.look.girl ? "girl" : "boy",
             "style": pet.look.code,
             "extra": pet.look.extra,
+            "customization": (pet.look.customization ?? Customization.legacy(pet.look)).data(shared:true),
             "state": state == .studying ? "studying" : state == .paused ? "paused" : "off",
             "subject": state == .off ? "" : subject,
             "minutes": min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
@@ -827,7 +828,7 @@ final class AppController: NSObject, NSMenuDelegate {
                 try await current.pull()
                 if profileDirty {
                     let edit = profileEdit
-                    let profile: [String:Any] = ["name":nickname,"style":pet.look.code,"extra":pet.look.extra,"desk":pet.drink.rawValue + (pet.laptop ? 10 : 0),"invite":Settings.get("room")]
+                    let profile: [String:Any] = ["name":nickname,"style":pet.look.code,"extra":pet.look.extra,"customization":(pet.look.customization ?? Customization.legacy(pet.look)).data(),"desk":pet.drink.rawValue + (pet.laptop ? 10 : 0),"invite":Settings.get("room")]
                     try await current.change("profile",fields:["profile":profile])
                     if profileEdit == edit { profileDirty = false }
                 }
@@ -852,7 +853,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard let sync = deviceSync else { return }; try sync.mirror()
         let active = sync.active, profile = DeviceSync.obj(sync.data,"profile")
         if !profileDirty && !DeviceSync.str(profile,"name").isEmpty { try Settings.set("name",DeviceSync.str(profile,"name")) }
-        if !profileDirty && !DeviceSync.str(profile,"style").isEmpty { pet.look = Look.parse(DeviceSync.str(profile,"style"),girl:false).withExtras(DeviceSync.str(profile,"extra")) }
+        if !profileDirty && !DeviceSync.str(profile,"style").isEmpty { let next=Look.parse(DeviceSync.str(profile,"style"),girl:false).withExtras(DeviceSync.str(profile,"extra"));pet.look=next.withCustomization(Customization.parse(profile["customization"],next)) }
         let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none
         let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
         let changed = state != next; state = next; subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0

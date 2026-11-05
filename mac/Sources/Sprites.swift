@@ -11,6 +11,8 @@ struct Look: Equatable {
     static let bottoms = 8     // 0-3 trousers, 4-7 skirt (girls only)
     static let ribbons = 6
 
+    var customization: Customization?
+    func withCustomization(_ value: Customization?) -> Look {var result=self;result.customization=value;return result}
     var extra = "0000000"
     var accessory: Int { Int(Array(extra)[0].asciiValue! - 48) }
     var skin: Int { Int(Array(extra)[1].asciiValue! - 48) }
@@ -324,11 +326,12 @@ enum Sprites {
             back = back.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
             front = front.map { Layer($0.grid.map { $0.replacingOccurrences(of: "R", with: "h") }, $0.x, $0.y) }
         }
-        if look.accessory == 2 { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
-        if look.accessory == 3 { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
+        if (look.customization.map{$0.on("head") && $0.value("head")==1} ?? (look.accessory == 2)) { front.append(Layer(["..p..", "ppppp", ".ppp.", ".p.p."], x + 12, y + 5)) }
+        if (look.customization.map{$0.on("ear") && $0.value("ear")==1} ?? (look.accessory == 3)) { back.append(Layer(["..kkkkkkkkkkkkkk..", ".kk............kk.", "kk..............kk"], x, y + 4)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x - 1, y + 9)); front.append(Layer(["kRk", "kRk", "kRk", "kkk"], x + 16, y + 9))
         }
         if look.additions & 4 != 0 && look.hat == 1 { front.append(Layer(["....kkkkkkkk....", "..kkAAAAAAAAkk..", ".kAAAAAAAAAAAAk.", "kCCCCCCCCCCCCCCk", "kkkkkkkkkkkkkkkk"], x + 1, y + 1)) }
         if look.additions & 4 != 0 && look.hat == 2 { front.append(Layer(["......kkkk......", "..kkkkAAAAkkkk..", "kkAAAAAAAAAAAAkk", ".kkkkkkkkkkkkkk."], x - 1, y + 1)) }
+        if let custom=look.customization {front += custom.headLayers(x,y)}
         return (back, front)
     }
 
@@ -449,6 +452,7 @@ enum Sprites {
     private static func body(_ look: Look, sitting: Bool, leftArm: Bool = false, rightArm: Bool = false) -> [String] {
         let shape = sitting ? sittingBody : look.skirt ? Array(standingBody.prefix(8)) + skirtRows : standingBody
         var dressed = dress(shape, look.top)
+        if let custom=look.customization {for layer in custom.layers("top") {var rows=dressed.map{Array($0)};for y in 0..<layer.grid.count {let line=Array(layer.grid[y]);for x in 0..<line.count {let xx=x+layer.x,yy=y+layer.y;if yy<rows.count && xx<rows[yy].count && "AaCJRw".contains(rows[yy][xx]) && line[x] != "." {rows[yy][xx]=line[x]}}};dressed=rows.map{String($0)}}}
         if look.sleeve > 0 { dressed = put(dressed, [(6, 3, look.sleeve == 3 ? "RR" : look.sleeve == 2 ? "AA" : "CC"), (6, 15, look.sleeve == 3 ? "RR" : look.sleeve == 2 ? "AA" : "CC")]) }
         return dressed.enumerated().map { i, row in
             if i < 3 || i > 7 { return row }
@@ -613,19 +617,22 @@ enum Sprites {
         if lift != 0 { layers = layers.map { $0.grid == desk || $0.grid == book || $0.grid == laptopOpen || $0.grid == laptopShut ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
-        layers.insert(Layer(d.lit ? lampOn : lampOff, 1, 11), at: 0)
+        let custom=look.customization
+        if custom?.on("lamp") ?? true {if let c=custom,c.value("lamp")>0 {layers.insert(contentsOf:c.layers("lamp",lit:d.lit),at:0)}else{layers.insert(Layer(d.lit ? lampOn : lampOff,1,11),at:0)}}
+        if let c=custom {layers.insert(contentsOf:c.layers("chair"),at:0)}
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
         let big = d.seed % bigStickers.count
-        if look.additions & 2 != 0 {
+        if custom?.on("deskStickers") ?? (look.additions & 2 != 0) {
             layers.insert(contentsOf: [
                 Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
                 Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
             ], at: at)
         }
+        if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{bigStickers.contains($0.grid)||smallStickers.contains($0.grid)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(25,31),(31,32),(35,31),(4,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop"),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
         if d.away { return layers }
         layers.insert(Layer(bags[look.bag], 42, 28), at: at)
-        if look.additions & 2 != 0 && look.sticker > 0 { layers.append(Layer(personalSticker(look.sticker), d.laptop ? 23 : 21, d.laptop ? 21 : 25)) }
+        if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { let sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker); layers.append(Layer(sticker,d.laptop ? 23 : 21,d.laptop ? 21 : 25)) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
             let kind: Drink = d.drink == .none ? .mug : d.drink
@@ -686,13 +693,17 @@ enum Sprites {
     }
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
-    static func packingItemGrid(_ laptop: Bool) -> [String] {
+    static func packingItemGrid(_ laptop: Bool, turn: Double=1) -> [String] {
         let source = (laptop ? laptopShut : book).map { Array($0) }
-        return (0..<source[0].count).map { x in String(source.reversed().map { $0[x] }) }
+        if turn>=1 {return (0..<source[0].count).map { x in String(source.reversed().map { $0[x] }) }}
+        let angle=turn * Double.pi/2,cosine=cos(angle),sine=sin(angle),w=source[0].count,h=source.count
+        let width=Int(ceil(Double(w)*cosine+Double(h)*sine)),height=Int(ceil(Double(w)*sine+Double(h)*cosine))
+        return (0..<height).map { y in String((0..<width).map { x -> Character in let dx=Double(x)-Double(width-1)/2,dy=Double(y)-Double(height-1)/2;let xx=Int(floor(cosine*dx+sine*dy+Double(w-1)/2+0.5)),yy=Int(floor(-sine*dx+cosine*dy+Double(h-1)/2+0.5));return xx>=0 && xx<w && yy>=0 && yy<h ? source[yy][xx] : "." }) }
     }
-    static func drawPackingItem(_ look: Look, laptop: Bool, left: CGFloat, top: CGFloat, scale: CGFloat) {
-        draw(layers: [Layer(packingItemGrid(laptop), 0, 0)], look, left: left, top: top, scale: scale)
+    static func drawPackingItem(_ look: Look, laptop: Bool, left: CGFloat, top: CGFloat, scale: CGFloat, turn: Double=1) {
+        draw(layers: [Layer(packingItemGrid(laptop,turn:turn), 0, 0)], look, left: left, top: top, scale: scale)
     }
+    static func drawPackingReach(_ look: Look,left: CGFloat,top: CGFloat,scale: CGFloat,targetX: Int,targetY: Int,leftHand: Bool=false) {draw(layers:[arm(look,(leftHand ? 19 : 31,18),(leftHand ? 19 : 32,21),(targetX,targetY))],look,left:left,top:top,scale:scale)}
     static func drawBag(_ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, open: Bool = false) {
         draw(layers: [Layer(bags[look.bag], 0, 0)], look, left: left, top: top, scale: scale)
         if open { draw(layers: [Layer(["kkkkk","kkkkk"], 1, 3)], look, left: left, top: top, scale: scale) }

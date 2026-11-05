@@ -1,94 +1,57 @@
 import AppKit
-
 private final class AppearanceContent: NSView { override var isFlipped: Bool { true } }
 final class AppearanceWindow: NSWindow {
     private var values: [Int]
-    private var locks: [Int: NSButton] = [:]
-    private let preview = NSImageView(frame: NSRect(x: 20, y: 418, width: 468, height: 126))
+    private var custom: Customization
     private var selected: Look
-    private var applied = false
-    private var additions: Int
-    private let categories = [(0, "머리"), (1, "머리색"), (2, "상의"), (3, "상의 색"), (4, "하의"), (5, "리본 색"), (8, "모자"), (9, "소매"), (11, "문구 스티커"), (12, "가방 색")]
+    private var applied=false
+    private var ribbon: Int
+    private var baseLocks: [Int:Bool]=[:]
+    private var group="character"
+    private let preview=NSImageView()
+    private let body=AppearanceContent()
+    private let scroll=NSScrollView()
     init(_ look: Look) {
-        selected = look
-        additions = look.additions
-        values = [look.hair, look.hairColor, look.top, look.topColor, look.bottom, look.ribbon, look.accessory < 2 ? 0 : look.accessory - 1, look.skin, look.hat, look.sleeve, look.leftHanded ? 1 : 0, look.sticker, look.bag, look.girl ? 1 : 0]
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 528, height: 640), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        title = "캐릭터 꾸미기"; isReleasedWhenClosed = false; minSize = NSSize(width: 528, height: 400)
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 65, width: 528, height: 575)); scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autoresizingMask = [.width, .height]
-        let body = AppearanceContent(frame: NSRect(x: 0, y: 0, width: 508, height: 575)); scroll.documentView = body; contentView?.addSubview(scroll)
-        let toggles = [("캐릭터", 13, ["남자", "여자"]), ("쓰는 손", 10, ["오른손", "왼손"]), ("액세서리", 6, ["없음", "별 머리핀", "헤드폰"]), ("피부색", 7, ["", "", "", ""])]
-        for (n, entry) in toggles.enumerated() {
-            let (title, index, items) = entry
-            let label = NSTextField(labelWithString: title); label.frame = NSRect(x: 20, y: CGFloat(20 + n * 38), width: 80, height: 24); body.addSubview(label)
-            let toggle: NSSegmentedControl
-            if index == 7 {
-                let images = [0xFFF4EC, 0xFFE0C8, 0xD2A17C, 0x83523E].map { color in NSImage(size: NSSize(width: 40,height: 18), flipped: true) { rect in Sprites.color(color).setFill(); rect.fill(); return true } }
-                toggle = NSSegmentedControl(images: images, trackingMode: .selectOne, target: self, action: #selector(toggleChanged(_:)))
-            } else { toggle = NSSegmentedControl(labels: items, trackingMode: .selectOne, target: self, action: #selector(toggleChanged(_:))) }
-            toggle.tag = index; toggle.selectedSegment = index == 7 ? [1,0,2,3].firstIndex(of: values[index])! : values[index]; toggle.frame = NSRect(x: 105, y: CGFloat(16 + n * 38), width: 380, height: 30); body.addSubview(toggle)
+        values=[look.hair,look.hairColor,look.top,look.topColor,look.bottom,look.ribbon,0,look.skin,0,look.sleeve,look.leftHanded ? 1 : 0,0,look.bag,look.girl ? 1 : 0]
+        custom=(look.customization ?? Customization.legacy(look)).copy();selected=look;ribbon=look.additions & 1
+        let saved=Array(Settings.get("appearanceLocks"));for i in [1,3,4,5,9,12] {baseLocks[i]=i<saved.count && saved[i] == "1"}
+        let height=min(640,(NSScreen.main?.visibleFrame.height ?? 760)-50)
+        super.init(contentRect:NSRect(x:0,y:0,width:528,height:height),styleMask:[.titled,.closable],backing:.buffered,defer:false)
+        title="꾸미기";isReleasedWhenClosed=false;let root=AppearanceContent(frame:NSRect(x:0,y:0,width:528,height:height));contentView=root
+        let tabs=NSSegmentedControl(labels:["캐릭터","책상","교실"],trackingMode:.selectOne,target:self,action:#selector(tabChanged(_:)));tabs.selectedSegment=0;tabs.frame=NSRect(x:16,y:12,width:496,height:30);root.addSubview(tabs)
+        scroll.frame=NSRect(x:0,y:50,width:528,height:height-260);scroll.hasVerticalScroller=true;scroll.documentView=body;root.addSubview(scroll)
+        preview.frame=NSRect(x:20,y:height-202,width:468,height:150);root.addSubview(preview)
+        for (title,x,action) in [("랜덤 뽑기",20,#selector(roll)),("적용",330,#selector(apply)),("취소",425,#selector(cancel))] {let b=NSButton(title:title,target:self,action:action);b.frame=NSRect(x:x,y:height-42,width:90,height:30);root.addSubview(b);if title == "적용" {b.keyEquivalent="\r"};if title == "취소" {b.keyEquivalent="\u{1b}"}}
+        rebuild();center()
+    }
+    required init?(coder: NSCoder) {fatalError("not used")}
+    @objc private func tabChanged(_ sender: NSSegmentedControl) {group=["character","desk","classroom"][sender.selectedSegment];rebuild()}
+    private func rebuild() {
+        body.subviews.forEach{$0.removeFromSuperview()};var y: CGFloat=10
+        func label(_ title: String) {let l=NSTextField(labelWithString:title);l.frame=NSRect(x:20,y:y,width:480,height:25);body.addSubview(l);y+=30}
+        func toggle(_ title: String,_ index: Int,_ labels: [String]) {let l=NSTextField(labelWithString:title);l.frame=NSRect(x:20,y:y,width:75,height:24);body.addSubview(l);let t: NSSegmentedControl
+            if index == 7 {let colors=[0xFFF4EC,0xFFE0C8,0xD2A17C,0x83523E];let images=colors.map { color in NSImage(size:NSSize(width:35,height:18),flipped:true){rect in Sprites.color(color).setFill();rect.fill();return true}};t=NSSegmentedControl(images:images,trackingMode:.selectOne,target:self,action:#selector(toggleChanged(_:)));t.selectedSegment=[1,0,2,3].firstIndex(of:values[index]) ?? 0}
+            else {t=NSSegmentedControl(labels:labels,trackingMode:.selectOne,target:self,action:#selector(toggleChanged(_:)));t.selectedSegment=values[index]};t.tag=index;t.frame=NSRect(x:105,y:y-3,width:380,height:30);body.addSubview(t);y+=38
         }
-        let addTitle = NSTextField(labelWithString: "추가할 것을 선택하세요.")
-        addTitle.frame = NSRect(x: 20,y: 178,width: 480,height: 24); body.addSubview(addTitle)
-        for (n, entry) in [(5,1,"리본"),(11,2,"문구 스티커"),(8,4,"모자")].enumerated() {
-            let (_, bit, title) = entry
-            let check = NSButton(checkboxWithTitle: title, target: self, action: #selector(additionChanged(_:)))
-            check.tag = bit; check.state = additions & bit != 0 ? .on : .off
-            check.frame = NSRect(x: CGFloat(20+n*160),y: 212,width: 155,height: 26); body.addSubview(check)
-        }
-        let hint = NSTextField(labelWithString: "고정할 것을 선택하세요."); hint.frame = NSRect(x: 20, y: 250, width: 480, height: 24); body.addSubview(hint)
-        let saved = Array(Settings.get("appearanceLocks"))
-        for (n, entry) in categories.enumerated() {
-            let (i, title) = entry
-            let check = NSButton(checkboxWithTitle: title, target: nil, action: nil)
-            check.frame = NSRect(x: CGFloat(20 + (n % 3) * 160), y: CGFloat(286 + (n / 3) * 28), width: 155, height: 26)
-            check.state = i < saved.count && saved[i] == "1" ? .on : .off; locks[i] = check; check.isHidden = (i == 5 && additions & 1 == 0) || (i == 11 && additions & 2 == 0) || (i == 8 && additions & 4 == 0); body.addSubview(check)
-        }
-        body.addSubview(preview)
-        for (i,title) in ["필기", "잠깐 쉬기", "손인사"].enumerated() { let caption = NSTextField(labelWithString: title); caption.alignment = .center; caption.frame = NSRect(x: CGFloat(20+i*156),y: 548,width: 156,height: 24); body.addSubview(caption) }
-
-        for (title, x, width, action) in [("랜덤 뽑기", 20, 130, #selector(roll)), ("적용", 330, 80, #selector(apply)), ("취소", 420, 80, #selector(cancel))] {
-            let button = NSButton(title: title, target: self, action: action); button.frame = NSRect(x: CGFloat(x), y: 20, width: CGFloat(width), height: 30); contentView?.addSubview(button)
-            if title == "적용" { button.keyEquivalent = "\r" }; if title == "취소" { button.keyEquivalent = "\u{1b}" }
-        }
-        changed(); center()
+        func check(_ title: String,_ key: String,_ on: Bool,_ action: Selector) {let b=NSButton(checkboxWithTitle:title,target:self,action:action);b.identifier=NSUserInterfaceItemIdentifier(key);b.state=on ? .on : .off;b.frame=NSRect(x:20,y:y,width:470,height:25);body.addSubview(b);y+=27}
+        if group == "character" {toggle("캐릭터",13,["남자","여자"]);toggle("쓰는 손",10,["오른손","왼손"]);toggle("피부색",7,["","","",""])}
+        label("추가할 것을 선택하세요.")
+        for s in Customization.categories where s.group == group && s.optional {check(s.title,s.key,custom.on(s.key),#selector(addChanged(_:)))}
+        if group == "character" {check("리본","ribbon",ribbon != 0,#selector(addChanged(_:)))}
+        label("고정할 것을 선택하세요.")
+        for s in Customization.categories where s.group == group && custom.on(s.key) {check(s.title,s.key,custom.slots[s.key]!.locked,#selector(lockChanged(_:)))}
+        let bases: [(Int,String)] = group == "character" ? [(1,"머리색"),(3,"상의 색"),(4,"하의"),(5,"리본 색"),(9,"소매")] : group == "desk" ? [(12,"가방 색")] : []
+        for (i,title) in bases where i != 5 || ribbon != 0 {check(title,String(i),baseLocks[i] ?? false,#selector(baseLockChanged(_:)))}
+        body.frame=NSRect(x:0,y:0,width:508,height:y+10);changed()
     }
-    required init?(coder: NSCoder) { fatalError("not used") }
-    private func read() -> Look {
-        var extras = (6...12).map { String($0 == 6 ? [0,2,3][values[$0]] : values[$0]) }.joined()
-        var digits = Array(extras)
-        if additions & 4 == 0 { digits[2] = "0" }
-        if additions & 2 == 0 { digits[5] = "0" }
-        extras = String(digits) + String(additions)
-        return Look(girl: values[13] == 1, values[0], values[1], values[2], values[3], values[4], values[5]).withExtras(extras)
-    }
-    @objc private func additionChanged(_ sender: NSButton) {
-        additions = sender.state == .on ? additions | sender.tag : additions & ~sender.tag
-        let index = sender.tag == 1 ? 5 : sender.tag == 2 ? 11 : 8
-        locks[index]?.isHidden = sender.state == .off
-        if sender.state == .on && index != 5 && values[index] == 0 { values[index] = 1 }
-        changed()
-    }
-    @objc private func toggleChanged(_ sender: NSSegmentedControl) { values[sender.tag] = sender.tag == 7 ? [1,0,2,3][sender.selectedSegment] : sender.selectedSegment; changed() }
-    private func changed() {
-        let look = read()
-        preview.image = NSImage(size: NSSize(width: 468, height: 126), flipped: true) { _ in
-            for (i, pose) in [Sprites.Pose.writeA, .dozeA, .waveA].enumerated() { Sprites.draw(pose, look, left: CGFloat(i * 156), top: 6, scale: 3, decor: Sprites.Decor(seed: 7)) }
-            return true
-        }
-    }
-    @objc private func roll() {
-        let counts = [8, 5, 9, 10, values[13] == 1 ? 8 : 4, 6, 3, 4, 3, 4, 2, 4, 4, 2]
-        for (i, _) in categories where locks[i]?.state == .off && locks[i]?.isHidden == false { values[i] = Int.random(in: (i == 8 || i == 11 ? 1 : 0)..<counts[i]) }; changed()
-    }
-    @objc private func apply() {
-        do { try Settings.set("appearanceLocks", (0..<14).map { locks[$0]?.state == .on ? "1" : "0" }.joined()); selected = read(); applied = true; NSApp.stopModal() }
-        catch { let alert = NSAlert(); alert.messageText = "설정을 저장하지 못했어요."; alert.informativeText = error.localizedDescription; alert.runModal() }
-    }
-    @objc private func cancel() { NSApp.stopModal() }
-    static func choose(_ look: Look) -> Look? {
-        let window = AppearanceWindow(look)
-        NSApp.activate(ignoringOtherApps: true); NSApp.runModal(for: window); window.orderOut(nil)
-        return window.applied ? window.selected : nil
-    }
+    @objc private func toggleChanged(_ sender: NSSegmentedControl) {values[sender.tag]=sender.tag == 7 ? [1,0,2,3][sender.selectedSegment] : sender.selectedSegment;if values[13]==0 && values[4]>=4 {values[4]=0};changed()}
+    @objc private func addChanged(_ sender: NSButton) {let key=sender.identifier!.rawValue;if key == "ribbon" {ribbon=sender.state == .on ? 1 : 0}else{custom.slots[key]!.enabled=sender.state == .on;let s=Customization.categories.first{$0.key == key}!;if sender.state == .on && custom.value(key)==0 && s.legacy==0 && key != "deskStickers" {custom.slots[key]!.value=1}};rebuild()}
+    @objc private func lockChanged(_ sender: NSButton) {custom.slots[sender.identifier!.rawValue]!.locked=sender.state == .on}
+    @objc private func baseLockChanged(_ sender: NSButton) {baseLocks[Int(sender.identifier!.rawValue)!]=sender.state == .on}
+    private func read() -> Look {let extra="0"+String(values[7])+"0"+String(values[9])+String(values[10])+"0"+String(values[12])+String(ribbon);return custom.legacyLook(Look(girl:values[13]==1,values[0],values[1],values[2],values[3],values[4],values[5]).withExtras(extra))}
+    private func changed() {let look=read(),isRoom=group == "classroom";preview.image=NSImage(size:NSSize(width:468,height:150),flipped:true){_ in if isRoom {self.custom.drawRoom(look,NSRect(x:8,y:4,width:452,height:140),Date())}else{for (i,pose) in [Sprites.Pose.writeA,.dozeA,.waveA].enumerated(){Sprites.draw(pose,look,left:CGFloat(i*156),top:12,scale:3,decor:Sprites.Decor(seed:7))}};return true}}
+    @objc private func roll() {custom.roll(group);let counts=[8,5,9,10,values[13]==1 ? 8 : 4,6,0,4,0,4,0,4,4];for i in (group == "character" ? [1,3,4,5,9] : group == "desk" ? [12] : []) where baseLocks[i] != true && (i != 5 || ribbon != 0) {values[i]=Int.random(in:0..<counts[i])};changed()}
+    @objc private func apply() {do {try Settings.set("appearanceLocks",(0..<14).map{baseLocks[$0] == true ? "1" : "0"}.joined());selected=read();applied=true;NSApp.stopModal()}catch{let a=NSAlert();a.messageText="설정을 저장하지 못했어요.";a.informativeText=error.localizedDescription;a.runModal()}}
+    @objc private func cancel() {NSApp.stopModal()}
+    static func choose(_ look: Look) -> Look? {let window=AppearanceWindow(look);NSApp.activate(ignoringOtherApps:true);NSApp.runModal(for:window);window.orderOut(nil);return window.applied ? window.selected : nil}
 }

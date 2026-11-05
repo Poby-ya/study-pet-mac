@@ -107,6 +107,179 @@
             ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",
             ".validate": "newData.isNumber() && newData.val() == root.child('users').child($uid).child('revision').val()"
           }
+        },
+        "customization": {
+          "$uid": {
+            ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true",
+            ".validate": "newData.hasChildren(['version','slots'])",
+            "version": {
+              ".validate": "newData.val() == 1"
+            },
+            "slots": {
+              "lamp": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 8"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "hat": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 12"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "head": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 5"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "ear": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 2"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "neck": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 2"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "badge": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 1"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "documentSticker": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 11"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "deskStickers": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 8"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "prop": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 7"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "hair": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 11"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "top": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 14"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "desk": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 3"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "chair": {
+                ".validate": "newData.hasChildren(['enabled','value'])",
+                "enabled": {
+                  ".validate": "newData.isBoolean()"
+                },
+                "value": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 3"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
+              "$other": {
+                ".validate": false
+              }
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
         }
       }
     },

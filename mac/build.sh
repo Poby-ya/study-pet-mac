@@ -12,6 +12,7 @@ for arch in arm64 x86_64; do
 done
 lipo -create -output build/StudyPet.app/Contents/MacOS/StudyPet build/StudyPet-arm64 build/StudyPet-x86_64
 mkdir -p build/StudyPet.app/Contents/Resources
+cp ../Shared/customization.json build/StudyPet.app/Contents/Resources/customization.json
 cp ../Shared/사용\ 설명서.txt build/StudyPet.app/Contents/Resources/help.txt
 cp install-mac.sh build/StudyPet.app/Contents/Resources/updater.sh
 cp ../web/config.json build/StudyPet.app/Contents/Resources/web-config.json

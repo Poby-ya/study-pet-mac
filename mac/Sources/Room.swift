@@ -7,6 +7,7 @@ struct Member {
     var subject = ""
     var state = "off" // studying, paused, off
     var girl = false
+    var customization: [String:Any]? = nil
     var extra = ""
     var version = ""
     var style = ""     // Look.code; empty from versions before random looks
@@ -14,7 +15,7 @@ struct Member {
     var updated: Int64 = 0 // server clock, ms
     var drink: Sprites.Drink = .none // from desks/{uid}; none from older versions or rules
     var laptop = false
-    var look: Look { Look.parse(style, girl: girl).withExtras(extra) }
+    var look: Look {let value=Look.parse(style,girl:girl).withExtras(extra);return customization == nil ? value : value.withCustomization(Customization.parse(customization,value))}
 }
 
 /// A friend came over to wake you up.
@@ -289,6 +290,7 @@ final class Room: @unchecked Sendable {
     /// whose owner hasn't published the rules that allow it then shows plain desks, and nothing breaks.
     func publish(_ status: [String: Any]) {
         var member = status
+        if let custom=member.removeValue(forKey:"customization") {write("PUT", "\(roomPath)/customization/\(me)",custom,quiet:true)}
         if let extra = member.removeValue(forKey: "extra") { write("PUT", "\(roomPath)/wardrobe/\(me)", extra, quiet: true) }
         let desk = member.removeValue(forKey: "desk") as? Int
         let revision = member.removeValue(forKey: "syncRevision")
@@ -505,6 +507,7 @@ final class Room: @unchecked Sendable {
 
     static func members(_ tree: [String: Any]) -> [Member] {
         let all = tree["members"] as? [String: Any] ?? [:]
+        let customizations=tree["customization"] as? [String:[String:Any]] ?? [:]
         let wardrobe = tree["wardrobe"] as? [String: String] ?? [:]
         let versions = tree["versions"] as? [String: String] ?? [:]
         let desks = tree["desks"] as? [String: Any] ?? [:]
@@ -513,7 +516,7 @@ final class Room: @unchecked Sendable {
             let desk = Int(num(desks, id))
             let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
-                          extra: wardrobe[id] ?? "", version: versions[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
+                          customization:customizations[id],extra: wardrobe[id] ?? "", version: versions[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
                           drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1)
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
