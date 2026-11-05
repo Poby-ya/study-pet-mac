@@ -260,18 +260,36 @@ enum SelfTest {
         pet.preview(.away, frame: 2)
         let empty = render(pet.canvasSize) { pet.paint() }
         func lowerPixels(_ rep: NSBitmapImageRep) -> [UInt8] {
-            Array(UnsafeBufferPointer(start: rep.bitmapData!.advanced(by: (rep.pixelsHigh - 40) * rep.bytesPerRow), count: 40 * rep.bytesPerRow))
+            var pixels: [UInt8] = []
+            for y in (empty.pixelsHigh - 40)..<empty.pixelsHigh {
+                for x in 0..<empty.pixelsWide where empty.bitmapData![y * empty.bytesPerRow + x * 4 + 3] > 0 {
+                    let start = rep.bitmapData!.advanced(by: y * rep.bytesPerRow + x * 4)
+                    pixels.append(contentsOf: UnsafeBufferPointer(start: start, count: 4))
+                }
+            }
+            return pixels
         }
+        func feetVisible(_ rep: NSBitmapImageRep) -> Bool {
+            for y in (empty.pixelsHigh - 40)..<empty.pixelsHigh {
+                for x in 0..<empty.pixelsWide {
+                    if empty.bitmapData![y * empty.bytesPerRow + x * 4 + 3] == 0 && rep.bitmapData![y * rep.bytesPerRow + x * 4 + 3] > 0 { return true }
+                }
+            }
+            return false
+        }
+        var sawFeet = false
         for side in [-1, 1, 0] {
             for time in [2.0, 8, 21] {
                 pet.preview(.away, frame: 2, visitTick: time, friend: Look.parse("g213402", girl: true), friendText: "민지 : 화이팅!", incomingDirection: side)
                 let incoming = render(pet.canvasSize) { pet.paint() }
                 save(incoming, out, "behind-incoming-\(side)-\(Int(time)).png")
+                sawFeet = sawFeet || feetVisible(incoming)
                 pet.preview(.away, frame: 2, outgoingTick: time, outgoingDirection: side)
                 let outgoing = render(pet.canvasSize) { pet.paint() }
                 check(lowerPixels(empty) == lowerPixels(incoming) && lowerPixels(empty) == lowerPixels(outgoing), "visit: bodies stay behind all desks at \(side)/\(time)")
             }
         }
+        check(sawFeet, "visit: walking feet remain visible below desk height in open space")
         pet.setUpdateAvailable(true)
         pet.advanceAnimation(3600)
         check(pet.updateText.isEmpty, "update: speech returns to study after eight seconds")

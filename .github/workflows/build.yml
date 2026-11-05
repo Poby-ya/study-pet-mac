@@ -1,5 +1,5 @@
 # Builds and tests the Mac app on GitHub's macOS runner. Copied to .github/workflows/ of the
-# private build repo by mac/build-on-github.ps1.
+# public build repo by mac/build-on-github.ps1.
 name: Build Mac app
 on:
   push:

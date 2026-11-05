@@ -684,6 +684,8 @@ enum Sprites {
     }
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
+    static func drawBag(_ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat) { draw(layers: [Layer(bags[look.bag], 0, 0)], look, left: left, top: top, scale: scale) }
+
     private static let bags = "ztgprV".map { c in
         [".kk....", "k..k...", "k..kk..", "kkkMMk.", "kMMMMMk", "kMMMMMk", "kMMMkkk", "kMMMkMk", "kMMMkMk", ".kkkkk."].map { $0.replacingOccurrences(of: "M", with: String(c)) }
     }
