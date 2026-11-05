@@ -57,6 +57,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private var deviceSync: DeviceSync?
     private var syncCheck: Timer?
     private var syncBusy = false
+    private var syncReady = false
     private var profileDirty = false
     private var profileEdit = 0
     private var deviceLink: DeviceLinkWindow?
@@ -380,7 +381,7 @@ final class AppController: NSObject, NSMenuDelegate {
         roomSeen = false
         pendingCheck?.invalidate()
         pendingCheck = nil
-        syncCheck?.invalidate(); deviceSync = nil
+        syncCheck?.invalidate(); deviceSync = nil; syncReady = false
         let invite: Invite
         if let saved = Invite.parse(Settings.get("room")) { invite = saved } else if Settings.get("cloudSync") == "1", let configured = try? DeviceLinkWindow.defaultInvite() { invite = configured } else { return }
         auth = invite.key.isEmpty ? nil : Auth(apiKey: invite.key)
@@ -444,7 +445,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
-        if let sync = deviceSync, !sync.mine || !sync.pending.isEmpty || quitting { return }
+        if let sync = deviceSync, !syncReady || !sync.mine || !sync.pending.isEmpty || quitting { return }
         var status: [String:Any] = [
             "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
@@ -830,7 +831,7 @@ final class AppController: NSObject, NSMenuDelegate {
                     try await current.change("profile",fields:["profile":profile])
                     if profileEdit == edit { profileDirty = false }
                 }
-                if self.deviceSync === current && !quitting { try applySync() }
+                if self.deviceSync === current && !quitting { try applySync(); syncReady = true; publish() }
             }
             catch { feedback = error.localizedDescription; feedbackUntil = Date().addingTimeInterval(8) }
         }
@@ -839,13 +840,13 @@ final class AppController: NSObject, NSMenuDelegate {
         guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
         Task { @MainActor in
             defer { syncBusy = false }
-            do { try await sync.change(action,subject:picked); if self.deviceSync === sync && !quitting { try applySync(); publish() } }
+            do { try await sync.change(action,subject:picked); if self.deviceSync === sync && !quitting { try applySync(); syncReady = true; publish() } }
             catch { alert(error.localizedDescription) }
         }
     }
     private func syncDelete(_ subject: String, all: Bool) {
         guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
-        Task { @MainActor in defer { syncBusy = false }; do { try await sync.change(all ? "delete" : "hide",subject:subject); if self.deviceSync === sync && !quitting { try applySync() } } catch { alert(error.localizedDescription) } }
+        Task { @MainActor in defer { syncBusy = false }; do { try await sync.change(all ? "delete" : "hide",subject:subject); if self.deviceSync === sync && !quitting { try applySync(); syncReady = true; publish() } } catch { alert(error.localizedDescription) } }
     }
     private func applySync() throws {
         guard let sync = deviceSync else { return }; try sync.mirror()

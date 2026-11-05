@@ -349,6 +349,13 @@ enum SelfTest {
         deskProbe.publish(decorated)
         check(waitFor { a.boardMembers.contains { $0.id == friend && $0.drink == .soju && $0.laptop } }, "desk: identical heartbeat retries a failed drink/laptop write")
         deskProbe.flush(); deskProbe.dispose()
+        let recovery = Room(invite: invite, me: friend, token: { "" }, followSeat: false, listenToRoom: false)
+        _ = finish { try await Room.call("POST", invite.database + "/__test/fail-next", Data("PATCH:401".utf8)) }
+        recovery.publish(status("친구", 17)); recovery.flush()
+        check(waitFor { !recovery.error.isEmpty }, "presence: a refused write is reported")
+        recovery.publish(status("친구", 17)); recovery.flush()
+        check(waitFor { recovery.error.isEmpty }, "presence: successful retry clears refusal without a stream reconnect")
+        recovery.dispose()
 
         let selected = b.selected
         try? b.next()

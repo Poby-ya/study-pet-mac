@@ -299,7 +299,7 @@ final class PetWindow: NSPanel {
         let beforeFrame = frameCount
         animationSeconds += seconds; moodSeconds += seconds
         frameCount = Int(animationSeconds * 4); tick = Int(moodSeconds * 4)
-        for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 22 { leavingTicks[i] += seconds * 4 } }
+        for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
         if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > 24 { outgoingTick = -1; if mood == .away { fading = true } } }
         if visitTick >= 0 {
             visitTick += seconds * 4
@@ -308,7 +308,7 @@ final class PetWindow: NSPanel {
                 if mood == .away { fading = true }
             }
         }
-        if mood == .leaving && moodSeconds >= 5.5 || mood == .notifying && animationSeconds - updateShownAt >= 8 { fading = true }
+        if mood == .leaving && moodSeconds >= 6.5 || mood == .notifying && animationSeconds - updateShownAt >= 8 { fading = true }
 
         if fading {
             alphaValue = max(0, alphaValue - seconds * 4 / 3)
@@ -470,16 +470,16 @@ final class PetWindow: NSPanel {
             let x = i == 0 ? seatX : rightX
             let lit = night && seat.here && !seat.dozing && !gone
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here), hairLag: hairLag(i, pose))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
-            if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
+            if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
             if lit { lamps.append(x) }
         }
         let myLamp = night && mood == .studying && !outgoing
         if myLamp { lamps.append(myX) }
         Sprites.draw(outgoing ? .empty : myPose, look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving), hairLag: hairLag(-1, myPose))
+                     decor: Sprites.Decor(drink: drink, laptop: laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), hairLag: hairLag(-1, myPose))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -489,7 +489,7 @@ final class PetWindow: NSPanel {
             NSGraphicsContext.restoreGraphicsState()
         }
         drawNameplate(myName(), deskX: myX)
-        if mood == .leaving { drawDepartureProps(look, x: myX, tick: moodSeconds * 4) }
+        if mood == .leaving { drawDepartureProps(look, laptop: laptop, x: myX, tick: moodSeconds * 4) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
         for x in lamps { Sprites.drawLampLight(left: x, top: floorY, scale: scale) }
@@ -505,7 +505,7 @@ final class PetWindow: NSPanel {
             var top = tip
             if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
-                if let seat = seats[i], seat.here || (leavingTicks[i] >= 0 && leavingTicks[i] < 14) { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 14 ? "다녀올게요!" : seat.text,
+                if let seat = seats[i], seat.here || (leavingTicks[i] >= 0 && leavingTicks[i] < 18) { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
             }
             let news = mood != .away ? newsText() : ""
@@ -529,23 +529,30 @@ final class PetWindow: NSPanel {
     static func departurePose(_ tick: Double) -> Sprites.Pose {
         if tick < 3 { return .bend }
         if tick < 6 { return .pickUp }
-        if tick < 10 { return .stand }
-        if tick < 14 { return Int(tick) % 2 == 0 ? .waveA : .waveB }
+        if tick < 14 { return .stand }
+        if tick < 18 { return Int(tick) % 2 == 0 ? .waveA : .waveB }
         return .empty
     }
     private func drawDepartureWalker(_ actor: Look, origin: CGFloat, tick: Double) {
-        guard tick >= 14 && tick < 22 else { return }
-        let x = origin - (origin + deskWidth) * CGFloat((tick - 14) / 8)
+        guard tick >= 18 && tick < 26 else { return }
+        let x = origin - (origin + deskWidth) * CGFloat((tick - 18) / 8)
         drawVisitor(actor, pose: .walk, x: x, hop: 0, mirror: false)
         Sprites.drawBag(actor, left: x + 8 * scale, top: floorY + 22 * scale, scale: scale)
     }
-    private func drawDepartureProps(_ actor: Look, x: CGFloat, tick: Double) {
-        if tick < 14 {
-            let lift = CGFloat(min(1, tick / 4)), carry = CGFloat(max(0, min(1, (tick - 4) / 2)))
-            Sprites.drawBag(actor, left: x + (42 - 11 * lift - 23 * carry) * scale, top: floorY + (28 - 8 * lift + 2 * carry) * scale, scale: scale)
+    private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
+        if tick >= 4 && tick < 8 {
+            let lift = CGFloat(min(1, (tick - 4) / 2)), drop = CGFloat(max(0, (tick - 6) / 2))
+            NSGraphicsContext.saveGraphicsState()
+            NSRect(x: 0, y: 0, width: canvasSize.width, height: floorY + 20 * scale).clip()
+            Sprites.drawPackingItem(actor, laptop: laptop, left: x + (20 + 13 * lift) * scale, top: floorY + (14 - 8 * lift + 15 * drop) * scale, scale: scale)
+            NSGraphicsContext.restoreGraphicsState()
         }
-        if tick >= 6 { drawAwaySign(x, lift: 8 * (1 - min(1, (tick - 6) / 4))) }
-        if tick >= 6 && tick < 10 { Sprites.draw(layers: Sprites.reachLayers(actor, down: true), actor, left: x, top: floorY, scale: scale) }
+        if tick < 18 {
+            let lift = CGFloat(min(1, tick / 4)), carry = CGFloat(max(0, min(1, (tick - 8) / 2)))
+            Sprites.drawBag(actor, left: x + (42 - 10 * lift - 24 * carry) * scale, top: floorY + (28 - 11 * lift + 5 * carry) * scale, scale: scale, open: tick >= 4 && tick < 8)
+        }
+        if tick >= 10 { drawAwaySign(x, lift: 8 * (1 - min(1, (tick - 10) / 4))) }
+        if tick >= 4 && tick < 8 || tick >= 10 && tick < 14 { Sprites.draw(layers: Sprites.reachLayers(actor, down: true), actor, left: x, top: floorY, scale: scale) }
     }
 
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {

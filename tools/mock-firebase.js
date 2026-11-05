@@ -66,7 +66,7 @@ http.createServer((req, res) => {
     if (req.method === 'GET') return res.end(JSON.stringify(valueAt(keys)));
     if (req.headers['x-test-fail'] === 'true') { res.statusCode = 503; return res.end(JSON.stringify({ error: 'test failure' })); }
     if (keys.join('/') === '__test/fail-next') { failNext = body; return res.end('true'); }
-    if (failNext === req.method) { failNext = ''; res.statusCode = 503; return res.end(JSON.stringify({ error: 'injected failure' })); }
+    if (failNext === req.method || failNext.startsWith(req.method+':')) { const code=Number(failNext.split(':')[1]); failNext = ''; res.statusCode = [401,403,503].includes(code)?code:503; return res.end(JSON.stringify({ error: 'injected failure' })); }
     const value = req.method === 'DELETE' ? null : resolve(JSON.parse(body || 'null'));
     if (req.method === 'PATCH') {
       const changed = Object.entries(value || {}).map(([key, child]) => { const path = [...keys, ...key.split('/')]; setAt(path, child); return path; });

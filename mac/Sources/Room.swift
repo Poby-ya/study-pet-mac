@@ -269,7 +269,9 @@ final class Room: @unchecked Sendable {
     private(set) var name = ""
 
     /// Why the last request failed, or "" while things work. Main thread.
-    private(set) var error = ""
+    private var readErrors: [String:String] = [:]
+    private var writeError = ""
+    var error: String { readErrors.values.first ?? writeError }
 
     /// `token` gives the signed-in user's ID token ("" for the local test server).
     init(invite: Invite, me: String, token: @escaping @Sendable () async throws -> String, followSeat: Bool = true, watchAccess: Bool = false, listenToRoom: Bool = true) {
@@ -361,7 +363,7 @@ final class Room: @unchecked Sendable {
         let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if (200..<300).contains(status) { return text }
-        throw RoomError(status == 401 ? "권한이 없어요. Firebase에 새 규칙(firebase-rules.json)을 게시했는지 확인해 주세요." : "\(status) \(text)")
+        throw RoomError(status == 401 ? "방의 공유 권한을 확인하지 못했어요. 기기 연결과 방 승인을 확인해 주세요." : "\(status) \(text)")
     }
 
     // ---- In the room ---------------------------------------------------------------
@@ -378,13 +380,19 @@ final class Room: @unchecked Sendable {
             do {
                 let token = try await self.token()
                 _ = try await Room.call(method, self.invite.url(path, token), data)
+                if !quiet { self.report("") }
             } catch {
                 if !quiet { self.report(describe(error)) }
             }
         }
     }
 
-    private func report(_ message: String) { DispatchQueue.main.async { self.error = message } }
+    private func report(_ message: String, path: String? = nil) {
+        DispatchQueue.main.async {
+            if let path { self.readErrors[path] = message.isEmpty ? nil : message }
+            else { self.writeError = message }
+        }
+    }
 
     private func listen(_ path: String, _ apply: (String, String) -> Void) async {
         var wait: UInt64 = 2
@@ -400,7 +408,7 @@ final class Room: @unchecked Sendable {
                     throw RoomError(http.statusCode == 401 ? "방에 들어갈 권한이 없어요"
                                     : "\(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))")
                 }
-                report("")
+                report("", path: path)
                 wait = 2
                 var type = ""
                 for try await line in bytes.lines {
@@ -419,7 +427,7 @@ final class Room: @unchecked Sendable {
                 }
             } catch {
                 if Task.isCancelled { return }
-                report(describe(error))
+                report(describe(error), path: path)
             }
             if revoked { continue }
 

@@ -609,6 +609,7 @@ enum Sprites {
     static func compose(_ pose: Pose, _ look: Look, alert: Bool = false, lift: Int = 0, decor: Decor? = nil, hairLag: Int = 0) -> [Layer] {
         let d = decor ?? Decor()
         var layers = pose == .empty ? [Layer(desk, 0, 27)] : composeAt(pose, look, alert: alert, laptop: d.laptop, hairLag: hairLag)
+        if d.packed { layers.removeAll { $0.grid == book || $0.grid == laptopOpen || $0.grid == laptopShut || $0.grid == turningPage || $0.grid == pencilHand } }
         if lift != 0 { layers = layers.map { $0.grid == desk || $0.grid == book || $0.grid == laptopOpen || $0.grid == laptopShut ? $0 : Layer($0.grid, $0.x, $0.y - lift) } }
         guard decor != nil else { return layers }
         // The lamp first, so arms stretching left pass in front of it.
@@ -647,6 +648,7 @@ enum Sprites {
         var seed = 0
         var lit = false
         var away = false
+        var packed = false
     }
 
     // A desk lamp behind the nameplate: base, a stem curving over into a shade tilted toward
@@ -684,7 +686,17 @@ enum Sprites {
     }
 
     // A backpack seen from the side, hanging by its strap on the hook at the desk's right end, in one of six colours.
-    static func drawBag(_ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat) { draw(layers: [Layer(bags[look.bag], 0, 0)], look, left: left, top: top, scale: scale) }
+    static func packingItemGrid(_ laptop: Bool) -> [String] {
+        let source = (laptop ? laptopShut : book).map { Array($0) }
+        return (0..<source[0].count).map { x in String(source.reversed().map { $0[x] }) }
+    }
+    static func drawPackingItem(_ look: Look, laptop: Bool, left: CGFloat, top: CGFloat, scale: CGFloat) {
+        draw(layers: [Layer(packingItemGrid(laptop), 0, 0)], look, left: left, top: top, scale: scale)
+    }
+    static func drawBag(_ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, open: Bool = false) {
+        draw(layers: [Layer(bags[look.bag], 0, 0)], look, left: left, top: top, scale: scale)
+        if open { draw(layers: [Layer(["kkkkk","kkkkk"], 1, 3)], look, left: left, top: top, scale: scale) }
+    }
 
     private static let bags = "ztgprV".map { c in
         [".kk....", "k..k...", "k..kk..", "kkkMMk.", "kMMMMMk", "kMMMMMk", "kMMMkkk", "kMMMkMk", "kMMMkMk", ".kkkkk."].map { $0.replacingOccurrences(of: "M", with: String(c)) }
