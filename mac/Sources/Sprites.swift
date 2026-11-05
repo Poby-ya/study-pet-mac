@@ -70,7 +70,7 @@ struct Look: Equatable {
 /// hair (h H), top (A a C), bottoms (J) and ribbon (R) come from the pet's Look. A pose
 /// stacks layers on a width×height grid, drawn `scale` points a pixel.
 enum Sprites {
-    static let width = 44
+    static let width = 52
     static let height = 38
     static let clockSize = 31
 
@@ -79,7 +79,7 @@ enum Sprites {
     static let dx = 10
 
     enum Pose: CaseIterable {
-        case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty
+        case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, pack
         case stretchHalf, stretchUp, stretchLeft, stretchRight, content, oops, pickUp, found, lookUp
         case teaHold, teaSip, turnPage, cheer, yawn, nodA, nodB, nodC, startle, munchA, munchB
         case think, idea, spinA, spinB, spinC, spinD
@@ -637,7 +637,7 @@ enum Sprites {
         }
         if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{($0.x==25 && $0.y==31)||($0.x==31 && $0.y==32)||($0.x==35 && $0.y==31)||($0.x==4 && $0.y==32)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(25,31),(31,32),(35,31),(4,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop",clock:d.clock),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
         if d.away { return layers }
-        layers.insert(Layer(bags[look.bag], 42, 28), at: at)
+        layers.insert(Layer(bags[look.bag], 50, 28), at: at)
         if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { var sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker);let isNew=(custom?.value("documentSticker") ?? 0)>=4;if isNew {let height=d.laptop ? 4 : 3;sticker=(0..<height).map { y in sticker[Int((Double(y)*Double(sticker.count-1)/Double(height-1)).rounded(.toNearestOrEven))] }};layers.append(Layer(sticker,d.laptop ? 23 : 21,isNew ? (d.laptop ? 20 : 24) : (d.laptop ? 21 : 25))) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
@@ -648,7 +648,7 @@ enum Sprites {
             var y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
             if step > 0 { (x,y) = drinkPosition(kind,step: step,rotated: drink,lipX: pose == .teaLift ? 30 : 25,lipY: look.hair == 6 ? 16 : 17) }
             layers.append(Layer(drink, x, y))
-        } else if d.drink != .none { layers.insert(drinkLayer(d.drink), at: at) }
+        } else if d.drink != .none { layers.append(drinkLayer(d.drink)) }
         return layers
     }
 
@@ -687,7 +687,7 @@ enum Sprites {
         let (ox,oy)=origins[max(0,min(7,lamp))]
         for y in oy...27 {
             let t=Double(y-oy)/Double(27-oy),cx=ox+Int(floor(5*t+0.5)),radius=Int(floor(2+7*t+0.5))
-            NSColor(calibratedRed:1,green:226.0/255,blue:150.0/255,alpha:CGFloat(floor(46-24*t+0.5))/255).setFill()
+            NSColor(calibratedRed:1,green:216.0/255,blue:96.0/255,alpha:CGFloat(floor(104-48*t+0.5))/255).setFill()
             NSRect(x:left+CGFloat(max(0,cx-radius))*scale,y:top+CGFloat(y)*scale,width:CGFloat(min(43,cx+radius)-max(0,cx-radius)+1)*scale,height:scale).fill(using:.sourceOver)
         }
     }
@@ -721,7 +721,14 @@ enum Sprites {
     static func drawPackingItem(_ look: Look, laptop: Bool, left: CGFloat, top: CGFloat, scale: CGFloat, turn: Double=1) {
         draw(layers: [Layer(packingItemGrid(laptop,turn:turn), 0, 0)], look, left: left, top: top, scale: scale)
     }
-    static func drawPackingReach(_ look: Look,left: CGFloat,top: CGFloat,scale: CGFloat,targetX: Int,targetY: Int,leftHand: Bool=false) {draw(layers:[arm(look,(leftHand ? 19 : 31,18),(leftHand ? 19 : 32,21),(targetX,targetY))],look,left:left,top:top,scale:scale)}
+    static func packingArm(_ look: Look,_ targetX: Int,_ targetY: Int,_ leftHand: Bool=false) -> Layer {
+        let sx=leftHand ? 19 : 31,dx=Double(targetX-sx),dy=Double(targetY-18),distance=hypot(dx,dy)
+        let tx=distance>12 ? sx+Int(floor(dx*12/distance+0.5)) : targetX
+        let ty=distance>12 ? 18+Int(floor(dy*12/distance+0.5)) : targetY
+        let ex=Int(floor(Double(sx+tx)/2+0.5)),ey=Int(floor(Double(18+ty)/2+0.5))+2
+        return arm(look,(sx,18),(ex,ey),(tx,ty))
+    }
+    static func drawPackingReach(_ look: Look,left: CGFloat,top: CGFloat,scale: CGFloat,targetX: Int,targetY: Int,leftHand: Bool=false) {draw(layers:[packingArm(look,targetX,targetY,leftHand)],look,left:left,top:top,scale:scale)}
     static func drawBag(_ look: Look, left: CGFloat, top: CGFloat, scale: CGFloat, open: Bool = false) {
         draw(layers: [Layer(bags[look.bag], 0, 0)], look, left: left, top: top, scale: scale)
         if open { draw(layers: [Layer(["kkkkk","kkkkk"], 1, 3)], look, left: left, top: top, scale: scale) }
@@ -913,7 +920,7 @@ enum Sprites {
             return shifted
         }
 
-        let standing = pose == .stand || pose == .waveA || pose == .waveB
+        let standing = pose == .stand || pose == .waveA || pose == .waveB || pose == .pack
         var eyes = Eyes.open
         var mouth = Mouth.small
         var headY = standing ? 0 : 4
@@ -927,6 +934,7 @@ enum Sprites {
         var mark: [String]? = alert ? exclaim : nil
 
         switch pose {
+        case .pack: leftArm = true; rightArm = true; eyes = .down
         case .restHands, .foldArms:
             if pose == .foldArms { headY = 7; eyes = .closed }
             leftArm = true; rightArm = true; leftHand = Layer(hand, 10, 25); rightHand = Layer(hand, 14, 25)

@@ -99,10 +99,10 @@ final class PetWindow: NSPanel {
     var canvasSize: NSSize {
         let count = 1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
         // 12 on the left, 20 on the right where the last bag hangs past its desk.
-        let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * deskGap + 32
+        let width = CGFloat(count) * deskWidth + CGFloat(count - 1) * deskGap + 32 * scale
         return NSSize(width: max(width, 330 * max(boardFactor,textFactor)), height: floorY + CGFloat(Sprites.height) * scale + 10)
     }
-    private var deskGap: CGFloat { max(22,190 * max(1,textFactor) - deskWidth) }
+    private var deskGap: CGFloat { 6 * scale }
     private var deskInset: CGFloat { max(12,(canvasSize.width - CGFloat(1 + (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskWidth - CGFloat((hasLeft ? 1 : 0) + (hasRight ? 1 : 0)) * deskGap)/2) }
     private var myX: CGFloat { hasLeft ? deskInset + deskWidth + deskGap : deskInset }
     private var seatX: CGFloat { myX - deskWidth - deskGap }
@@ -446,7 +446,7 @@ final class PetWindow: NSPanel {
         let visiting = visitTick >= 0
         let outgoing = outgoingTick >= 0
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
-        let arrived = myX + (visitSide == 1 ? 19 : -19) * scale
+        let arrived = myX + (visitSide == 1 ? 25 : -25) * scale
         let visitorX = start + (arrived - start) * CGFloat(Self.travelProgress(visitTick))
         let walking = visitTick < 4 || visitTick > 18
         let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부")
@@ -454,7 +454,7 @@ final class PetWindow: NSPanel {
         let tap = tapping && frameCount % 2 == 0
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering ? .cheer : tapping ? .reach : .wave, x: visitorX,
                                  hop: walking ? CGFloat(abs(sin(visitTick * .pi))) * scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
-        let destination = outgoingSide < 0 ? seatX + deskWidth / 2 : outgoingSide > 0 ? rightX - deskWidth / 2 : canvasSize.width - deskWidth / 2
+        let destination = outgoingSide < 0 ? seatX + 25 * scale : outgoingSide > 0 ? rightX - 25 * scale : canvasSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Self.travelProgress(outgoingTick))
         // Wave with the far hand: the near one would be behind the friend I'm visiting.
         if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") ? .wave : .cheer, x: outX,
@@ -476,23 +476,25 @@ final class PetWindow: NSPanel {
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Self.departurePose(leavingTicks[i]) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
-            let lit = night && seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
-            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
+            let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
+            if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale, lift: leavingTicks[i]>=0 ? -Int((4*(1-Departure.ease(leavingTicks[i]/2))).rounded()) : 0,
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), hairLag: hairLag(i, pose))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
             if lit { lamps.append((x,seat.look.customization?.value("lamp") ?? 0)) }
         }
-        let myLamp = night && mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
+        let myLamp = mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
         if myLamp { lamps.append((myX,look.customization?.value("lamp") ?? 0)) }
-        Sprites.draw(outgoing ? .empty : myPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
+        if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
+        Sprites.draw(outgoing ? .empty : myPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: mood == .leaving ? -Int((4*(1-Departure.ease(moodSeconds*2))).rounded()) : tap ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), hairLag: hairLag(-1, myPose))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
-            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + 44 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
             Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
@@ -539,13 +541,13 @@ final class PetWindow: NSPanel {
         guard tick>=18 && tick<26 else {return}
         let x=origin-(origin+deskWidth)*CGFloat(Departure.walk(tick))
         drawVisitor(actor,pose:.walk,x:x,hop:0,mirror:false)
-        Sprites.drawBag(actor,left:x+8*scale,top:floorY+22*scale,scale:scale)
-        Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:9,targetY:22,leftHand:true)
+        Sprites.drawBag(actor,left:x+10*scale,top:floorY+22*scale,scale:scale)
+        Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:13,targetY:23,leftHand:true)
     }
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
-        if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=tick>=4 && tick<10 ? Departure.item(tick) : bag;Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int((target.0+1).rounded()),targetY:Int((target.1+1).rounded()),leftHand:tick>=10)}}
-        if tick>=12 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)));if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:29,targetY:26)}}
+        if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<25)}}
+        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:40,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18
@@ -553,7 +555,7 @@ final class PetWindow: NSPanel {
         let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
         NSGraphicsContext.current?.shouldAntialias = false
         let grid = Array(Sprites.awaySign.suffix(height))
-        let left = Int(((1 + min(20, 15 * nameFactor) + CGFloat(Sprites.width - 22)) / 2).rounded())
+        let left = Sprites.width - 22
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
                 (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : c == "u" ? Sprites.color(0xFFF9E7) : Sprites.color(0xFFF1B8)).setFill()
@@ -598,8 +600,8 @@ final class PetWindow: NSPanel {
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool, leftHand: Bool = false) {
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height).clip()
-        if mirror { let t = NSAffineTransform(); t.translateX(by: x + deskWidth, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: pose == .walk ? Int(x / (2 * scale)) % 2 == 0 : frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
+        if mirror { let t = NSAffineTransform(); t.translateX(by: x + 44 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: pose == .walk ? Int(animationSeconds * 6) % 2 == 0 : frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 

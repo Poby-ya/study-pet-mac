@@ -43,6 +43,13 @@ enum SelfTest {
         save(image,out,"customization.png")
         for document in [false,true] {for desk in [false,true] {let c=legacy.copy();c.slots["documentSticker"]!.enabled=document;c.slots["deskStickers"]!.enabled=desk;let restored=Customization.parse(c.json,basic);check(restored.on("documentSticker")==document && restored.on("deskStickers")==desk,"customization: independent sticker flags round-trip")}}
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
+        check(Sprites.compose(.empty,basic).first!.grid[0].count==Sprites.width,"desk: visible art matches layout width")
+        let chair=legacy.copy();chair.slots["chair"]!.enabled=true;chair.slots["chair"]!.value=2
+        check(chair.layers("chair").allSatisfy{$0.y+$0.grid.count<=27},"chair: no feet below the desk")
+        chair.slots["chair"]!.enabled=false
+        check(Customization.parse(chair.json,basic).layers("chair").isEmpty,"chair: none survives save and reload")
+        check(Departure.bag(18).0==10 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
+        for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(Departure.pose(t) == .pack && abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
         do {try JSONSerialization.data(withJSONObject:fixtures).write(to:out.appendingPathComponent("customization-fixtures.json"))}catch{check(false,"customization fixture export failed")}
     }
 
