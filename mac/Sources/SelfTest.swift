@@ -207,11 +207,26 @@ enum SelfTest {
         for direction in [-1, 1, 0] {
             for tick in [2, 8, 21] {
                 pet.preview(.studying, frame: tick, outgoingTick: Double(tick), outgoingDirection: direction)
-                save(render(petSize) { pet.paint() }, out, "outgoing-\(direction)-\(tick).png")
+                save(render(pet.canvasSize) { pet.paint() }, out, "outgoing-\(direction)-\(tick).png")
             }
         }
         pet.preview(.leaving, frame: 4)
-        save(render(petSize) { pet.paint() }, out, "farewell.png")
+        save(render(pet.canvasSize) { pet.paint() }, out, "farewell.png")
+        for laptop in [false, true] {
+            pet.laptop = laptop
+            for phase in [0, 4, 6, 7, 8, 10, 12, 16, 20, 24, 26] {
+                pet.preview(.leaving, frame: phase)
+                let kind = laptop ? "laptop" : "book"
+                save(render(pet.canvasSize) { pet.paint() }, out, "departure-\(kind)-\(phase).png")
+            }
+            let actor = Look.parse("b120310", girl: false)
+            let onDesk = Sprites.compose(.stand, actor, decor: Sprites.Decor(laptop: laptop, away: true))
+            let packed = Sprites.compose(.stand, actor, decor: Sprites.Decor(laptop: laptop, away: true, packed: true))
+            let desk = Sprites.compose(.empty, actor)[0].grid
+            check(onDesk.count > packed.count && packed.contains { $0.grid == desk }, "packing: work item leaves the desk while the desk stays visible")
+            let item = Sprites.packingItemGrid(laptop)
+            check(item.count == 14 && item.allSatisfy { $0.count == 3 }, "packing: book and closed laptop fit upright into the bag")
+        }
         pet.close()
     }
 
@@ -764,7 +779,7 @@ enum SelfTest {
         var shots: [NSBitmapImageRep] = []
         func shot(_ mood: PetWindow.Mood, frame: Int = 0, visitTick: Int = -1, friend: Look = minji, friendText: String = "") {
             pet.preview(mood, frame: frame, visitTick: Double(visitTick), friend: friend, friendText: friendText)
-            shots.append(render(petSize) { pet.paint() })
+            shots.append(render(pet.canvasSize) { pet.paint() })
         }
 
         // With the classroom: a full board, then a short one with news above my bubble.
@@ -790,13 +805,14 @@ enum SelfTest {
         shot(.away, frame: 2, visitTick: 2, friend: junhyuk, friendText: "준혁 : 같이 공부하자 !")
         shot(.away, frame: 8, visitTick: 8, friend: junhyuk, friendText: "준혁 : 같이 공부하자 !")
 
-        let w = petSize.width, h = petSize.height
+        let w = CGFloat(shots.map { $0.pixelsWide }.max()!), h = CGFloat(shots.map { $0.pixelsHigh }.max()!)
         return render(NSSize(width: 2 * w, height: CGFloat((shots.count + 1) / 2) * h)) {
             Sprites.color(0xC9CFC4).setFill()
             NSRect(x: 0, y: 0, width: 2 * w, height: CGFloat((shots.count + 1) / 2) * h).fill()
             for (i, image) in shots.enumerated() {
                 let cell = NSRect(x: CGFloat(i % 2) * w, y: CGFloat(i / 2) * h, width: w, height: h)
-                image.draw(in: cell, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                let rect = NSRect(x: cell.midX - CGFloat(image.pixelsWide) / 2, y: cell.maxY - CGFloat(image.pixelsHigh), width: CGFloat(image.pixelsWide), height: CGFloat(image.pixelsHigh))
+                image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 NSColor.gray.setStroke()
                 NSBezierPath(rect: cell.insetBy(dx: 0.5, dy: 0.5)).stroke()
             }
