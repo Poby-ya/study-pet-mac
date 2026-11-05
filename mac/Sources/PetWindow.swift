@@ -494,7 +494,7 @@ final class PetWindow: NSPanel {
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
-            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + 44 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+            if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
             Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
@@ -545,8 +545,8 @@ final class PetWindow: NSPanel {
         Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:13,targetY:23,leftHand:true)
     }
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
-        if tick>=4 && tick<10 {let p=Departure.item(tick);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
-        if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<25)}}
+        if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
+        if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}}
         if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:40,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
@@ -563,7 +563,7 @@ final class PetWindow: NSPanel {
             }
         }
         NSGraphicsContext.current?.shouldAntialias = antialias
-        drawLine("자리 비움", font: .boldSystemFont(ofSize: 3.9 * scale), color: PetWindow.ink,
+        drawLine("자리 비움", font: .systemFont(ofSize: 3.4 * scale, weight: .regular), color: PetWindow.ink,
                  in: NSRect(x: x + CGFloat(left + 1) * scale, y: top + scale, width: 19 * scale, height: 8 * scale))
     }
 
@@ -600,7 +600,7 @@ final class PetWindow: NSPanel {
     private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool, leftHand: Bool = false) {
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height).clip()
-        if mirror { let t = NSAffineTransform(); t.translateX(by: x + 44 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+        if mirror { let t = NSAffineTransform(); t.translateX(by: x + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
         Sprites.draw(layers: Sprites.visitor(actor, pose, alt: pose == .walk ? Int(animationSeconds * 6) % 2 == 0 : frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }

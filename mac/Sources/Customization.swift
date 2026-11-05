@@ -107,13 +107,17 @@ final class Customization: Equatable {
             guard let layer=layers(key).first else {continue}
             var grid=layer.grid,x=rect.minX,y=rect.minY
             if key == "window" || key == "lights" {
-                let hour=Calendar.current.component(.hour,from:date)
-                if key == "lights" && hour>=6 && hour<18 {grid=grid.map{$0.replacingOccurrences(of:"Y",with:"b")}}
                 grid=Self.resize(grid,Int(rect.width/unit)+14,key == "window" ? Int(rect.height/unit)+6 : 10)
                 x-=7*unit;y-=3*unit
             }
             if key == "wall" {x=rect.maxX+8*unit;y+=24*unit}
             if key == "hangingPlant" {x=rect.maxX-4*unit;y+=2*unit}
+            if key == "lights" {for row in grid.indices {let cells=Array(grid[row]);for col in cells.indices where cells[col] == "Y" && (col==0 || cells[col-1] != "Y") && (row==0 || Array(grid[row-1])[col] != "Y") {
+                NSColor(calibratedRed:1,green:214.0/255,blue:100.0/255,alpha:26.0/255).setFill()
+                NSRect(x:x+CGFloat(col-3)*unit,y:y+CGFloat(row-3)*unit,width:9*unit,height:9*unit).fill(using:.sourceOver)
+                NSColor(calibratedRed:1,green:226.0/255,blue:142.0/255,alpha:62.0/255).setFill()
+                NSRect(x:x+CGFloat(col-1)*unit,y:y+CGFloat(row-1)*unit,width:5*unit,height:5*unit).fill(using:.sourceOver)
+            }}}
             Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:unit)
         }
     }

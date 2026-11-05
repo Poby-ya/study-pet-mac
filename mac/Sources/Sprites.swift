@@ -76,7 +76,7 @@ enum Sprites {
 
     /// The person sits a little right of the desk's middle, leaving the left end of the
     /// desk top free for the nameplate (cols 1..16).
-    static let dx = 10
+    static let dx = 13
 
     enum Pose: CaseIterable {
         case writeA, writeB, blink, dozeA, dozeB, stand, waveA, waveB, empty, pack
@@ -147,6 +147,7 @@ enum Sprites {
         "5": color(0x9BD8A6), // sunlit leaves
         "6": color(0x65ABC4), "7": color(0x91AFC3), "8": color(0x73A78E), "9": color(0xBBB5CF), "0": color(0xF4D6A4),
         "S": color(0xC4E4F3), "T": color(0xCB8270), "U": color(0x966468), "W": color(0xFAD98B), "L": color(0xB5CE93), "N": color(0xEBCDB1),
+        "I": color(0x355D76), "K": color(0x3C6458), "j": color(0x66788A), "M": color(0x8FA5AE), "Q": color(0x788893), "E": color(0x8CA7B7),
         "X": color(0x9AA0AA), // laptop hinge and base
     ]
 
@@ -164,7 +165,7 @@ enum Sprites {
     ].enumerated().map { Customization.artwork("Drink"+String($0.offset),$0.element) }
 
     /// Standing on the desk top, in desk coordinates (not shifted by dx).
-    private static func drinkLayer(_ drink: Drink) -> Layer { Layer(drinkArt[drink.rawValue], 36, 27 - drinkArt[drink.rawValue].count) }
+    private static func drinkLayer(_ drink: Drink) -> Layer { Layer(drinkArt[drink.rawValue], width-1-drinkArt[drink.rawValue][0].count, 27 - drinkArt[drink.rawValue].count) }
 
     // (base, shine): dark brown, black, light brown, auburn, honey
     private static let hairColorSet = [(0x5A3E36, 0x8A6352), (0x2E2A33, 0x555060), (0x8B5E3C, 0xB8865C), (0x8E452F, 0xBC6C4E), (0xD09C52, 0xEEC884)]
@@ -625,28 +626,28 @@ enum Sprites {
         // The lamp first, so arms stretching left pass in front of it.
         let custom=look.customization
         if custom?.on("lamp") ?? true {if let c=custom,c.value("lamp")>0 {layers.insert(contentsOf:c.layers("lamp",lit:d.lit),at:0)}else{layers.insert(Layer(d.lit ? lampOn : lampOff,1,11),at:0)}}
-        if let c=custom {layers.insert(contentsOf:c.layers("chair"),at:0)}
+        if let c=custom {layers.insert(contentsOf:c.layers("chair",3),at:0)}
         // Just after the desk: on and in front of it, behind hands and whatever they hold.
         let at = (layers.firstIndex { $0.grid == desk } ?? 0) + 1
         let big = d.seed % bigStickers.count
         if custom?.on("deskStickers") ?? (look.additions & 2 != 0) {
             layers.insert(contentsOf: [
-                Layer(bigStickers[big], 25, 31), Layer(smallStickers[d.seed % 2], 31, 32),
-                Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 35, 31), Layer(smallStickers[1 - d.seed % 2], 4, 32),
+                Layer(bigStickers[big], 5, 31), Layer(smallStickers[d.seed % 2], 19, 32),
+                Layer(bigStickers[(big + 1 + d.seed / bigStickers.count % 4) % bigStickers.count], 30, 31), Layer(smallStickers[1 - d.seed % 2], 44, 32),
             ], at: at)
         }
-        if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{($0.x==25 && $0.y==31)||($0.x==31 && $0.y==32)||($0.x==35 && $0.y==31)||($0.x==4 && $0.y==32)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(25,31),(31,32),(35,31),(4,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop",clock:d.clock),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
+        if let c=custom {if c.on("deskStickers") && c.value("deskStickers")>0 {layers.removeAll{($0.x==5 && $0.y==31)||($0.x==19 && $0.y==32)||($0.x==30 && $0.y==31)||($0.x==44 && $0.y==32)};let designs=Customization.categories.first{$0.key == "deskStickers"}!.art,points=[(5,31),(19,32),(30,31),(44,32)];for i in 0..<4 {let art=designs[(c.value("deskStickers")-1+i*3)%designs.count];layers.insert(Layer(art["grid"] as! [String],points[i].0,points[i].1),at:at)}};layers.insert(contentsOf:c.layers("prop",clock:d.clock),at:at);if let replacement=c.layers("desk").first,let index=layers.firstIndex(where:{$0.grid == desk}){layers[index]=replacement}}
         if d.away { return layers }
         layers.insert(Layer(bags[look.bag], 50, 28), at: at)
-        if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { var sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker);let isNew=(custom?.value("documentSticker") ?? 0)>=4;if isNew {let height=d.laptop ? 4 : 3;sticker=(0..<height).map { y in sticker[Int((Double(y)*Double(sticker.count-1)/Double(height-1)).rounded(.toNearestOrEven))] }};layers.append(Layer(sticker,d.laptop ? 23 : 21,isNew ? (d.laptop ? 20 : 24) : (d.laptop ? 21 : 25))) }
+        if !d.packed && (custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { var sticker=custom?.layers("documentSticker").first?.grid ?? personalSticker(custom?.value("documentSticker") ?? look.sticker);let isNew=(custom?.value("documentSticker") ?? 0)>=4;if isNew {let height=d.laptop ? 4 : 3;sticker=(0..<height).map { y in sticker[Int((Double(y)*Double(sticker.count-1)/Double(height-1)).rounded(.toNearestOrEven))] }};layers.append(Layer(sticker,d.laptop ? 26 : 24,isNew ? (d.laptop ? 20 : 24) : (d.laptop ? 21 : 25))) }
         if [.teaReach, .teaHold, .teaLift, .teaSip].contains(pose) {
             layers.removeAll { $0.grid == teacup }
             let kind: Drink = d.drink == .none ? .mug : d.drink
             let step = pose == .teaSip ? 2 : pose == .teaLift ? 1 : 0
             let drink = tiltDrink(kind, step: step)
-            var x = pose == .teaReach ? 35 : pose == .teaHold ? 30 : pose == .teaLift ? 28 : 24
+            var x = pose == .teaReach ? width-1-drink[0].count : pose == .teaHold ? 33 : pose == .teaLift ? 31 : 27
             var y = (pose == .teaReach ? 27 : pose == .teaHold ? 23 : pose == .teaLift ? 21 : 19) - drink.count
-            if step > 0 { (x,y) = drinkPosition(kind,step: step,rotated: drink,lipX: pose == .teaLift ? 30 : 25,lipY: look.hair == 6 ? 16 : 17) }
+            if step > 0 { (x,y) = drinkPosition(kind,step: step,rotated: drink,lipX: pose == .teaLift ? 33 : 28,lipY: look.hair == 6 ? 16 : 17) }
             layers.append(Layer(drink, x, y))
         } else if d.drink != .none { layers.append(drinkLayer(d.drink)) }
         return layers
@@ -722,7 +723,7 @@ enum Sprites {
         draw(layers: [Layer(packingItemGrid(laptop,turn:turn), 0, 0)], look, left: left, top: top, scale: scale)
     }
     static func packingArm(_ look: Look,_ targetX: Int,_ targetY: Int,_ leftHand: Bool=false) -> Layer {
-        let sx=leftHand ? 19 : 31,dx=Double(targetX-sx),dy=Double(targetY-18),distance=hypot(dx,dy)
+        let sx=leftHand ? 22 : 34,dx=Double(targetX-sx),dy=Double(targetY-18),distance=hypot(dx,dy)
         let tx=distance>12 ? sx+Int(floor(dx*12/distance+0.5)) : targetX
         let ty=distance>12 ? 18+Int(floor(dy*12/distance+0.5)) : targetY
         let ex=Int(floor(Double(sx+tx)/2+0.5)),ey=Int(floor(Double(18+ty)/2+0.5))+2
@@ -779,7 +780,7 @@ enum Sprites {
 
         func box(_ x0: Int,_ y0: Int,_ width: Int,_ height: Int,_ c: Character) { guard width > 0 && height > 0 else { return }; for y in y0..<(y0+height) { for x in x0..<(x0+width) { put(x,y,c) } } }
         func art(_ image: [String],_ x0: Int,_ y0: Int) { for (y,row) in image.enumerated() { for (x,c) in row.enumerated() where c != "." { put(x0+x,y0+y,c) } } }
-        let grass: Character = season == 3 ? "b" : season == 2 ? "y" : "L"
+        let grass: Character = season == 3 ? "b" : season == 2 ? "N" : "L"
         let leaf: Character = season == 0 ? "F" : season == 1 ? "g" : season == 2 ? "T" : "8"
         func tree(_ cx: Int,_ bottom: Int,_ r: Int) {
             box(cx,bottom-r-2,1,r+3,"o")
@@ -838,16 +839,16 @@ enum Sprites {
             for y in (h/2)..<(h-2) { let center = w/2 + Int((sin(Double(y)*0.24)*3).rounded(.toNearestOrEven)); let width = 1+(y-h/2)/5; box(center-width,y,width*2+1,1,season == 3 ? "i" : "0") }
             let fence = h*2/3; box(1,fence,w-2,1,"b"); for x in stride(from:2,to:w-1,by:4) { box(x,fence-1,1,4,"w") }
             for i in 0..<(w*h/55) { let x = 2+(i*13+7)%(w-4); let y = h/2+2+(i*7+3)%max(1,h/2-5); if abs(x-w/2)>4 { put(x,y,"8"); put(x,y-1,season == 0 ? "r" : season == 1 ? "p" : season == 2 ? "t" : "w"); put(x+1,y-1,season == 0 ? "F" : season == 1 ? "b" : season == 2 ? "y" : "i") } }
-            tree(w/5,h/2+3,max(3,min(w/8,h/5))); tree(w-6,h/2+4,3)
+            tree(w/5,h/2+3,max(3,h/5)); tree(w-max(6,h/7),h/2+4,max(3,h/7))
             art(["kkk","D.D","DDD"],w-8,h-7)
         } else if scene == 2 {
             box(1,h*2/3,w-2,h/3,"0"); box(1,h-5,w-2,1,"N")
-            for x0 in stride(from:2,to:w-5,by:12) {
+            let houseWidth=max(11,h/3);for x0 in stride(from:2,to:w-5,by:houseWidth+4) {
                 let roof = h/2-2+(x0%3)*2; let height = h-6-roof
-                box(x0,roof,9,height,"N"); box(x0,roof,1,height,"T")
-                for y in 0..<4 { box(x0+4-y,roof-4+y,1+y*2,1,season == 3 ? "b" : y%2 == 0 ? "T" : "U") }
+                box(x0,roof,houseWidth,height,"N"); box(x0,roof,1,height,"T")
+                for y in 0..<(houseWidth/2) {box(x0+houseWidth/2-y,roof-houseWidth/2+y,1+y*2,1,season == 3 ? "b" : y%2 == 0 ? "T" : "U")}
                 box(x0+6,roof-5,1,3,"U")
-                for x in stride(from:x0+2,to:x0+8,by:4) { for y in stride(from:roof+2,to:h-8,by:5) { box(x,y,2,3,sky == 0 ? "W" : "i"); box(x,y+1,2,1,sky == 0 ? "p" : "7") } }
+                for x in stride(from:x0+2,to:x0+houseWidth-1,by:5) { for y in stride(from:roof+2,to:h-8,by:5) { box(x,y,2,3,sky == 0 ? "W" : "i"); box(x,y+1,2,1,sky == 0 ? "p" : "7") } }
                 box(x0+4,h-9,2,4,"U"); box(x0+4,h-9,1,1,"W"); art(["ggg","FrF","DDD"],x0+1,h-7)
             }
             tree(w-5,h-4,3); for x in stride(from:2,to:w-2,by:5) { put(x,h-3,season == 3 ? "w" : season == 2 ? "T" : "N") }
@@ -859,9 +860,9 @@ enum Sprites {
                 for y in (h*2/3)..<(h-2) { put(x,y,sky == 0 ? "1" : season == 3 ? "i" : "6") }
             }
             for y in stride(from:h*2/3+1,to:h-3,by:3) { let length = 2+y%5; let x = w/2-length/2+y%3; box(x,y,length,1,sky == 0 ? "7" : "i") }
-            box(1,h-4,7,2,grass); tree(4,h-4,3); art(["...o...","...o...","..ww...",".www...","kkkkkkk",".DDDDD."],w*2/3,h-10)
+            box(1,h-4,7,2,grass); tree(4,h-4,3); art(Customization.resize(["...o...","...o...","..ww...",".www...","kkkkkkk",".DDDDD."],max(7,h/4),max(6,h/6)),w*2/3,h-max(6,h/6)-4)
         } else if scene == 4 {
-            box(1,h/2,w-2,h/2,grass); tree(5,h/2+4,4); tree(w-6,h/2+2,3)
+            box(1,h/2,w-2,h/2,grass); tree(max(5,h/6),h/2+4,max(4,h/7)); tree(w-max(6,h/6),h/2+2,max(3,h/8))
             for y in 0..<(h/3) { for x in 1..<(w-1) { let dx=x-w/2; let dy=y-h/6; if dx*dx*4+dy*dy*16 < w*w/2 { put(x,h/2+4+y,season == 3 ? "i" : "6") } } }
             let bridge=h*2/3; for x in (w/3)..<(w*2/3) { let y=bridge-min(2,min(x-w/3,w*2/3-1-x)); box(x,y,1,2,"0"); put(x,y+2,"D"); if x%3 == 0 { box(x,y-2,1,2,"b") } }
             art(["..p..",".pwp.","ggggg"],w-12,h-6); art([".w.","pww",".ww"],w/3,h-8)
@@ -870,13 +871,19 @@ enum Sprites {
             for y in (h/2)..<(h-2) { box(1,y,w-2,1,sky == 0 ? "1" : "6") }
             for y in stride(from:h/2+2,to:h-3,by:4) { for x in stride(from:3+y%5,to:w-4,by:9) { box(x,y,4,1,sky == 0 ? "7" : "i") } }
             for x in 1..<(w/3+3) { let shore=h-4-(w/3-x)/3; for y in shore..<(h-2) { put(x,y,season == 3 ? "b" : "0") } }
-            let ly=h-17
-            art(["...t...","..ttt..",".UUUUU.",".kWWWk.",".kkkkk.","..bwb..","..bwb..","..ttt..","..ttt..","..bwb..","..bwb..","..ttt..",".DDDDD."],3,ly)
+            let tower=[".....UUUUU.....","....UUUUUUU....","...UUUUUUUUU...","..UUUUUUUUUUU..","..jjWWWWWWWjj..","..jWWWWWWWWWj..","..jjWWWWWWWjj..","..jjjjjjjjjjj..","...bwwwwwbbb...","...bwwwwwbbb...","...bwwwwwbbb...","...TTTTTTUUU...","...TTTTTTUUU...","...TTTTTTUUU...","...bwwwwwbbb...","...bwwwwwbbb...","...bwwwwwbbb...","...TTTTTTUUU...","...TTTTTTUUU...","...TTTTTTUUU...","..bwwwwwwwbbb..","..bwwwjjwwbbb..","..bwwwjjwwbbb..","..bwwwjjwwbbb..",".DDDDDDDDDDDDD."]
+            let towerHeight=max(14,h*3/4),towerWidth=max(8,towerHeight*15/25),lx=max(2,w/8),ly=h-4-towerHeight
+            art(Customization.resize(tower,towerWidth,towerHeight),lx,ly)
             art(["...9...","..999..",".99999.","9999999"],w-12,h-7); art(["w...w",".w.w.","..w.."],w/2,h/3)
-            if sky == 0 { box(10,ly+3,4,1,"W"); box(14,ly+2,4,2,"Y") }
+            if sky == 0 {for beam in 0..<min(w/3,24) {box(lx+towerWidth-2+beam,ly+towerHeight/5-beam/8,1,1+beam/5,"W")}}
         }
         if scene != 0 && season == 3 { for i in 0..<(w*h/60) { put(2+(i*11+5)%(w-4),1+(i*7+3)%(h-4),"w") } }
-        // Mullions every 16 pixels or so, a transom, then the frame and the sill.
+        if sky == 2 {for y in 1..<(h-2) {for x in 1..<(w-1) where grid[y][x] == "9" {grid[y][x]="M"}}}
+        if sky == 0 {for y in 1..<(h-2) {for x in 1..<(w-1) {
+            switch grid[y][x] {case "6":grid[y][x]="I";case "5","g","G","8","L":grid[y][x]="K";case "7":grid[y][x]="Q";case "9":grid[y][x]="j";case "N","0":grid[y][x]="M";case "F","r":grid[y][x]="f";case "T":grid[y][x]="U";case "w","b":grid[y][x]="i";default:break}
+        }}}
+        if sky == 1 || sky == 3 {for y in 1..<(h-2) {for x in 1..<(w-1) {switch grid[y][x] {case "6":grid[y][x]="E";case "7":grid[y][x]="M";case "9":grid[y][x]="Q";case "5":grid[y][x]="L";case "g","L":grid[y][x]="8";case "0":grid[y][x]="N";default:break}}}}
+        // Mullions and sill.
         let panes = max(1, Int((Double(w - 2) / 34).rounded(.toNearestOrEven)))
         for p in stride(from: 1, to: panes, by: 1) { for y in 1..<(h - 2) { grid[y][(w - 1) * p / panes] = "d" } }
         for x in 1..<(w - 1) { grid[h / 3][x] = "d";grid[h/3+1][x]="l";grid[h-3][x]="l" }
@@ -947,7 +954,7 @@ enum Sprites {
         case .lookRight: eyes = .right; sway = 1
         case .bend: headY = 6; rightHand = Layer(hand, 24, 26); eyes = .down
         case .recover: headY = 5; rightHand = Layer(pencilHand, 22, 21)
-        case .teaReach: rightHand = Layer(hand, 24, 24)
+        case .teaReach: rightArm = true; rightHand = nil; behind.append(arm(look,(21,22),(26,23),(31,24)))
         case .teaLift: rightHand = nil; front.append(Layer(teacup, 18, 19)); front.append(Layer(hand, 19, 23))
         case .cookieSmall:
             leftHand = nil; leftArm = true; front.append(Layer([".kk.", "klDk", ".kk."], 10, 16))
@@ -1144,7 +1151,7 @@ enum Sprites {
         return (lipX-Int(x.rounded(.toNearestOrEven)),lipY-Int(y.rounded(.toNearestOrEven)))
     }
     static func flame(_ alt: Bool) -> [String] { alt ? ["..t.", ".tt.", "tpty", "tyyt", ".pp."] : [".t..", ".tt.", "ytpt", "tyyt", ".pp."] }
-    static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 20, 12), Layer(flame(!alt), 28, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
+    static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) { draw(layers: [Layer(flame(alt), 23, 12), Layer(flame(!alt), 31, 12)], Look(girl: false, 0, 0, 0, 0, 0, 0), left: left, top: top, scale: scale) }
     static func clockGrid(_ hour: Int, _ minute: Int) -> [String] {
         let center = 15
         var grid = Array(repeating: Array(repeating: Character("."), count: clockSize), count: clockSize)

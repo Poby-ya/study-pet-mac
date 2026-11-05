@@ -36,7 +36,7 @@ final class AppearanceWindow: NSWindow, NSWindowDelegate {
         func check(_ title: String,_ key: String,_ on: Bool,_ action: Selector) {let b=NSButton(checkboxWithTitle:title,target:self,action:action);b.identifier=NSUserInterfaceItemIdentifier(key);b.state=on ? .on : .off;b.frame=NSRect(x:20,y:y,width:470,height:25);body.addSubview(b);y+=27}
         if group == "character" {toggle("캐릭터",13,["남자","여자"]);toggle("쓰는 손",10,["오른손","왼손"]);toggle("피부색",7,["","","",""])}
         label("추가할 것을 선택하세요.")
-        for s in Customization.categories where s.group == group && s.optional {check(s.key == "chair" ? "의자 없음" : s.title,s.key,s.key == "chair" ? !custom.on(s.key) : custom.on(s.key),#selector(addChanged(_:)))}
+        for s in Customization.categories where s.group == group && s.optional {check(s.title,s.key,custom.on(s.key),#selector(addChanged(_:)))}
         if group == "character" {check("리본","ribbon",ribbon != 0,#selector(addChanged(_:)))}
         label("고정할 것을 선택하세요.")
         for s in Customization.categories where s.group == group && custom.on(s.key) {check(s.title,s.key,custom.slots[s.key]!.locked,#selector(lockChanged(_:)))}
@@ -45,7 +45,7 @@ final class AppearanceWindow: NSWindow, NSWindowDelegate {
         body.frame=NSRect(x:0,y:0,width:508,height:y+10);changed()
     }
     @objc private func toggleChanged(_ sender: NSSegmentedControl) {values[sender.tag]=sender.tag == 7 ? [1,0,2,3][sender.selectedSegment] : sender.selectedSegment;if values[13]==0 && values[4]>=4 {values[4]=0};changed()}
-    @objc private func addChanged(_ sender: NSButton) {let key=sender.identifier!.rawValue;if key == "ribbon" {ribbon=sender.state == .on ? 1 : 0}else{custom.slots[key]!.enabled=key == "chair" ? sender.state != .on : sender.state == .on;let s=Customization.categories.first{$0.key == key}!;if custom.on(key) && custom.value(key)==0 && s.legacy==0 && key != "deskStickers" {custom.slots[key]!.value=1}};rebuild()}
+    @objc private func addChanged(_ sender: NSButton) {let key=sender.identifier!.rawValue;if key == "ribbon" {ribbon=sender.state == .on ? 1 : 0}else{custom.slots[key]!.enabled=sender.state == .on;let s=Customization.categories.first{$0.key == key}!;if custom.on(key) && custom.value(key)==0 && s.legacy==0 && key != "deskStickers" {custom.slots[key]!.value=1}};rebuild()}
     @objc private func lockChanged(_ sender: NSButton) {custom.slots[sender.identifier!.rawValue]!.locked=sender.state == .on}
     @objc private func baseLockChanged(_ sender: NSButton) {baseLocks[Int(sender.identifier!.rawValue)!]=sender.state == .on}
     private func read() -> Look {let extra="0"+String(values[7])+"0"+String(values[9])+String(values[10])+"0"+String(values[12])+String(ribbon);return custom.legacyLook(Look(girl:values[13]==1,values[0],values[1],values[2],values[3],values[4],values[5]).withExtras(extra))}
