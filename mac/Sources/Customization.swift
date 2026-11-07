@@ -3,13 +3,16 @@ import CoreFoundation
 final class Customization: Equatable {
     struct Choice { var enabled: Bool; var value: Int; var locked = false }
     struct Category { var key: String; var title: String; var group: String; var optional: Bool; var legacy: Int; var art: [[String:Any]]; var count: Int { legacy + art.count + 1 } }
-    private static let catalog: [String:Any] = {
+    /// Shared/customization.json: all the art, colours, poses and routines.
+    static let root: [String:Any] = {
         guard let url=Bundle.main.url(forResource:"customization",withExtension:"json"),let data=try? Data(contentsOf:url),let obj=try? JSONSerialization.jsonObject(with:data) as? [String:Any] ,obj["slots"] is [[String:Any]] else { fatalError("Missing customization catalog") }
         return obj
     }()
-    static func artwork(_ key: String,_ fallback: [String]) -> [String] { (catalog["baseArt"] as? [String:[String]])?[key] ?? fallback }
+    private static let baseArt = root["baseArt"] as! [String:[String]]
+    static func artwork(_ key: String) -> [String] { baseArt[key]! }
+    static var baseArtNames: [String] { Array(baseArt.keys) }
     static let categories: [Category] = {
-        let slots=catalog["slots"] as! [[String:Any]]
+        let slots=root["slots"] as! [[String:Any]]
         return slots.map { Category(key:$0["key"] as! String,title:$0["title"] as! String,group:$0["group"] as! String,optional:$0["optional"] as! Bool,legacy:$0["legacy"] as! Int,art:$0["variants"] as! [[String:Any]]) }
     }()
     var slots: [String:Choice] = [:]
@@ -97,8 +100,7 @@ final class Customization: Equatable {
             Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:14*scale).fill()
             Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:10*scale).fill()
             Sprites.color(0xEEEBD5).setFill();NSRect(x:x+90*scale,y:y+7*scale,width:46*scale,height:2*scale).fill()
-            let glass=Self.resize(Sprites.windowGrid(98,52,sky:PetWindow.skyAt(date),season:PetWindow.seasonAt(date),scene:0),98,32)
-            Sprites.draw(layers:[Sprites.Layer(glass,0,0)],look,left:x+64*scale,top:y+18*scale,scale:scale)
+            Sprites.drawWindow(98,32,sky:PetWindow.skyAt(date),season:PetWindow.seasonAt(date),left:x+64*scale,top:y+18*scale,scale:scale)
             drawRoom(look,NSRect(x:x+64*scale,y:y+18*scale,width:98*scale,height:32*scale),date,preview:false)
             drawClock(look,x+16*scale,y+18*scale,max(1,scale/2),date)
             for i in 0..<3 {Sprites.draw(i==1 ? .writeA : .empty,look,left:x+CGFloat(20+i*70)*scale,top:y+32*scale,scale:scale,decor:Sprites.Decor(seed:7,away:i != 1))}

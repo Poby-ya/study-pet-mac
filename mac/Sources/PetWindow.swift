@@ -43,6 +43,10 @@ final class PetWindow: NSPanel {
     private static let newsMint = Sprites.color(0xDCF5EA)
     private static let wall = Sprites.color(0xF6EEDF)
     private static let wainscot = Sprites.color(0xE8D9C0)
+    private static let wainscotRail = Sprites.color(0xF3E6D0)
+    private static let wainscotShade = Sprites.color(0xD6C4A6)
+    private static let woodLit = Sprites.color(0xC99668)
+    private static let woodDark = Sprites.color(0x8B5E3C)
     private static let floorWood = Sprites.color(0xD2A26E)
     private static let wood = Sprites.color(0xA8744A)
     private static let slate = Sprites.color(0x2F5D50)
@@ -58,6 +62,10 @@ final class PetWindow: NSPanel {
     private var feedbackText = ""
     private var feedbackUntil = 0.0
     private var transitionFrom = Sprites.Pose.writeA
+    private var blends: [Int: PoseBlend] = [:]
+    private func blendOf(_ seat: Int) -> PoseBlend { if let blend = blends[seat] { return blend }; let blend = PoseBlend(); blends[seat] = blend; return blend }
+    private var roomImage: NSImage?
+    private var roomKey = ""
     private var subjectChangedAt = -100.0
     private var updateAvailable = false
     static let updateMessage = "새 버전이 나왔어요\n우클릭 → 업데이트 확인"
@@ -74,16 +82,6 @@ final class PetWindow: NSPanel {
     private var outgoingText = ""
     private var shownNews = ""
     private var newsShownAt = 0.0
-    private var hair: [Int: (Sprites.Pose, Int, Double)] = [:]
-    private func hairLag(_ seat: Int, _ pose: Sprites.Pose) -> Int {
-        var old = hair[seat] ?? (pose, 0, 0)
-        if old.0 != pose {
-            let lag = [Sprites.Pose.stretchLeft, .lookLeft].contains(pose) ? 1 : [Sprites.Pose.stretchRight, .lookRight].contains(pose) ? -1 : [Sprites.Pose.stretchLeft, .lookLeft].contains(old.0) ? -1 : [Sprites.Pose.stretchRight, .lookRight].contains(old.0) ? 1 : 0
-            old = (pose, lag, animationSeconds + 0.25); hair[seat] = old
-        }
-        hair[seat] = old
-        return animationSeconds < old.2 ? old.1 : 0
-    }
     private var previousSeats: [Seat?] = [nil, nil]
     private var departingSeats: [Seat?] = [nil,nil]
     private var departureLook: Look?
@@ -134,6 +132,7 @@ final class PetWindow: NSPanel {
 
     var look: Look {
         didSet {
+            roomKey = ""
             remember("lookExtras", look.extra)
             if let custom=look.customization {remember("customization",custom.json)}
             remember("style", look.code)
@@ -285,6 +284,7 @@ final class PetWindow: NSPanel {
         frameCount = atFrame
         tick = atFrame
         animationSeconds = Double(atFrame) / 4; moodSeconds = animationSeconds
+        blends = [:]
         if atMood == .leaving {departureLook=look;departureLaptop=laptop}
         visitTick = atVisitTick
         visitLook = friend
@@ -307,10 +307,10 @@ final class PetWindow: NSPanel {
         animationSeconds += seconds; moodSeconds += seconds
         frameCount = Int(animationSeconds * 4); tick = Int(moodSeconds * 4)
         for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
-        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > 24 { outgoingTick = -1; if mood == .away { fading = true } } }
+        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away { fading = true } } }
         if visitTick >= 0 {
             visitTick += seconds * 4
-            if visitTick > 24 {
+            if visitTick > Travel.total {
                 visitTick = -1
                 if mood == .away { fading = true }
             }
@@ -330,79 +330,18 @@ final class PetWindow: NSPanel {
         } else if alphaValue < 1 {
             alphaValue = min(1, alphaValue + seconds * 4)
         }
-        let seatEffects = [seatmate(), rightSeatmate()].contains { seat in seat.map { [3, 6].contains(seatMoment($0)) } ?? false }
-        let moving = (visitTick >= 0 && (visitTick < 4 || visitTick > 18)) || (outgoingTick >= 0 && (outgoingTick < 4 || outgoingTick > 18)) || moment == 3 || moment == 6 || seatEffects
+        // Keep idle pixel poses at 4 fps; interpolate travel, big gestures and fading at about 30 fps.
+        func hasEffect(_ moment: Int) -> Bool { moment > 0 && !Routine.effect(moment).isEmpty }
+        let seatEffects = [seatmate(), rightSeatmate()].contains { seat in seat.map { hasEffect(seatMoment($0)) } ?? false }
+        let clockTicks = animationSeconds * 4
+        let moving = (visitTick >= 0 && Travel.walking(visitTick)) || (outgoingTick >= 0 && Travel.walking(outgoingTick)) || blends.values.contains { $0.moving(clockTicks) } || hasEffect(moment) || seatEffects
         if frameCount != beforeFrame || moving || fading || alphaValue < 1 { redraw() }
     }
 
     func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
-    static let moments = 12
-
-    /// Every 30 seconds of study a 6-second moment plays: a stretch, a dropped pencil, a
-    /// butterfly and so on, 1...moments, or 0 for none. Seatmates get their own `seed`, so
-    /// they act at other times and in another order. The same as the Windows app.
-    static func studyMoment(_ ticks: Int, seed: Int = 0) -> Int {
-        let t = ticks + seed * 97
-        return t % 120 >= 96 ? (t / 120 + seed) % moments + 1 : 0
-    }
-
-    private static func momentPhase(_ ticks: Double, _ seed: Int) -> Double {
-        (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 120) - 96
-    }
-
-    private static func writing(_ ticks: Int, beat: Int = 2) -> Sprites.Pose {
-        let page = ticks % 48
-        if page >= 36 && page < 39 { return .pageLift }
-        if page >= 39 && page < 42 { return .turnPage }
-        if page >= 42 && page < 45 { return .pageSettle }
-        return ticks % 12 >= 8 ? .restHands : ticks % 20 == 19 ? (ticks / beat % 2 == 0 ? .blink : .blinkB) : ticks / beat % 2 == 0 ? .writeA : .writeB
-    }
-
-    /// One frame (0...23) of a moment.
-    private static let momentFrames: [[Sprites.Pose]] = [
-        [.restHands, .restHands, .stretchHalf, .stretchHalf, .stretchUp, .stretchUp, .stretchUp, .stretchLeft, .stretchLeft, .stretchUp, .stretchUp, .stretchRight, .stretchRight, .stretchUp, .stretchUp, .stretchHalf, .stretchHalf, .restHands, .restHands, .content, .content, .content, .content, .content],
-        [.oops, .oops, .oops, .bend, .bend, .bend, .pickUp, .pickUp, .pickUp, .pickUp, .pickUp, .recover, .recover, .recover, .found, .found, .found, .content, .content, .content, .writeA, .writeA, .writeA, .writeA],
-        [.lookRight, .lookRight, .lookRight, .lookRight, .lookRight, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .lookUp, .content, .content, .content, .content, .content, .content, .content, .content, .lookUp, .lookUp, .restHands, .restHands],
-        [.teaReach, .teaReach, .teaReach, .teaHold, .teaHold, .teaLift, .teaLift, .teaSip, .teaSip, .teaSip, .teaSip, .teaSip, .teaLift, .teaLift, .teaHold, .teaHold, .teaReach, .teaReach, .content, .content, .content, .content, .content, .content],
-        [.readA, .readA, .readA, .readB, .readB, .readB, .pageLift, .pageLift, .pageLift, .pageLift, .turnPage, .turnPage, .turnPage, .turnPage, .pageSettle, .pageSettle, .pageSettle, .pageSettle, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA],
-        [.cheer, .cheer, .cheer, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content, .content],
-        [.yawnStart, .yawnStart, .yawnStart, .yawn, .yawn, .yawn, .yawn, .yawn, .yawnEnd, .yawnEnd, .yawnEnd, .restHands, .restHands, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
-        [.nodA, .nodA, .nodA, .nodA, .nodB, .nodB, .nodB, .nodC, .nodC, .nodC, .startle, .startle, .recover, .recover, .recover, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
-        [.munchA, .munchA, .munchA, .munchA, .munchB, .munchB, .munchB, .munchB, .cookieSmall, .cookieSmall, .cookieSmall, .cookieSmall, .crumbs, .crumbs, .crumbs, .crumbs, .content, .content, .content, .content, .content, .content, .content, .content],
-        [.think, .think, .think, .think, .think, .think, .think, .think, .idea, .idea, .idea, .recover, .recover, .recover, .writeB, .writeB, .writeB, .content, .content, .content, .writeA, .writeA, .writeA, .writeA],
-        [.restHands, .restHands, .restHands, .spinA, .spinB, .spinC, .spinD, .restHands, .restHands, .restHands, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA, .writeA],
-        [.readA, .readA, .readA, .readA, .readA, .readB, .readB, .readB, .readB, .readB, .readA, .readA, .readA, .readA, .readA, .readB, .readB, .readB, .readB, .readB, .restHands, .restHands, .restHands, .restHands],
-    ]
-
-    static func momentPose(_ moment: Int, _ f: Int, _ ticks: Int) -> Sprites.Pose {
-        guard moment > 0 && moment <= momentFrames.count && f >= 0 && f < 24 else { return writing(ticks) }
-        return momentFrames[moment - 1][f]
-    }
-
-    static func momentLine(_ moment: Int, _ f: Int) -> String {
-        switch moment {
-        case 1: return "으쌰, 기지개 한 번"
-        case 2: return f < 14 ? "앗, 연필 떨어졌다" : "찾았다"
-        case 3: return "어, 나비다"
-        case 4: return "차 한 모금"
-        case 5: return "다음 장으로"
-        case 6: return "오늘 꽤 했다"
-        case 7: return "하암…"
-        case 8: return f < 12 ? "꾸벅…" : "앗, 안 졸았어"
-        case 9: return "당 충전 중"
-        case 10: return f < 12 ? "음… 이게 뭐더라" : "아, 알겠다"
-        case 11: return "펜 한 바퀴"
-        case 12: return "한 줄씩 읽는 중"
-        default: return ""
-        }
-    }
-
-    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Self.studyMoment(tick) : 0 }
-    private var momentFrame: Int { tick % 120 - 96 }
-    private var momentText: String {
-        if laptop && [5,12].contains(moment) { return moment == 2 ? "잠깐 화면 읽기" : [5,12].contains(moment) ? "한 줄 내려보기" : moment == 10 ? "다시 집중!" : "손목 잠깐 쉬기" }; return Self.momentLine(moment, momentFrame)
-    }
+    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
+    private var momentText: String { Routine.line(moment, Routine.momentFrame(tick), laptop: laptop) }
 
     func subjectChanged() { subjectChangedAt = animationSeconds; redraw() }
     func nextSeason() {
@@ -415,10 +354,10 @@ final class PetWindow: NSPanel {
         case .studying:
             if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") { return .content }
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
-            if visitTick >= 0 && visitTick < 4 { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
-            if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return tick == 0 ? .nodB : .recover }
-            return moment > 0 ? Self.momentPose(moment, momentFrame, tick) : Self.writing(tick)
-        case .dozing: if moodSeconds < 0.75 { return tick == 0 ? .restHands : .foldArms }; return tick / 3 % 2 == 0 ? .dozeA : .dozeB
+            if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
+            if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return .recover }
+            return Routine.studyPose(tick)
+        case .dozing: if moodSeconds < 0.75 { return .foldArms }; return tick / 8 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving: return Self.departurePose(moodSeconds * 4)
         case .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
@@ -430,47 +369,45 @@ final class PetWindow: NSPanel {
     /// Also picks a desk's bag and sticker, so a friend's screen shows mine the same.
     private static func nameSeed(_ name: String) -> Int { 1 + name.utf16.reduce(0) { $0 + Int($1) } % 211 }
 
-    private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Self.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
+    private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Routine.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
 
-    // Each seatmate writes, blinks and dozes at their own pace, so no two pets move in lockstep.
+    // Each seatmate works and dozes at their own pace, so no two pets move in lockstep.
     private func seatPose(_ seat: Seat) -> Sprites.Pose {
         if !seat.here { return .empty }
         let seed = Self.seatSeed(seat)
-        if seat.dozing { return (frameCount + seed) / (3 + seed % 2) % 2 == 0 ? .dozeA : .dozeB }
-        let moment = seatMoment(seat)
-        if moment > 0 { return Self.momentPose(moment, (frameCount + seed * 97) % 120 - 96, frameCount + 1) }
-        return Self.writing(frameCount + seed, beat: 2 + seed % 3)
+        if seat.dozing { return (frameCount + seed) / 8 % 2 == 0 ? .dozeA : .dozeB }
+        return Routine.studyPose(frameCount, seed: seed)
     }
 
     /// Draws one frame into the current (flipped) graphics context.
     func paint() {
-        windowGlass = .zero
-        if let board = board() { drawClassroom(board.title, board.lines) }
+        if let board = board() { drawRoom(board.title, board.lines) } else { windowGlass = .zero }
 
         let seats = [seatmate(), rightSeatmate()]
         let visiting = visitTick >= 0
         let outgoing = outgoingTick >= 0
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
         let arrived = myX + (visitSide == 1 ? 25 : -25) * scale
-        let visitorX = start + (arrived - start) * CGFloat(Self.travelProgress(visitTick))
-        let walking = visitTick < 4 || visitTick > 18
+        let visitorX = start + (arrived - start) * CGFloat(Travel.progress(visitTick))
+        let walking = Travel.walking(visitTick)
         let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부")
         let tapping = visiting && !cheering && !walking && !outgoing && (mood == .studying || mood == .dozing)
         let tap = tapping && frameCount % 2 == 0
+        func hop(_ travel: Double, fromSeat: Bool) -> CGFloat { (Travel.walking(travel) ? CGFloat(abs(sin(travel * .pi))) * scale : 0) - (fromSeat ? CGFloat(Travel.seated(travel)) * 4 * scale : 0) }
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering ? .cheer : tapping ? .reach : .wave, x: visitorX,
-                                 hop: walking ? CGFloat(abs(sin(visitTick * .pi))) * scale : 0, mirror: (visitSide == 1) != (visitTick > 18)) }
+                                 hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave)) }
         let destination = outgoingSide < 0 ? seatX + 25 * scale : outgoingSide > 0 ? rightX - 25 * scale : canvasSize.width - deskWidth / 2
-        let outX = myX + (destination - myX) * CGFloat(Self.travelProgress(outgoingTick))
+        let outX = myX + (destination - myX) * CGFloat(Travel.progress(outgoingTick))
         // Wave with the far hand: the near one would be behind the friend I'm visiting.
-        if outgoing { drawVisitor(look, pose: outgoingTick < 4 || outgoingTick > 18 ? .walk : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") ? .wave : .cheer, x: outX,
-                                 hop: outgoingTick < 4 || outgoingTick > 18 ? CGFloat(abs(sin(outgoingTick * .pi))) * scale : 0, mirror: (destination < myX) != (outgoingTick > 18), leftHand: true) }
+        if outgoing { drawVisitor(look, pose: Travel.walking(outgoingTick) ? .walk : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") ? .wave : .cheer, x: outX,
+                                 hop: hop(outgoingTick, fromSeat: true), mirror: (destination < myX) != (outgoingTick > Travel.leave), leftHand: true) }
         for i in 0..<2 {
             if let departing = seats[i], !departing.here && leavingTicks[i] >= 0 { drawDepartureWalker((departingSeats[i] ?? departing).look, origin: i == 0 ? seatX : rightX, tick: leavingTicks[i]) }
         }
         if mood == .leaving { drawDepartureWalker(departureLook ?? look, origin: myX, tick: moodSeconds * 4) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
-        var lamps: [(CGFloat,Int)] = []
+        var lamps: [CGFloat] = []
         for i in 0..<2 {
             guard var seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
             if previousSeats[i]?.id != seat.id {leavingTicks[i] = -1;departingSeats[i]=nil}
@@ -483,18 +420,23 @@ final class PetWindow: NSPanel {
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
-            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale, lift: leavingTicks[i]>=0 ? -Int((4*(1-Departure.ease(leavingTicks[i]/2))).rounded()) : 0,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: Self.seatSeed(seat), lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), hairLag: hairLag(i, pose))
-            if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Self.momentPhase(animationSeconds * 4, Self.seatSeed(seat)))) }
+            if lit { Sprites.drawLampGlow(left: x, top: floorY, scale: scale, lamp: seat.look.customization?.value("lamp") ?? 0) }
+            let seed = Self.seatSeed(seat)
+            let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
+            Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+            if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
-            if lit { lamps.append((x,seat.look.customization?.value("lamp") ?? 0)) }
+            if lit { lamps.append(x) }
         }
         let myLamp = mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
-        if myLamp { lamps.append((myX,look.customization?.value("lamp") ?? 0)) }
+        if myLamp { lamps.append(myX); Sprites.drawLampGlow(left: myX, top: floorY, scale: scale, lamp: look.customization?.value("lamp") ?? 0) }
         if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
-        Sprites.draw(outgoing ? .empty : myPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: mood == .leaving ? -Int((4*(1-Departure.ease(moodSeconds*2))).rounded()) : tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), hairLag: hairLag(-1, myPose))
+        let shownPose: Sprites.Pose = outgoing ? .empty : myPose
+        let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
+        Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
+                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -507,8 +449,8 @@ final class PetWindow: NSPanel {
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
-        for (x,kind) in lamps { Sprites.drawLampLight(left:x,top:floorY,scale:scale,lamp:kind) }
-        effects.append((myX, moment, Self.momentPhase(moodSeconds * 4, 0)))
+        for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale) }
+        effects.append((myX, moment, Routine.momentPhase(moodSeconds * 4)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = min(canvasSize.width-2,max(deskWidth+16,deskWidth+deskGap-6))
@@ -530,22 +472,17 @@ final class PetWindow: NSPanel {
             drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint)
         }
         // Over the bubbles, so a bubble never hides them.
-        for effect in effects {
-            if effect.moment == 3 { drawButterfly(effect.x, effect.phase) }
-            if effect.moment == 6 { drawHearts(effect.x, effect.phase) }
+        for effect in effects where effect.moment > 0 {
+            if Routine.effect(effect.moment) == "butterfly" { drawButterfly(effect.x, effect.phase) }
+            if Routine.effect(effect.moment) == "hearts" { drawHearts(effect.x, effect.phase) }
         }
-    }
-
-    static func travelProgress(_ tick: Double) -> Double {
-        let t = tick < 0 ? 0 : tick < 4 ? tick / 4 : tick <= 18 ? 1 : max(0, (24 - tick) / 6)
-        return t * t * (3 - 2 * t)
     }
 
     static func departurePose(_ tick: Double) -> Sprites.Pose { Departure.pose(tick) }
     private func drawDepartureWalker(_ actor: Look, origin: CGFloat, tick: Double) {
         guard tick>=18 && tick<26 else {return}
         let x=origin-(origin+deskWidth)*CGFloat(Departure.walk(tick))
-        drawVisitor(actor,pose:.walk,x:x,hop:0,mirror:false)
+        drawVisitor(actor,pose:.carry,x:x,hop:CGFloat(abs(sin(tick * .pi)))*scale,mirror:false)
         Sprites.drawBag(actor,left:x+10*scale,top:floorY+22*scale,scale:scale)
         Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:13,targetY:23,leftHand:true)
     }
@@ -559,7 +496,7 @@ final class PetWindow: NSPanel {
         let top = floorY + (CGFloat(27 - height) - CGFloat(lift)) * scale
         let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
         NSGraphicsContext.current?.shouldAntialias = false
-        let grid = Array(Sprites.awaySign.suffix(height))
+        let grid = Array(Sprites.art("AwaySign").suffix(height))
         let left = Sprites.width - 22
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
@@ -606,7 +543,7 @@ final class PetWindow: NSPanel {
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height).clip()
         if mirror { let t = NSAffineTransform(); t.translateX(by: x + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: pose == .walk ? Int(animationSeconds * 6) % 2 == 0 : frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
+        Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -666,9 +603,42 @@ final class PetWindow: NSPanel {
         drawLine(name, font: font, color: PetWindow.plateText, in: face)
     }
 
+    /// The classroom hardly changes, so it is painted once and reused until something in it does:
+    /// the board's text, the sky, the scene, or a cloud moving on (one column every six seconds).
+    private func drawRoom(_ title: String, _ lines: [String]) {
+        let now = clock()
+        let drift = Int(now.timeIntervalSince1970 / 6) % 100000
+        let swing = look.customization.map { $0.on("clock") && $0.value("clock") == 1 } ?? false
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: now)
+        let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+        let season = seasonNow(now), sky = Self.skyAt(now), scene = windowScene
+        let key = "\(canvasSize)|\(title)|\(lines)|\(sky)|\(season)|\(scene)|\(drift)|\(swing ? 0 : minute)|\(boardFactor)"
+        if roomImage == nil || key != roomKey {
+            roomKey = key
+            windowGlass = windowRect() ?? .zero
+            let image = NSImage(size: canvasSize, flipped: true) { [weak self] _ in self?.drawClassroom(title, lines, withClock: !swing, sky: sky, season: season, scene: scene, drift: drift); return true }
+            image.cacheMode = .always
+            roomImage = image
+        }
+        roomImage?.draw(in: NSRect(origin: .zero, size: canvasSize), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        if swing { drawWallClock(now) }
+        if windowGlass == .zero { return }
+        // Whatever the season blows past the glass, behind the desks and in front of the view.
+        NSGraphicsContext.saveGraphicsState()
+        windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale).clip()
+        Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func drawWallClock(_ now: Date) {
+        let top = boardSpace + 10 + 12
+        if let c = look.customization { c.drawClock(look, 9, top, 2, now) }
+        else { let date = Calendar.current.dateComponents([.hour, .minute], from: now); Sprites.drawClock(date.hour ?? 0, date.minute ?? 0, left: 9, top: top, scale: 2) }
+    }
+
     /// The classroom behind the desks: a wall with a chalkboard (one line per person, so it
     /// grows), wainscoting and a wooden floor, all on one rounded card.
-    private func drawClassroom(_ title: String, _ lines: [String]) {
+    private func drawClassroom(_ title: String, _ lines: [String], withClock: Bool, sky: Int, season: Int, scene: Int, drift: Int) {
         let columns = lines.count >= 4 ? 2 : 1
         let shownLines = CGFloat((lines.count + columns - 1) / columns)
         let boardBottom = boardSpace - 18
@@ -681,11 +651,20 @@ final class PetWindow: NSPanel {
         cardPath.fill()
         NSGraphicsContext.saveGraphicsState()
         cardPath.addClip()
+        // Wainscoting under a lit rail, its panels marked off every twelve pixels.
+        let railTop = floorY + 20 * scale
         PetWindow.wainscot.setFill()
-        NSRect(x: card.minX, y: floorY + 20 * scale, width: card.width, height: card.height).fill()
+        NSRect(x: card.minX, y: railTop, width: card.width, height: card.height).fill()
+        PetWindow.wainscotRail.setFill()
+        NSRect(x: card.minX, y: railTop, width: card.width, height: scale).fill()
+        PetWindow.wainscotShade.setFill()
+        NSRect(x: card.minX, y: railTop + scale, width: card.width, height: scale).fill()
+        var panel = card.minX + 6 * scale
+        while panel < card.maxX { NSRect(x: panel, y: railTop + 2 * scale, width: max(1, scale / 2), height: 13 * scale).fill(); panel += 12 * scale }
         let floorTop = floorY + 35 * scale
         Customization.drawFloor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true)
-        drawWindow(NSRect(x: card.minX + 14, y: boardSpace + 10, width: card.width - 28, height: floorY + 18 * scale - boardSpace - 10))
+        drawWindow(sky: sky, season: season, scene: scene, drift: drift)
+        if withClock { drawWallClock(clock()) }
         NSGraphicsContext.restoreGraphicsState()
         cardPath.lineWidth = 1
         Sprites.color(0xC9B89A).setStroke()
@@ -693,12 +672,26 @@ final class PetWindow: NSPanel {
 
         let frame = NSRect(x: 18, y: boardTop, width: canvasSize.width - 36, height: boardBottom - boardTop)
         let slate = frame.insetBy(dx: 5, dy: 5)
+        // Square wooden corners, lit along the top like everything else in the room.
+        PetWindow.ink.setFill()
+        frame.insetBy(dx: -max(1, scale / 3), dy: -max(1, scale / 3)).fill()
         PetWindow.wood.setFill()
-        NSBezierPath(roundedRect: frame, xRadius: 4, yRadius: 4).fill()
+        frame.fill()
+        PetWindow.woodLit.setFill()
+        NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: max(1, scale / 2)).fill()
         PetWindow.slate.setFill()
         slate.fill()
-        Sprites.color(0x8B5E3C).setFill()
+        PetWindow.woodDark.setFill()
         NSRect(x: frame.minX + 20, y: frame.maxY - 2, width: frame.width - 40, height: 5).fill()
+        let trayTop = frame.maxY - 2
+        PetWindow.chalk.setFill()
+        NSRect(x: frame.maxX - 58, y: trayTop - 2, width: 13, height: 2).fill()
+        Sprites.color(0xF7D774).setFill()
+        NSRect(x: frame.maxX - 40, y: trayTop - 2, width: 9, height: 2).fill()
+        Sprites.color(0x4A4F5C).setFill()
+        NSRect(x: frame.minX + 30, y: trayTop - 4, width: 18, height: 4).fill()
+        Sprites.color(0xC8AD86).setFill()
+        NSRect(x: frame.minX + 30, y: trayTop - 4, width: 18, height: 1).fill()
 
         let faint = PetWindow.chalk.withAlphaComponent(150.0 / 255)
         let textX = slate.minX + 10
@@ -728,16 +721,21 @@ final class PetWindow: NSPanel {
     }
 
     /// The classroom's window, a little narrower than the wall: the hour's sky and the season's tree.
-    private func drawWindow(_ wall: NSRect) {
-        let w = Int(wall.width * 0.72 / scale), h = Int(wall.height / scale)
-        guard w >= 20, h >= 16 else { return }
-        let left = (wall.minX + (wall.width - CGFloat(w) * scale) / 2).rounded(.down)
-        windowGlass = NSRect(x: left, y: wall.minY, width: CGFloat(w) * scale, height: CGFloat(h) * scale)
+    private func windowRect() -> NSRect? {
+        let cardWidth = canvasSize.width - 4
+        let wallWidth = cardWidth - 28, wallHeight = floorY + 18 * scale - boardSpace - 10
+        let w = Int(wallWidth * 0.72 / scale), h = Int(wallHeight / scale)
+        guard w >= 20, h >= 16 else { return nil }
+        return NSRect(x: (2 + 14 + (wallWidth - CGFloat(w) * scale) / 2).rounded(.down), y: boardSpace + 10, width: CGFloat(w) * scale, height: CGFloat(h) * scale)
+    }
+    private func drawWindow(sky: Int, season: Int, scene: Int, drift: Int) {
+        guard let glass = windowRect() else { return }
+        Sprites.drawWindow(Int(glass.width / scale), Int(glass.height / scale), sky: sky, season: season, left: glass.minX, top: glass.minY, scale: scale, scene: scene, drift: drift)
+        if let c = look.customization { c.drawRoom(look, glass, clock(), preview: false) }
+    }
+    private func seasonNow(_ now: Date) -> Int {
         let stored = Int(Settings.get("season")) ?? -1
-        Sprites.drawWindow(w, h, sky: Self.skyAt(clock()), season: (0..<4).contains(stored) ? stored : Self.seasonAt(clock()),
-                           left: (wall.minX + (wall.width - CGFloat(w) * scale) / 2).rounded(.down), top: wall.minY, scale: scale, scene: windowScene)
-        let date = Calendar.current.dateComponents([.hour, .minute], from: clock())
-        if let c=look.customization {c.drawRoom(look,windowGlass,clock(),preview:false);c.drawClock(look,9,wall.minY+12,2,clock())}else{Sprites.drawClock(date.hour ?? 0, date.minute ?? 0, left: 9, top: wall.minY + 12, scale: 2)}
+        return (0..<4).contains(stored) ? stored : Self.seasonAt(now)
     }
 
     private var sceneIndex = Int.random(in: 0..<6)

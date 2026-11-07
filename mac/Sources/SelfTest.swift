@@ -45,7 +45,7 @@ enum SelfTest {
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
         check(Sprites.compose(.empty,basic).first!.grid[0].count==Sprites.width,"desk: visible art matches layout width")
         check(Departure.bag(18).0==10 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
-        for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(Departure.pose(t) == .pack && abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
+        for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
         do {try JSONSerialization.data(withJSONObject:fixtures).write(to:out.appendingPathComponent("customization-fixtures.json"))}catch{check(false,"customization fixture export failed")}
     }
 
@@ -79,12 +79,27 @@ enum SelfTest {
         var last = ""
         for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
         friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: unknown legacy version receives notice")
-        check(Sprites.maskLaptop(["ssss"], x: 0, y: 0, lid: Sprites.Layer([".kk."], 0, 0)) == ["s..s"], "laptop: lid masks hands")
-        check(Sprites.heldDrink(.mug, tilted: false).count != Sprites.heldDrink(.mug, tilted: true).count, "tea: cup tips")
+        let plainLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
+        let onLaptop = Sprites.compose(.writeA, plainLook, decor: Sprites.Decor(drink: .mug, laptop: true))
+        check(onLaptop.firstIndex { $0.grid == Sprites.art("LaptopOpen") }! > onLaptop.firstIndex { $0.grid == Sprites.art("Desk") }! + 1, "laptop: the lid is drawn over the hands on its keyboard")
+        let sip = Sprites.compose(.teaSip, plainLook, decor: Sprites.Decor(drink: .mug)).filter { $0.grid == Sprites.art("Drink2") }
+        check(sip.count == 1 && sip[0].y == 16, "tea: the raised cup covers the mouth, and the desk no longer holds a second one")
+        func places(_ layers: [Sprites.Layer]) -> [String] { layers.map { "\($0.x),\($0.y)" } }
+        let halfway = places(Sprites.compose(.stretchUp, plainLook, from: .restHands, blend: 0.5))
+        check(halfway != places(Sprites.compose(.stretchUp, plainLook)) && halfway != places(Sprites.compose(.restHands, plainLook)), "motion: halfway between two poses is neither of them")
+        let blend = PoseBlend()
+        _ = blend.track(.restHands, 0)
+        let first = blend.track(.stretchUp, 10), mid = blend.track(.stretchUp, 10 + Sprites.blendTicks(.stretchUp) / 2), last = blend.track(.stretchUp, 30)
+        check(first.from == .restHands && first.blend == 0 && mid.blend > 0 && mid.blend < 1 && last.blend == 1, "motion: a new pose eases in from the old one")
+        check(Set(Sprites.Pose.allCases.filter { $0 != .empty }.map { $0.rawValue }) == Sprites.rigNames, "poses: the code and the shared data name the same poses")
         save(render(NSSize(width: 480, height: 612)) {
             for scene in 0..<6 { for season in 0..<4 {
                 let grid = Sprites.windowGrid(40,34,sky: 2,season: season,scene: scene)
                 check(grid.count == 34 && grid.allSatisfy { $0.count == 40 }, "window: valid variant")
+                for sky in 0..<4 { for (w, h) in [(40, 34), (98, 55), (68, 55), (180, 100)] {
+                    let any = Sprites.windowGrid(w, h, sky: sky, season: season, scene: scene, drift: 7)
+                    check(any.count == h && any.allSatisfy { $0.count == w && $0.allSatisfy { Sprites.isWindowColor($0, sky: sky, season: season) } }, "window: every view, sky and size paints in known colours")
+                } }
                 if scene > 0 { check(grid != Sprites.windowGrid(40,34,sky: 2,season: season), "window: different scene") }
                 Sprites.drawWindow(40,34,sky: 2,season: season,left: CGFloat(season*120),top: CGFloat(scene*102),scale: 3,scene: scene)
             } }
@@ -127,9 +142,9 @@ enum SelfTest {
                 Sprites.draw(.writeA, look, left: CGFloat(i % 4 * Sprites.width * 3), top: CGFloat(i / 4 * Sprites.height * 3), scale: 3, decor: Sprites.Decor(drink: .mug, laptop: i % 2 == 0, seed: i))
             }
         }, out, "wardrobe.png")
-        save(render(NSSize(width: 8 * Sprites.width * 2, height: PetWindow.moments * Sprites.height * 2)) {
-            for moment in 1...PetWindow.moments {
-                for f in stride(from: 0, to: 24, by: 3) { Sprites.draw(PetWindow.momentPose(moment, f, f), Look(girl: true, 0, 0, 0, 0, 0, 0), left: CGFloat(f / 3 * Sprites.width * 2), top: CGFloat((moment - 1) * Sprites.height * 2), scale: 2) }
+        save(render(NSSize(width: 8 * Sprites.width * 2, height: Routine.moments * Sprites.height * 2)) {
+            for moment in 1...Routine.moments {
+                for f in stride(from: 0, to: 24, by: 3) { Sprites.draw(Routine.momentPose(moment, f), Look(girl: true, 0, 0, 0, 0, 0, 0), left: CGFloat(f / 3 * Sprites.width * 2), top: CGFloat((moment - 1) * Sprites.height * 2), scale: 2) }
             }
         }, out, "motion.png")
         if let invite { checkNetwork(invite, out); checkManyRooms(invite) }
@@ -180,18 +195,18 @@ enum SelfTest {
     private static func checkPetControls(_ out: URL) {
         check(StudyCheer.text(1800).hasPrefix("30분 달성!") && StudyCheer.text(3605).hasPrefix("60분 달성!"), "cheer: half-hour milestones use accumulated study time")
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
-        check([95, 96, 119, 120, 216, 336, 360].map { PetWindow.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
-        check([456, 576, 696, 816, 1296, 1416].map { PetWindow.studyMoment($0) } == [4, 5, 6, 7, 11, 12], "moments: all twelve play before the cycle repeats")
-        check((0..<3600).filter { PetWindow.studyMoment($0, seed: 37) > 0 }.count == 720 && !(0..<3600).allSatisfy { PetWindow.studyMoment($0, seed: 37) == PetWindow.studyMoment($0) },
+        check([95, 96, 119, 120, 216, 336, 360].map { Routine.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
+        check([456, 576, 696, 816, 1296, 1416, 1896].map { Routine.studyMoment($0) } == [4, 5, 6, 7, 11, 12, 16], "moments: all of them play before the cycle repeats")
+        check((0..<3600).filter { Routine.studyMoment($0, seed: 37) > 0 }.count == 720 && !(0..<3600).allSatisfy { Routine.studyMoment($0, seed: 37) == Routine.studyMoment($0) },
               "moments: a seatmate acts as often as me, on their own schedule")
-        check((1...PetWindow.moments).allSatisfy { m in !PetWindow.momentLine(m, 0).isEmpty }, "moments: every moment has a line")
+        check((1...Routine.moments).allSatisfy { m in !Routine.line(m, 0, laptop: false).isEmpty }, "moments: every moment has a line")
         save(render(NSSize(width: 136, height: 64)) {
             Sprites.color(0xFFFDF4).setFill(); NSRect(x: 0, y: 0, width: 136, height: 64).fill()
             Sprites.drawButterfly(left: 10, top: 8, scale: 4, folded: false)
             Sprites.drawButterfly(left: 78, top: 8, scale: 3, folded: true)
         }, out, "butterfly.png")
-        check([0.0, 2, 4, 18, 21, 24].map(PetWindow.travelProgress) == [0, 0.5, 1, 1, 0.5, 0], "visit: walk out, greet and return")
-        let motion = (0...30).map { PetWindow.travelProgress(Double($0) * 4 / 30) }
+        check([0.0, 2.5, 5, 19, 21.5, 24].map(Travel.progress) == [0, 0.5, 1, 1, 0.5, 0], "visit: walk out, greet and return")
+        let motion = (0...30).map { Travel.progress(Double($0) * 4 / 30) }
         check(Set(motion).count == 31 && zip(motion, motion.dropFirst()).allSatisfy { $1 > $0 && $1 - $0 < 0.06 }, "motion: thirty smooth monotonic positions per second")
         let mixed = (0..<100).map { _ in Look.random(girl: Bool.random()) }
         check(mixed.contains(where: \.girl) && mixed.contains(where: { !$0.girl }), "look: random decoration includes all genders")
@@ -229,7 +244,7 @@ enum SelfTest {
         check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
         // A few frames of each moment, with both seatmates mid-moment too.
         pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
-        for at in (0..<PetWindow.moments).flatMap({ m in [4, 14].map { m * 120 + 96 + $0 } }) {
+        for at in (0..<Routine.moments).flatMap({ m in [4, 14].map { m * 120 + 96 + $0 } }) {
             pet.preview(.studying, frame: at)
             save(render(pet.canvasSize) { pet.paint() }, out, "moment-\(at).png")
         }
@@ -237,7 +252,7 @@ enum SelfTest {
         for _ in 0..<8 {pet.advanceAnimation(25);pet.setMood(.studying)}
         pet.advanceAnimation(5)
         let syncedTick=Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int
-        check(syncedTick==820 && PetWindow.momentPose(7,4,820) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
+        check(syncedTick==820 && Routine.momentPose(7,4) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
         pet.setMood(.dozing)
         check((Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int)==0,"sync: a real mood change still starts its transition")
         pet.appear(.studying)
@@ -653,7 +668,7 @@ enum SelfTest {
             }
             for pose in Sprites.Pose.allCases {
                 // Moments stop while a visitor taps, so only writing and dozing pets jump.
-                let tapped = [Sprites.Pose.writeA, .writeB, .blink, .dozeA, .dozeB].contains(pose)
+                let tapped = [Sprites.Pose.writeA, .writeB, .dozeA, .dozeB].contains(pose)
                 for layer in Sprites.compose(pose, look, alert: tapped, lift: tapped ? 1 : 0) + Sprites.compose(pose, look) {
                     check(layer.x >= 0 && layer.y >= 0 && layer.x + layer.grid[0].count <= Sprites.width && layer.y + layer.grid.count <= Sprites.height,
                           "sprite: \(pose) (\(look.code)) has a layer off the canvas at \(layer.x),\(layer.y)")
