@@ -57,12 +57,12 @@ final class StatsWindow: NSWindow {
             let d = calendar.date(byAdding: .day, value: i - 29, to: today)!
             return (label(d, "M/d"), Records.minutes(daily, from: d, to: calendar.date(byAdding: .day, value: 1, to: d)!))
         }
-        tabs.addTabViewItem(page("일별 추이 (최근 30일)", LineChart(points: days, labelPoints: false)))
+        tabs.addTabViewItem(page("일별 추이 (최근 30일)", BarChart(points: days, labelPoints: false)))
         let months = (0..<12).map { i -> (String, Double) in
             let m = calendar.date(byAdding: .month, value: i - 11, to: month)!
             return (label(m, "yy.MM"), Records.minutes(daily, from: m, to: calendar.date(byAdding: .month, value: 1, to: m)!))
         }
-        tabs.addTabViewItem(page("월별 추이 (최근 12개월)", LineChart(points: months, labelPoints: true)))
+        tabs.addTabViewItem(page("월별 추이 (최근 12개월)", BarChart(points: months, labelPoints: true)))
 
         content.addSubview(tabs)
         contentView = content
@@ -72,7 +72,10 @@ final class StatsWindow: NSWindow {
     func follow(_ source: @escaping () -> [Segment]) {
         live = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
             guard let self, self.isVisible else { return }
-            self.daily = Records.daily(source()); self.rebuild()
+            // Rebuilding flickers, so only when a recorded minute has actually changed.
+            let next = Records.daily(source())
+            if abs(Records.minutes(next, from: .distantPast, to: .distantFuture) - Records.minutes(self.daily, from: .distantPast, to: .distantFuture)) < 1 { return }
+            self.daily = next; self.rebuild()
         }
         RunLoop.main.add(live!, forMode: .common)
     }
@@ -155,7 +158,7 @@ private final class Donut: NSView {
 }
 
 /// Hours per day or month as a line with dots; `labelPoints` writes each value above its dot.
-private final class LineChart: NSView {
+private final class BarChart: NSView {
     private let points: [(String, Double)] // label, minutes
     private let labelPoints: Bool
 
@@ -197,19 +200,11 @@ private final class LineChart: NSView {
         for i in 0..<n where labelPoints || (n - 1 - i) % 5 == 0 {
             drawLine(points[i].0, font: font, color: .black, in: NSRect(x: xs[i] - 30, y: plot.maxY + 6, width: 60, height: 18))
         }
-        let color = Sprites.color(0x5C86DB)
-        let path = NSBezierPath()
-        path.lineWidth = 3
-        path.lineJoinStyle = .round
+        // Bars: a day without study should look like nothing, not a dip in a line.
+        let barWidth = max(2, plot.width / CGFloat(n) * 0.7)
+        Sprites.color(0x5C86DB).setFill()
         for i in 0..<n {
-            let p = NSPoint(x: xs[i], y: y(hours[i]))
-            if i == 0 { path.move(to: p) } else { path.line(to: p) }
-        }
-        color.setStroke()
-        path.stroke()
-        color.setFill()
-        for i in 0..<n {
-            NSBezierPath(ovalIn: NSRect(x: xs[i] - 3.5, y: y(hours[i]) - 3.5, width: 7, height: 7)).fill()
+            NSRect(x: xs[i] - barWidth / 2, y: y(hours[i]), width: barWidth, height: plot.maxY - y(hours[i])).fill()
             // A row of zeros is just noise.
             if labelPoints && points[i].1 >= 1 {
                 drawLine(number(hours[i]), font: font, color: .black, in: NSRect(x: xs[i] - 30, y: y(hours[i]) - 24, width: 60, height: 18))

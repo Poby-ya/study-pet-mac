@@ -339,12 +339,11 @@ enum Sprites {
         return art("Bag").map { $0.replacingOccurrences(of: "M", with: tint).replacingOccurrences(of: "H", with: "i") }
     }
 
-    /// In and on the desk: its bag, stickers and ornament.
+    /// On the desk's front and hook: its stickers and bag.
     private static func deskScene(_ d: Decor, _ look: Look) -> [Layer] {
         let custom = look.customization
         var layers: [Layer] = []
         if !d.away { layers.append(Layer(bagArt(look.bag), 50, 28)) }
-        if let custom { layers += custom.layers("prop", clock: d.clock) }
         if let custom, custom.on("deskStickers"), custom.value("deskStickers") > 0 {
             let designs = Customization.categories.first { $0.key == "deskStickers" }!.art
             let points = [(44, 32), (30, 31), (19, 32), (5, 31)]
@@ -400,7 +399,8 @@ enum Sprites {
         }
         let desk = custom?.layers("desk").first ?? Layer(art("Desk"), 0, 27)
         let scene = decor != nil ? deskScene(d, look) : []
-        if pose == .empty { return layers + [desk] + scene }
+        let prop = decor != nil ? (custom?.layers("prop", clock: d.clock) ?? []) : []
+        if pose == .empty { return layers + [desk] + scene + prop }
 
         let to = rigOf(pose, look)
         let moving = from != nil && from != .empty && from != pose
@@ -449,6 +449,7 @@ enum Sprites {
         }
         // An open lid hides the hands on the keyboard; a book lies under them.
         layers += d.laptop ? shift(armsAt(2)) + shift(under) : shift(under) + shift(armsAt(2))
+        layers += prop
         if decor != nil && !now.front, let sticker = documentSticker(d, look) { layers.append(sticker) }
         if now.front { layers += shift(back) + shift(armsAt(0)) + shift(faceLayers) + shift(armsAt(1)) }
 

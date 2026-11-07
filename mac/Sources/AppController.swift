@@ -946,6 +946,11 @@ final class AppController: NSObject, NSMenuDelegate {
         safely("기록 읽기") { segments = try Records.load() }
         if let start = segmentStart { segments.append(Segment(start: start, end: segmentEnd(start), subject: subject)) }
         let window = StatsWindow(segments: segments)
+        window.follow { [weak self] in
+            var latest = (try? Records.load()) ?? []
+            if let self, let start = self.segmentStart { latest.append(Segment(start: start, end: self.segmentEnd(start), subject: self.subject)) }
+            return latest
+        }
         stats = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
