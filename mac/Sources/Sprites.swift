@@ -475,8 +475,8 @@ enum Sprites {
         }
         top += armsAt(3)
         if alert || now.mark != nil { top.append(Layer(art(now.mark == "?" ? "Question" : "Exclaim"), now.mark == "?" ? 28 : 26, 1)) }
-        if now.z == 1 { top.append(Layer(art("ZBig"), 26, 4)) }
-        if now.z == 2 { top.append(Layer(art("ZSmall"), 24, 7)); top.append(Layer(art("ZBig"), 27, 1)) }
+        if !alert && now.z == 1 { top.append(Layer(art("ZBig"), 26, 4)) }
+        if !alert && now.z == 2 { top.append(Layer(art("ZSmall"), 24, 7)); top.append(Layer(art("ZBig"), 27, 1)) }
         return layers + shift(top)
     }
 
