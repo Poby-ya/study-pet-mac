@@ -126,7 +126,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
-                let board = Room.board(room.boardMembers, me: self.myId)
+                let board = Room.board(room.boardMembers)
                 return (room.name.isEmpty ? board.title : "\(room.name)\n\(board.title)", board.lines)
             }
             return (Settings.get("pending") == "1" ? "방장의 승인을 기다리는 중이에요" : "친구를 초대하면 여기에 적혀요", [])
@@ -362,9 +362,6 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     /// One button rolls a complete new look.
-    @objc private func chooseSeason(_ sender: NSMenuItem) { safely("계절 저장") { try Settings.set("season", sender.representedObject as? String ?? ""); pet.redraw() } }
-    @objc private func nextWindowScene() { pet.nextWindowScene() }
-    @objc private func toggleLargeText() { safely("글자 크기 저장") { try Settings.set("largeText", Settings.get("largeText") == "1" ? "" : "1"); pet.redraw() } }
     @objc private func switchLook() {
         guard let selected = AppearanceWindow.choose(pet.look) else { return }
         pet.look = selected

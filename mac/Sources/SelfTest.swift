@@ -89,8 +89,8 @@ enum SelfTest {
         check(halfway != places(Sprites.compose(.stretchUp, plainLook)) && halfway != places(Sprites.compose(.restHands, plainLook)), "motion: halfway between two poses is neither of them")
         let blend = PoseBlend()
         _ = blend.track(.restHands, 0)
-        let first = blend.track(.stretchUp, 10), mid = blend.track(.stretchUp, 10 + Sprites.blendTicks(.stretchUp) / 2), last = blend.track(.stretchUp, 30)
-        check(first.from == .restHands && first.blend == 0 && mid.blend > 0 && mid.blend < 1 && last.blend == 1, "motion: a new pose eases in from the old one")
+        let blendStart = blend.track(.stretchUp, 10), blendMid = blend.track(.stretchUp, 10 + Sprites.blendTicks(.stretchUp) / 2), blendEnd = blend.track(.stretchUp, 30)
+        check(blendStart.from == .restHands && blendStart.blend == 0 && blendMid.blend > 0 && blendMid.blend < 1 && blendEnd.blend == 1, "motion: a new pose eases in from the old one")
         check(Set(Sprites.Pose.allCases.filter { $0 != .empty }.map { $0.rawValue }) == Sprites.rigNames, "poses: the code and the shared data name the same poses")
         save(render(NSSize(width: 480, height: 612)) {
             for scene in 0..<6 { for season in 0..<4 {
@@ -595,14 +595,14 @@ enum SelfTest {
         }
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
-        var board = Room.board(members, me: "me")
+        var board = Room.board(members)
         check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
               "board: study, rest and absent people keep individual rows: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
-        board = Room.board(members, me: "me")
+        board = Room.board(members)
         check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
-        check(Room.board([], me: "me").title == "공부 중 0 / 쉬는 중 0 / 노는 중 0", "board: empty room counts are explicit")
-        check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }, me: "me").lines.count == 9,
+        check(Room.board([]).title == "공부 중 0 / 쉬는 중 0 / 노는 중 0", "board: empty room counts are explicit")
+        check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }).lines.count == 9,
               "board: nine active people fit in five rows")
 
         let before = Array(members.prefix(4))

@@ -117,7 +117,6 @@ final class PetWindow: NSPanel {
     var laptop = false
     /// The time of day for the window's sky and the lamps; the self-test sets it.
     var clock: () -> Date = { Date() }
-    private var night: Bool { let hour = Calendar.current.component(.hour, from: clock()); return hour >= 18 || hour < 6 }
     var seatmate: () -> Seat? = { nil }
     var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
@@ -359,7 +358,7 @@ final class PetWindow: NSPanel {
             return Routine.studyPose(tick)
         case .dozing: if moodSeconds < 0.75 { return .foldArms }; return tick / 8 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
-        case .leaving: return Self.departurePose(moodSeconds * 4)
+        case .leaving: return Departure.pose(moodSeconds * 4)
         case .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
         }
     }
@@ -416,7 +415,7 @@ final class PetWindow: NSPanel {
             previousSeats[i] = seat
             if leavingTicks[i]>=0,let snapshot=departingSeats[i] {seat=snapshot;seat.here=false}
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
-            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Self.departurePose(leavingTicks[i]) : seatPose(seat)
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
@@ -478,7 +477,6 @@ final class PetWindow: NSPanel {
         }
     }
 
-    static func departurePose(_ tick: Double) -> Sprites.Pose { Departure.pose(tick) }
     private func drawDepartureWalker(_ actor: Look, origin: CGFloat, tick: Double) {
         guard tick>=18 && tick<26 else {return}
         let x=origin-(origin+deskWidth)*CGFloat(Departure.walk(tick))

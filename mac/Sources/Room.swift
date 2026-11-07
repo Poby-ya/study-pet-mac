@@ -562,7 +562,7 @@ final class Room: @unchecked Sendable {
 
     /// The chalkboard: everyone else at their desk, studying first. It grows a line per
     /// person up to boardLines; the title always has the head count.
-    static func board(_ members: [Member], me: String) -> (title: String, lines: [String]) {
+    static func board(_ members: [Member]) -> (title: String, lines: [String]) {
         let newest = latest(members)
         let here = members.filter { isHere($0, newest) }.sorted { a, b in
             if (a.state == "paused") != (b.state == "paused") { return b.state == "paused" }

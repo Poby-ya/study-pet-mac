@@ -35,10 +35,10 @@ final class AppearanceWindow: NSWindow, NSWindowDelegate {
         }
         func check(_ title: String,_ key: String,_ on: Bool,_ action: Selector) {let b=NSButton(checkboxWithTitle:title,target:self,action:action);b.identifier=NSUserInterfaceItemIdentifier(key);b.state=on ? .on : .off;b.frame=NSRect(x:20,y:y,width:470,height:25);body.addSubview(b);y+=27}
         if group == "character" {toggle("캐릭터",13,["남자","여자"]);toggle("쓰는 손",10,["오른손","왼손"]);toggle("피부색",7,["","","",""])}
-        label("추가할 것을 선택하세요.")
+        label("더할 것을 고르세요.")
         for s in Customization.categories where s.group == group && s.optional {check(s.title,s.key,custom.on(s.key),#selector(addChanged(_:)))}
         if group == "character" {check("리본","ribbon",ribbon != 0,#selector(addChanged(_:)))}
-        label("고정할 것을 선택하세요.")
+        label("랜덤 뽑기에서 그대로 둘 것을 고르세요.")
         for s in Customization.categories where s.group == group && custom.on(s.key) {check(s.title,s.key,custom.slots[s.key]!.locked,#selector(lockChanged(_:)))}
         let bases: [(Int,String)] = group == "character" ? [(1,"머리색"),(3,"상의 색"),(4,"하의"),(5,"리본 색"),(9,"소매")] : group == "desk" ? [(12,"가방 색")] : []
         for (i,title) in bases where i != 5 || ribbon != 0 {check(title,String(i),baseLocks[i] ?? false,#selector(baseLockChanged(_:)))}
