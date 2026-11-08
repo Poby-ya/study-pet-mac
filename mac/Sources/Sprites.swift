@@ -279,6 +279,11 @@ enum Sprites {
                 if cells[near] == nil && !atRoot { cells[near] = "k" }
             }
         }
+        if rooted, let end = points.last {
+            for (y, row) in art("Hand").enumerated() {
+                for (x, c) in row.enumerated() where c != "." { cells[Cell(x: end.0 - 1 + x, y: end.1 - 1 + y)] = c }
+            }
+        }
         let left = cells.keys.map { $0.x }.min()!, top = cells.keys.map { $0.y }.min()!
         let right = cells.keys.map { $0.x }.max()!, bottom = cells.keys.map { $0.y }.max()!
         let grid = (top...bottom).map { y in String((left...right).map { x in cells[Cell(x: x, y: y)] ?? "." }) }
@@ -397,7 +402,7 @@ enum Sprites {
             if let custom, custom.value("lamp") > 0 { layers += custom.layers("lamp", lit: d.lit) }
             else { layers.append(Layer(art(d.lit ? "LampOn" : "LampOff"), 1, 11)) }
         }
-        let desk = custom?.layers("desk").first ?? Layer(art("Desk"), 0, 27)
+        let desk = custom?.layers("desk").first ?? Layer(art("Desk"), 0, 26)
         let scene = decor != nil ? deskScene(d, look) : []
         let prop = decor != nil ? (custom?.layers("prop", clock: d.clock) ?? []) : []
         if pose == .empty { return layers + [desk] + scene + prop }
@@ -429,6 +434,11 @@ enum Sprites {
             if let a, let b { elbowX = lerp(a.elbowX, b.elbowX, t); elbowY = lerp(a.elbowY, b.elbowY, t); handX = lerp(a.handX, b.handX, t); handY = lerp(a.handY, b.handY, t) }
             else { elbowX = only!.elbowX; elbowY = only!.elbowY; handX = only!.handX; handY = only!.handY }
             let layer = (joints(now, left: left) ?? a ?? b)!.layer
+            // Hands on the keyboard would be behind the lid, so they rest either side of it.
+            if d.laptop && now.lap == nil && layer == 2 {
+                if left { elbowX = min(elbowX, 4); handX = min(handX, 5) }
+                else { elbowX = max(elbowX, 25); handX = max(handX, 24) }
+            }
             elbowX += sway; elbowY -= lift; handX += sway; handY -= lift
             arms.append((left, layer, handX, handY, arm(look, ((left ? 9 : 21) + sway, bodyY + 2), (elbowX, elbowY), (handX, handY))))
         }
@@ -444,12 +454,13 @@ enum Sprites {
 
         var under: [Layer] = []
         if !d.packed {
-            let lying = art(d.laptop ? now.lap ?? "LaptopOpen" : now.book ?? "Book")
-            under.append(Layer(lying, d.laptop ? 7 : 9, 29 - lying.count))
+            let cover = String(Array("BzgVy")[kind.rawValue - 1])
+            let lying = d.laptop ? art(now.lap ?? "LaptopOpen") : art(now.book ?? "Book").map { $0.replacingOccurrences(of: "B", with: cover) }
+            under.append(Layer(lying, 16 - lying[0].count / 2, 29 - lying.count))
         }
-        // An open lid hides the hands on the keyboard; a book lies under them.
-        layers += d.laptop ? shift(armsAt(2)) + shift(under) : shift(under) + shift(armsAt(2))
-        layers += prop
+        // Arms go behind the book or lid so it stays whole; only the hands lie on top, over the props too.
+        layers += shift(armsAt(2)) + shift(under) + prop
+        layers += shift(arms.filter { $0.layer == 2 }.map { Layer(art("Hand"), $0.handX - 1, $0.handY - 1) })
         if decor != nil && !now.front, let sticker = documentSticker(d, look) { layers.append(sticker) }
         if now.front { layers += shift(back) + shift(armsAt(0)) + shift(faceLayers) + shift(armsAt(1)) }
 
