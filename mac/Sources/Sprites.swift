@@ -70,7 +70,7 @@ struct Look: Equatable {
 /// tools/build-customization.cjs); this composes them, pixel for pixel like Sources/Sprites.cs.
 enum Sprites {
     static let width = 52
-    static let height = 38
+    static let height = 40
     static let clockSize = 31
 
     /// The person sits a little right of the desk's middle, leaving the left end of the
@@ -336,7 +336,6 @@ enum Sprites {
         var lit = false
         var away = false
         var packed = false
-        var night = false
         var clock = Date()
     }
 
@@ -440,9 +439,9 @@ enum Sprites {
             var elbowX: Int, elbowY: Int, handX: Int, handY: Int
             if let a, let b { elbowX = lerp(a.elbowX, b.elbowX, t); elbowY = lerp(a.elbowY, b.elbowY, t); handX = lerp(a.handX, b.handX, t); handY = lerp(a.handY, b.handY, t) }
             else { elbowX = only!.elbowX; elbowY = only!.elbowY; handX = only!.handX; handY = only!.handY }
-            let layer = (joints(now, left: left) ?? a ?? b)!.layer
+            let layer = d.laptop && now.book != nil ? 2 : (joints(now, left: left) ?? a ?? b)!.layer
             // Typing happens behind the open lid: keep the fists inside its width so none peek out.
-            if d.laptop && now.lap == nil && layer == 2 { handX = left ? max(handX, 10) : min(handX, 19) }
+            if d.laptop && now.lap == nil && layer == 2 { handX = left ? max(handX, 10) : min(handX, 19); handY = max(handY, 23) }
             elbowX += sway; elbowY -= lift; handX += sway; handY -= lift
             arms.append((left, layer, handX, handY, arm(look, ((left ? 9 : 21) + sway, bodyY + 2), (elbowX, elbowY), (handX, handY))))
         }
@@ -459,11 +458,7 @@ enum Sprites {
         var under: [Layer] = []
         if !d.packed {
             let cover = bookCover(look, kind)
-            var lying = d.laptop ? art(now.lap ?? "LaptopOpen") : art(now.book ?? "Book").map { $0.replacingOccurrences(of: "B", with: cover) }
-            if d.lit && d.night {
-                let cool = Array("bNMxXiw"), warm = Array("YpPYyYY")
-                lying = lying.map { row in String(row.map { c in cool.firstIndex(of: c).map { warm[$0] } ?? c }) }
-            }
+            let lying = d.laptop ? art(now.lap ?? "LaptopOpen") : art(now.book ?? "Book").map { $0.replacingOccurrences(of: "B", with: cover) }
             under.append(Layer(lying, 16 - lying[0].count / 2, 29 - lying.count))
         }
         // Arms go behind the book so it stays whole and only the hands lie on it, over the props too.
@@ -580,7 +575,8 @@ enum Sprites {
     /// The warm pool where the light lands, drawn over the book or laptop and the desk under it.
     static func drawLampPool(left: CGFloat, top: CGFloat, scale: CGFloat, night: Bool = false) {
         NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: (night ? 82 : 40) / 255).setFill()
-        for (y, from, to) in night ? [(27, 15, 44), (28, 14, 45), (29, 16, 43)] : [(25, 22, 36), (26, 20, 38), (27, 19, 39), (28, 18, 41), (29, 20, 39)] {
+        // Only the bare desk beside the book or laptop, so white pages and a silver lid keep their colour.
+        for (y, from, to) in [(27, 15, 17), (27, 40, 44), (28, 14, 17), (28, 40, 45), (29, 16, 43)] {
             NSRect(x: left + CGFloat(from) * scale, y: top + CGFloat(y) * scale, width: CGFloat(to - from + 1) * scale, height: scale).fill(using: .sourceOver)
         }
     }

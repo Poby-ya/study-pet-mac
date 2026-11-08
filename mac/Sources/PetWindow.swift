@@ -424,7 +424,7 @@ final class PetWindow: NSPanel {
             let seed = Self.seatSeed(seat)
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4, night: night), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
@@ -436,7 +436,7 @@ final class PetWindow: NSPanel {
         let shownPose: Sprites.Pose = outgoing ? .empty : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1, night: night), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
+                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -662,6 +662,8 @@ final class PetWindow: NSPanel {
         while panel < card.maxX { NSRect(x: panel, y: railTop + 2 * scale, width: max(1, scale / 2), height: 13 * scale).fill(); panel += 12 * scale }
         let floorTop = floorY + 35 * scale
         Customization.drawFloor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true)
+        // The room's lights go down at night so the desk lamps show; the window and garland stay bright.
+        if sky == 0 { NSColor(srgbRed: 24.0 / 255, green: 28.0 / 255, blue: 58.0 / 255, alpha: 96.0 / 255).setFill(); card.fill(using: .sourceOver) }
         drawWindow(sky: sky, season: season, scene: scene, drift: drift)
         if withClock { drawWallClock(clock()) }
         NSGraphicsContext.restoreGraphicsState()
