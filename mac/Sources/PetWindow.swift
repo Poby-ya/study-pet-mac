@@ -117,6 +117,7 @@ final class PetWindow: NSPanel {
     var laptop = false
     /// The time of day for the window's sky and the lamps; the self-test sets it.
     var clock: () -> Date = { Date() }
+    private var night: Bool { Self.skyAt(clock()) == 0 }
     var seatmate: () -> Seat? = { nil }
     var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
@@ -419,23 +420,23 @@ final class PetWindow: NSPanel {
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
-            if lit { Sprites.drawLampGlow(left: x, top: floorY, scale: scale, lamp: seat.look.customization?.value("lamp") ?? 0) }
+            if lit { Sprites.drawLampGlow(left: x, top: floorY, scale: scale, lamp: seat.look.customization?.value("lamp") ?? 0, night: night) }
             let seed = Self.seatSeed(seat)
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4, night: night), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
             if lit { lamps.append(x) }
         }
         let myLamp = mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
-        if myLamp { lamps.append(myX); Sprites.drawLampGlow(left: myX, top: floorY, scale: scale, lamp: look.customization?.value("lamp") ?? 0) }
+        if myLamp { lamps.append(myX); Sprites.drawLampGlow(left: myX, top: floorY, scale: scale, lamp: look.customization?.value("lamp") ?? 0, night: night) }
         if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
         let shownPose: Sprites.Pose = outgoing ? .empty : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
+                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1, night: night), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -448,7 +449,7 @@ final class PetWindow: NSPanel {
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
-        for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale) }
+        for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale, night: night) }
         effects.append((myX, moment, Routine.momentPhase(moodSeconds * 4)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale

@@ -78,7 +78,7 @@ enum Sprites {
     static let dx = 13
 
     enum Pose: String, CaseIterable {
-        case empty = "Empty", writeA = "WriteA", writeB = "WriteB", writeC = "WriteC", writeD = "WriteD", writePause = "WritePause", ponder = "Ponder", readA = "ReadA", readB = "ReadB", restHands = "RestHands", content = "Content", glanceLeft = "GlanceLeft", glanceRight = "GlanceRight", lookLeft = "LookLeft", lookRight = "LookRight", lookUp = "LookUp", lookWindow = "LookWindow"
+        case empty = "Empty", writeA = "WriteA", writeB = "WriteB", writeC = "WriteC", writeD = "WriteD", writePause = "WritePause", ponder = "Ponder", readA = "ReadA", readB = "ReadB", bookNudgeA = "BookNudgeA", bookNudgeB = "BookNudgeB", restHands = "RestHands", content = "Content", glanceLeft = "GlanceLeft", glanceRight = "GlanceRight", lookLeft = "LookLeft", lookRight = "LookRight", lookUp = "LookUp", lookWindow = "LookWindow"
         case pageLift = "PageLift", turnPage = "TurnPage", pageSettle = "PageSettle", bookmark = "Bookmark", stretchHalf = "StretchHalf", stretchUp = "StretchUp", stretchLeft = "StretchLeft", stretchRight = "StretchRight", oops = "Oops", oopsFall = "OopsFall", bend = "Bend", pickUp = "PickUp", recover = "Recover", found = "Found"
         case teaReach = "TeaReach", teaHold = "TeaHold", teaLift = "TeaLift", teaSip = "TeaSip", cheer = "Cheer", yawnStart = "YawnStart", yawn = "Yawn", yawnEnd = "YawnEnd", nodA = "NodA", nodB = "NodB", nodC = "NodC", startle = "Startle", munchA = "MunchA", munchB = "MunchB", cookieSmall = "CookieSmall", crumbs = "Crumbs"
         case think = "Think", idea = "Idea", spinA = "SpinA", spinB = "SpinB", spinC = "SpinC", spinD = "SpinD", chinRest = "ChinRest", chinRestB = "ChinRestB", scratchA = "ScratchA", scratchB = "ScratchB", neckLeft = "NeckLeft", neckRight = "NeckRight", eraseA = "EraseA", eraseB = "EraseB", blowCrumbs = "BlowCrumbs"
@@ -336,6 +336,7 @@ enum Sprites {
         var lit = false
         var away = false
         var packed = false
+        var night = false
         var clock = Date()
     }
 
@@ -375,18 +376,24 @@ enum Sprites {
             let height = d.laptop ? 4 : 3, source = grid
             grid = (0..<height).map { source[round(Double($0 * (source.count - 1)) / Double(height - 1))] }
         }
-        return Layer(grid, d.laptop ? 27 : 24, d.laptop ? 23 : 26)
+        return Layer(grid, d.laptop ? 27 : 24, d.laptop ? 22 : 26)
     }
 
     /// A cup's corner and the hand holding it, for each stage of raising it to the lips.
+    /// The subject picks the book's cover; a colour too close to the top moves on to the next.
+    private static func bookCover(_ look: Look, _ kind: Drink) -> String {
+        let covers = Array("BzgVy"), clash = Array("zgBy-VzyBg"), i = kind.rawValue - 1
+        return String(covers[covers[i] == clash[look.topColor] ? (i + 1) % 5 : i])
+    }
+
     private static func drinkPlace(_ state: String, _ kind: Drink) -> (x: Int, y: Int, handX: Int, handY: Int) {
         let cup = art("Drink\(kind.rawValue)")
         let w = cup[0].count, h = cup.count
         switch state {
         case "rest": let x = width - 1 - w - dx, y = 29 - h; return (x, y, x - 1, y + h / 2 - 1)
-        case "lift": let x = 27 - w / 2, y = 24 - h; return (x, y, x + w - 2, y + h / 2)
-        case "near": let x = 23 - w / 2, y = 21 - h * 3 / 4; return (x, y, x + w - 2, y + h / 2)
-        default: let x = 16 - w / 2, y = 16; return (x, y, x + w - 2, y + h / 2)
+        case "lift": let x = 27 - w / 2, y = 22 - h; return (x, y, x + w - 2, y + h / 2)
+        case "near": let x = 23 - w / 2, y = 19 - h * 3 / 4; return (x, y, x + w - 2, y + h / 2)
+        default: let x = 16 - w / 2, y = 14; return (x, y, x + w - 2, y + h / 2)
         }
     }
 
@@ -434,11 +441,8 @@ enum Sprites {
             if let a, let b { elbowX = lerp(a.elbowX, b.elbowX, t); elbowY = lerp(a.elbowY, b.elbowY, t); handX = lerp(a.handX, b.handX, t); handY = lerp(a.handY, b.handY, t) }
             else { elbowX = only!.elbowX; elbowY = only!.elbowY; handX = only!.handX; handY = only!.handY }
             let layer = (joints(now, left: left) ?? a ?? b)!.layer
-            // Hands on the keyboard would be behind the lid, so they rest either side of it.
-            if d.laptop && now.lap == nil && layer == 2 {
-                if left { elbowX = min(elbowX, 4); handX = min(handX, 5) }
-                else { elbowX = max(elbowX, 25); handX = max(handX, 24) }
-            }
+            // Typing happens behind the open lid: keep the fists inside its width so none peek out.
+            if d.laptop && now.lap == nil && layer == 2 { handX = left ? max(handX, 10) : min(handX, 19) }
             elbowX += sway; elbowY -= lift; handX += sway; handY -= lift
             arms.append((left, layer, handX, handY, arm(look, ((left ? 9 : 21) + sway, bodyY + 2), (elbowX, elbowY), (handX, handY))))
         }
@@ -454,13 +458,18 @@ enum Sprites {
 
         var under: [Layer] = []
         if !d.packed {
-            let cover = String(Array("BzgVy")[kind.rawValue - 1])
-            let lying = d.laptop ? art(now.lap ?? "LaptopOpen") : art(now.book ?? "Book").map { $0.replacingOccurrences(of: "B", with: cover) }
+            let cover = bookCover(look, kind)
+            var lying = d.laptop ? art(now.lap ?? "LaptopOpen") : art(now.book ?? "Book").map { $0.replacingOccurrences(of: "B", with: cover) }
+            if d.lit && d.night {
+                let cool = Array("bNMxXiw"), warm = Array("YpPYyYY")
+                lying = lying.map { row in String(row.map { c in cool.firstIndex(of: c).map { warm[$0] } ?? c }) }
+            }
             under.append(Layer(lying, 16 - lying[0].count / 2, 29 - lying.count))
         }
-        // Arms go behind the book or lid so it stays whole; only the hands lie on top, over the props too.
+        // Arms go behind the book so it stays whole and only the hands lie on it, over the props too.
+        // An open lid hides the hands as well.
         layers += shift(armsAt(2)) + shift(under) + prop
-        layers += shift(arms.filter { $0.layer == 2 }.map { Layer(art("Hand"), $0.handX - 1, $0.handY - 1) })
+        layers += shift(arms.filter { $0.layer == 2 && !(d.laptop && now.lap == nil) }.map { Layer(art("Hand"), $0.handX - 1, $0.handY - 1) })
         if decor != nil && !now.front, let sticker = documentSticker(d, look) { layers.append(sticker) }
         if now.front { layers += shift(back) + shift(armsAt(0)) + shift(faceLayers) + shift(armsAt(1)) }
 
@@ -477,7 +486,7 @@ enum Sprites {
         }
         var drawn = now.p
         if let p0 = start.p, let p1 = to.p { drawn = zip(p0, p1).map { lerp($0, $1, t) } }
-        if let p = drawn, !d.packed, !(d.laptop && (now.r?.handY ?? 0) >= 24) {
+        if let p = drawn, !d.packed, !(d.laptop && (now.r?.handY ?? 0) >= 22) {
             top.append(pencil((p[0] + sway, p[1] - lift), (p[2] + sway, p[3] - lift)))
         }
         if let name = now.itemArt, !d.packed, !(d.laptop && now.itemSide == nil) {
@@ -534,24 +543,44 @@ enum Sprites {
 
     // ---- A lit lamp -----------------------------------------------------------------------------
 
-    private static let lampMouths = [(11, 17), (10, 16), (7, 18), (7, 18), (7, 17), (9, 14), (7, 22), (10, 15)]
+    /// Each lamp's beam: the two ends of its opening at the top, and where its edges land on row 27.
+    /// Tilted heads throw it toward the book; round shades spread it straight down and wide.
+    private static let lampBeams = [(10, 15, 17, 20, 40), (11, 14, 17, 22, 38), (4, 11, 18, -6, 33), (4, 11, 18, -6, 33), (4, 11, 16, -6, 34), (5, 13, 14, 2, 32), (3, 10, 17, -4, 30), (11, 14, 16, 22, 38)]
 
     /// The cone of light, drawn before the pet so it never washes over them: it shows on the wall
     /// beside them, and drawLampPool picks it up on the book and the desk top.
-    static func drawLampGlow(left: CGFloat, top: CGFloat, scale: CGFloat, lamp: Int = 0) {
-        let (ox, oy) = lampMouths[max(0, min(7, lamp))]
-        for y in oy...27 {
-            let t = Double(y - oy) / Double(27 - oy)
-            let cx = ox + round(Double(29 - ox) * t), radius = round(2 + 8 * t)
-            NSColor(srgbRed: 1, green: 216.0 / 255, blue: 96.0 / 255, alpha: CGFloat(round(92 - 40 * t)) / 255).setFill()
-            NSRect(x: left + CGFloat(max(0, cx - radius)) * scale, y: top + CGFloat(y) * scale, width: CGFloat(min(43, cx + radius) - max(0, cx - radius) + 1) * scale, height: scale).fill(using: .sourceOver)
+    static func drawLampGlow(left: CGFloat, top: CGFloat, scale: CGFloat, lamp: Int = 0, night: Bool = false) {
+        let which = max(0, min(7, lamp))
+        func strip(_ y: Int, _ from: Int, _ to: Int) {
+            NSRect(x: left + CGFloat(from) * scale, y: top + CGFloat(y) * scale, width: CGFloat(to - from + 1) * scale, height: scale).fill(using: .sourceOver)
         }
+        func warm(_ alpha: Int) { NSColor(srgbRed: 1, green: 216.0 / 255, blue: 96.0 / 255, alpha: CGFloat(alpha) / 255).setFill() }
+        if which == 6 { // A lantern lights everything around it, like the garland's bulbs.
+            for (r, alpha) in night ? [(19, 26), (13, 51), (7, 82)] : [(11, 26), (6, 51)] {
+                warm(alpha)
+                for y in (20 - r)...min(29, 20 + r) {
+                    let half = Int(Double(r * r - (y - 20) * (y - 20)).squareRoot())
+                    strip(y, max(-6, 7 - half), 7 + half)
+                }
+            }
+            return
+        }
+        let (a, b, oy, c, d) = lampBeams[which]
+        func cone(_ l: Int, _ r: Int, _ footL: Int, _ footR: Int, _ alpha: Int) {
+            warm(alpha)
+            for y in oy...28 {
+                let t = Double(y - oy) / Double(28 - oy)
+                strip(y, max(0, l + round(Double(footL - l) * t)), min(44, r + round(Double(footR - r) * t)))
+            }
+        }
+        cone(a, b, c, d, night ? 50 : 28)
+        cone(a + 2, b, c + 4, d - 4, night ? 73 : 41) // a soft edge round a brighter middle
     }
 
     /// The warm pool where the light lands, drawn over the book or laptop and the desk under it.
-    static func drawLampPool(left: CGFloat, top: CGFloat, scale: CGFloat) {
-        NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: 40.0 / 255).setFill()
-        for (y, from, to) in [(25, 22, 36), (26, 20, 38), (27, 19, 39), (28, 18, 41), (29, 20, 39)] {
+    static func drawLampPool(left: CGFloat, top: CGFloat, scale: CGFloat, night: Bool = false) {
+        NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: (night ? 82 : 40) / 255).setFill()
+        for (y, from, to) in night ? [(27, 15, 44), (28, 14, 45), (29, 16, 43)] : [(25, 22, 36), (26, 20, 38), (27, 19, 39), (28, 18, 41), (29, 20, 39)] {
             NSRect(x: left + CGFloat(from) * scale, y: top + CGFloat(y) * scale, width: CGFloat(to - from + 1) * scale, height: scale).fill(using: .sourceOver)
         }
     }

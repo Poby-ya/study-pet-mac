@@ -83,7 +83,7 @@ enum SelfTest {
         let onLaptop = Sprites.compose(.writeA, plainLook, decor: Sprites.Decor(drink: .mug, laptop: true))
         check(onLaptop.firstIndex { $0.grid == Sprites.art("LaptopOpen") }! > onLaptop.firstIndex { $0.grid == Sprites.art("Desk") }! + 1, "laptop: the lid is drawn over the hands on its keyboard")
         let sip = Sprites.compose(.teaSip, plainLook, decor: Sprites.Decor(drink: .mug)).filter { $0.grid == Sprites.art("Drink2") }
-        check(sip.count == 1 && sip[0].y == 16, "tea: the raised cup covers the mouth, and the desk no longer holds a second one")
+        check(sip.count == 1 && sip[0].y == 14, "tea: the raised cup covers the mouth, and the desk no longer holds a second one")
         func places(_ layers: [Sprites.Layer]) -> [String] { layers.map { "\($0.x),\($0.y)" } }
         let halfway = places(Sprites.compose(.stretchUp, plainLook, from: .restHands, blend: 0.5))
         check(halfway != places(Sprites.compose(.stretchUp, plainLook)) && halfway != places(Sprites.compose(.restHands, plainLook)), "motion: halfway between two poses is neither of them")
