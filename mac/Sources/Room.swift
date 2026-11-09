@@ -562,18 +562,22 @@ final class Room: @unchecked Sendable {
 
     /// The chalkboard: everyone else at their desk, studying first. It grows a line per
     /// person up to boardLines; the title always has the head count.
-    static func board(_ members: [Member]) -> (title: String, lines: [String]) {
+    static func board(_ members: [Member], now: Int64 = 0) -> (title: String, lines: [String]) {
         let newest = latest(members)
+        let clock = max(now > 0 ? now : Int64(Date().timeIntervalSince1970 * 1000), newest)
         let here = members.filter { isHere($0, newest) }.sorted { a, b in
             if (a.state == "paused") != (b.state == "paused") { return b.state == "paused" }
             if a.minutes != b.minutes { return a.minutes > b.minutes }
             return a.name < b.name
         }
-        let lines = here.prefix(2 * boardLines).map { m -> String in
+        let studying = here.map { m -> String in
             if m.state == "paused" { return "\(m.name) · 쉬는 중" }
             let what = m.subject.isEmpty ? "" : m.subject + " "
             return m.minutes < 1 ? "\(m.name) · \(what)방금 시작" : "\(m.name) · \(what)\(Records.duration(Double(m.minutes)))"
         }
+        let hereIds = Set(here.map(\.id))
+        let away = members.filter { !hereIds.contains($0.id) && $0.updated > 0 }.sorted { $0.updated > $1.updated }.map { "\($0.name) · \(awayText($0, now: clock))" }
+        let lines = Array((studying + away).prefix(2 * boardLines))
         return ("공부 중 \(here.filter { $0.state == "studying" }.count) / 쉬는 중 \(here.filter { $0.state == "paused" }.count) / 노는 중 \(members.count - here.count)", lines)
     }
 
@@ -609,9 +613,18 @@ final class Room: @unchecked Sendable {
         return name + (batchim ? "이" : "가")
     }
 
+    /// "45분째 노는 중", and from an hour on always in hours, however many. Someone who stopped on
+    /// a new version sends how long they had already been away as `minutes`, so reopening the app
+    /// (which refreshes `updated`) doesn't restart the count.
+    static func awayText(_ m: Member, now: Int64) -> String {
+        if m.updated <= 0 { return "자리 비움" }
+        let minutes = max(0, (now - m.updated) / 60_000) + (m.state == "off" ? Int64(m.minutes) : 0)
+        return minutes < 60 ? "\(max(1, minutes))분째 노는 중" : "\(minutes / 60)시간째 노는 중"
+    }
+
     /// The seatmate's bubble; their name is on the desk's name tag.
-    static func seatText(_ m: Member, here: Bool) -> String {
-        if !here { return "자리 비움" }
+    static func seatText(_ m: Member, here: Bool, now: Int64 = 0) -> String {
+        if !here { return awayText(m, now: now) }
         let time = Records.duration(Double(m.minutes))
         let subject = m.subject.isEmpty ? "공부" : m.subject
         if m.state == "paused" { return "\(subject) · \(time)\n잠깐 쉬는 중" }

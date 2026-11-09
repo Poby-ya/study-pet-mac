@@ -78,6 +78,10 @@ enum SelfTest {
         check(interactions.message(friend, here: true, current: "0.5.1") == "드디어 깼구나 !", "friend: rest greeting")
         var last = ""
         for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
+        let sweet = FriendInteractions(); var gumi = Member(id: "g", name: "구미", subject: "", state: "studying", minutes: 0, updated: 1); gumi.version = "0.5.1"
+        let said = (0..<200).map { _ in sweet.message(gumi, here: true, current: "0.5.1", me: "포비") }
+        check(said.allSatisfy(FriendInteractions.isLove) && said.allSatisfy { $0.count <= 20 } && said.contains(where: FriendInteractions.isPat) && said.contains(where: FriendInteractions.isTreat), "couple: 구미 and 포비 get their own interactions, within the message limit")
+        check(!FriendInteractions.isLove(FriendInteractions().message(gumi, here: true, current: "0.5.1", me: "민지")), "couple: nobody else gets them")
         friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: unknown legacy version receives notice")
         let plainLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
         let onLaptop = Sprites.compose(.writeA, plainLook, decor: Sprites.Decor(drink: .mug, laptop: true))
@@ -603,12 +607,12 @@ enum SelfTest {
         }
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
-        var board = Room.board(members)
-        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중"],
+        var board = Room.board(members, now: now)
+        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중", "서연 · 1분째 노는 중", "하늘 · 3분째 노는 중"],
               "board: study, rest and absent people keep individual rows: \(board.lines)")
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
-        board = Room.board(members)
-        check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == 5 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
+        board = Room.board(members, now: now)
+        check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == 7 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")
         check(Room.board([]).title == "공부 중 0 / 쉬는 중 0 / 노는 중 0", "board: empty room counts are explicit")
         check(Room.board((0..<9).map { m("x\($0)", "친구\($0)", "studying", 0, $0) }).lines.count == 9,
               "board: nine active people fit in five rows")
@@ -641,7 +645,8 @@ enum SelfTest {
         let latest = Room.latest(members)
         check(Room.seatText(members[1], here: Room.isHere(members[1], latest)) == "수학\n32분째 공부 중", "seat: studying text")
         check(Room.seatText(members[2], here: Room.isHere(members[2], latest)) == "공부 · 1시간 5분\n잠깐 쉬는 중", "seat: paused text")
-        check(Room.seatText(members[4], here: Room.isHere(members[4], latest)) == "자리 비움", "seat: gone quiet reads as away")
+        check(Room.seatText(members[4], here: Room.isHere(members[4], latest), now: now) == "3분째 노는 중", "seat: gone quiet reads as away")
+        check(Room.awayText(Member(id: "x", name: "x", subject: "", state: "off", minutes: 5 * 60, updated: 1), now: 1 + 3 * 3_600_000) == "8시간째 노는 중" && Room.awayText(Member(id: "x", name: "x", subject: "", state: "off", minutes: 0, updated: 1), now: 1 + 200 * 3_600_000) == "200시간째 노는 중" && Room.awayText(m("x", "x", "off", 59 * 60_000), now: now) == "59분째 노는 중", "away: minutes under an hour, then always hours, counting time before the app was reopened")
         check(Room.pokeMessage(members[1], here: true) == "화이팅 !" && Room.pokeMessage(members[2], here: true) == "일어나 !" &&
               Room.pokeMessage(members[3], here: Room.isHere(members[3], latest)) == "같이 공부하자 !", "poke: message follows their state")
 

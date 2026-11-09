@@ -3,6 +3,18 @@ import Foundation
 final class FriendInteractions {
     static let updateNotice = "업데이트가 새로 나왔대 !"
     static let cheers = ["파이팅 !", "오늘도 힘내 !", "정말 대단해 !", "잘하고 있어 !", "조금만 더 해보자 !", "꾸준한 네가 멋져 !", "오늘도 응원할게 !", "한 걸음씩 가보자 !", "같이 끝까지 가자 !", "지금처럼만 해봐 !", "우리 해낼 수 있어 !", "집중하는 모습 멋져 !"]
+    // Only between 구미 and 포비, whichever of them is sending.
+    static func isCouple(_ a: String, _ b: String) -> Bool { a == "포비" && b == "구미" || a == "구미" && b == "포비" }
+    private static let love = ["사랑해 !", "보고 싶었어 !", "네가 제일 멋져 !", "오늘도 고마워 !", "끝나고 데이트하자 !", "하트 받아 !"]
+    private static let pats = ["머리 쓰담쓰담", "토닥토닥 고생했어", "볼 콕 !", "어깨 주물주물"]
+    private static let treats = ["커피 사 왔어 !", "간식 먹고 해 !", "따뜻한 차 한 잔 !"]
+    private static let coupleLines = love + pats + treats
+    /// Hearts instead of flames; the text is all that reaches the other screen.
+    static func isLove(_ text: String) -> Bool { text.contains("자기야") || coupleLines.contains { text.contains($0) } }
+    /// A pat on the shoulder rather than a cheer.
+    static func isPat(_ text: String) -> Bool { pats.contains { text.contains($0) } }
+    /// Puts something new on the desk.
+    static func isTreat(_ text: String) -> Bool { treats.contains { text.contains($0) } }
     private var states: [String: String] = [:], greetings: [String: String] = [:]
     private var last: [String: Int] = [:]
     func observe(_ members: [Member]) {
@@ -17,15 +29,19 @@ final class FriendInteractions {
             if state == "off" { greetings.removeValue(forKey: m.id) }; states[m.id] = state
         }
     }
-    func message(_ m: Member, here: Bool, current: String) -> String {
+    func message(_ m: Member, here: Bool, current: String, me: String = "") -> String {
         if let own = UpdateRelease.version(current) {
             if let other = UpdateRelease.version(m.version) { if other.lexicographicallyPrecedes(own) { return Self.updateNotice } }
             else { return Self.updateNotice }
         }
+        let couple = Self.isCouple(me, m.name)
+        if couple && !here { return "자기야 같이 공부하자 !" }
+        if couple && m.state == "paused" { return "자기야 일어나 !" }
         if !here || m.state == "paused" { return Room.pokeMessage(m, here: here) }
         if let greeting = greetings.removeValue(forKey: m.id) { return greeting }
-        var index = Int.random(in: 0..<(Self.cheers.count - 1))
+        let lines = couple ? Self.coupleLines : Self.cheers
+        var index = Int.random(in: 0..<(lines.count - 1))
         if let previous = last[m.id], index >= previous { index += 1 }; last[m.id] = index
-        return Self.cheers[index]
+        return lines[index]
     }
 }

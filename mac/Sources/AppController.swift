@@ -246,6 +246,8 @@ final class AppController: NSObject, NSMenuDelegate {
         publish()
     }
 
+    private func newDrink() { pet.drink = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }.randomElement()! }
+
     private func pickSubject(_ picked: String) {
         if quitting { return }
         if deviceSync != nil { if subject != picked { syncChange(state == .off ? "start" : "subject",picked) }; return }
@@ -255,8 +257,7 @@ final class AppController: NSObject, NSMenuDelegate {
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
         pet.subjectChanged()
-        let drinks = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }
-        pet.drink = drinks.randomElement()!
+        newDrink()
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
@@ -450,6 +451,11 @@ final class AppController: NSObject, NSMenuDelegate {
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
         if let sync = deviceSync, !syncReady || !sync.mine || !sync.pending.isEmpty || quitting { return }
+        // Stamped once when I stop, so friends see the whole time even if the app is reopened since.
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let awaySince = state != .off ? "" : Settings.get("awaySince").isEmpty ? String(nowMs) : Settings.get("awaySince")
+        if awaySince != Settings.get("awaySince") { safely("자리 비움 시각 저장") { try Settings.set("awaySince", awaySince) } }
+        let awayMinutes = Int64(awaySince).map { Int(min(10080, max(0, (nowMs - $0) / 60_000))) } ?? 0
         var status: [String:Any] = [
             "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
@@ -459,7 +465,7 @@ final class AppController: NSObject, NSMenuDelegate {
             "customization": (pet.look.customization ?? Customization.legacy(pet.look)).data(shared:true),
             "state": state == .studying ? "studying" : state == .paused ? "paused" : "off",
             "subject": state == .off ? "" : subject,
-            "minutes": min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
+            "minutes": state == .off ? awayMinutes : min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
             "updated": Room.serverTime,
         ]
         if let sync = deviceSync { status["syncRevision"] = DeviceSync.num(sync.data,"revision") }
@@ -610,8 +616,9 @@ final class AppController: NSObject, NSMenuDelegate {
 
     private func seatView(_ key: String) -> PetWindow.Seat? {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
-        let here = Room.isHere(mate, Room.latest(members))
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here), drink: mate.drink, laptop: mate.laptop, id: mate.id)
+        let latest = Room.latest(members)
+        let here = Room.isHere(mate, latest)
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here, now: max(Int64(Date().timeIntervalSince1970 * 1000), latest)), drink: mate.drink, laptop: mate.laptop, id: mate.id)
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
@@ -629,7 +636,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
-        let message = interactions.message(mate, here: here, current: Updater.current)
+        let message = interactions.message(mate, here: here, current: Updater.current, me: nickname)
         room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
         pet.goVisit(mate.name, message: here ? message : message + "\n" + Room.offPokeHint,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
@@ -641,6 +648,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
+        if FriendInteractions.isTreat(poke.message) && state != .off { newDrink(); publish() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let text = "\(poke.name) : \(poke.message)"
         pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
