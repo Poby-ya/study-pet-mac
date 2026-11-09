@@ -93,7 +93,15 @@ final class AppController: NSObject, NSMenuDelegate {
         mach_timebase_info(&info)
         return Double(mach_continuous_time()) * Double(info.numer) / Double(info.denom) / 1_000_000_000
     }
-    private func segmentEnd(_ start: Date) -> Date { start.addingTimeInterval(max(0, Self.continuousSeconds() - segmentClock)) }
+    private static func awakeSeconds() -> Double {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return Double(mach_absolute_time()) * Double(info.numer) / Double(info.denom) / 1_000_000_000
+    }
+    private var segmentAwake = 0.0
+    private var sleepSeen = AppController.continuousSeconds() - AppController.awakeSeconds()
+    private var countWhileClosed: Bool { Settings.get("countWhileClosed") == "1" }
+    private func segmentEnd(_ start: Date) -> Date { start.addingTimeInterval(max(0, countWhileClosed ? Self.continuousSeconds() - segmentClock : Self.awakeSeconds() - segmentAwake)) }
     private var updateCheck: Timer?
     private var pendingCommit: Segment?
     private var room: StudyRooms?
@@ -168,7 +176,7 @@ final class AppController: NSObject, NSMenuDelegate {
             self.signalledTag = tag
             self.updater.check()
         }
-        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.updater.check() }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.updater.check(); self?.afterSleep() }
         networkMonitor.pathUpdateHandler = { [weak self] path in
             if path.status == .satisfied { DispatchQueue.main.async { self?.updater.check() } }
         }
@@ -318,6 +326,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     private func openSegment() {
         segmentClock = Self.continuousSeconds()
+        segmentAwake = Self.awakeSeconds()
         segmentStart = Date()
         saveOpen()
     }
@@ -731,6 +740,9 @@ final class AppController: NSObject, NSMenuDelegate {
         let focusItem = item("집중 모드", #selector(toggleFocus))
         focusItem.state = pet.focus ? .on : .off
         menu.addItem(focusItem)
+        let countItem = item("노트북을 덮어도 계속 측정", #selector(toggleCountWhileClosed))
+        countItem.state = countWhileClosed ? .on : .off
+        menu.addItem(countItem)
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
@@ -800,6 +812,46 @@ final class AppController: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         return item
+    }
+
+    /// The time asleep is left out unless asked for: the study either side of it is recorded separately.
+    private func afterSleep() {
+        let total = Self.continuousSeconds() - Self.awakeSeconds()
+        let slept = total - sleepSeen
+        sleepSeen = total
+        guard slept >= 60, !countWhileClosed, state == .studying, deviceSync?.mine != false else { return }
+        if deviceSync != nil { syncSkipSleep(slept) }
+        else if closeSegment() { openSegment() }
+        else { state = .paused; pet.setMood(.dozing); publish(); return }
+        if !pet.minimized { pet.showFeedback("화면이 꺼져 있는 동안은 측정되지 않았어요!\n메뉴에서 닫혀 있어도 계속 재게 할 수 있어요!") }
+    }
+
+    private func syncSkipSleep(_ slept: Double) {
+        guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
+        Task { @MainActor in
+            defer { syncBusy = false }
+            do {
+                let fellAsleep = Int64(Date().timeIntervalSince1970 * 1000) - Int64(slept * 1000)
+                // The network usually comes back a little after the lid opens; until it does, nothing changes.
+                var tries = 0
+                while true {
+                    do { try await sync.pull(); break }
+                    catch { tries += 1; if tries > 12 { throw error }; try await Task.sleep(nanoseconds: 5_000_000_000) }
+                }
+                try await sync.change("pause", fields: ["at": fellAsleep])
+                try await sync.change("resume")
+                if self.deviceSync === sync && !quitting { try applySync(); syncReady = true; publish() }
+            } catch { feedback = error.localizedDescription; feedbackUntil = Date().addingTimeInterval(8) }
+        }
+    }
+
+    @objc private func toggleCountWhileClosed() {
+        // What's measured so far stays as it was measured.
+        let running = segmentStart != nil
+        if running && !closeSegment() { state = .paused; pet.setMood(.dozing); publish(); return }
+        let on = countWhileClosed
+        safely("측정 설정 저장") { try Settings.set("countWhileClosed", on ? "" : "1") }
+        if running { openSegment() }
     }
 
     @objc private func toggleFocus() {
