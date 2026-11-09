@@ -511,7 +511,7 @@ final class PetWindow: NSPanel {
             if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
                 if let seat = seats[i] { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : seat.text,
-                                                    cx: (i == 0 ? seatX : rightX) + (seat.here || leavingTicks[i] >= 0 ? mid : 28 * scale), tipY: tip, maxWidth: narrow, fill: .white) }
+                                                    cx: (i == 0 ? seatX : rightX) + (seat.here || leavingTicks[i] >= 0 ? mid : 34 * scale), tipY: tip, maxWidth: narrow, fill: .white) }
             }
             let news = mood != .away ? newsText() : ""
             if news != shownNews { shownNews = news; newsShownAt = animationSeconds }
@@ -540,7 +540,7 @@ final class PetWindow: NSPanel {
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
         if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}}
-        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:28,targetY:Int((20-Departure.signLift(tick)).rounded()),leftHand:true)}}
+        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:34,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18
@@ -548,7 +548,7 @@ final class PetWindow: NSPanel {
         let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
         NSGraphicsContext.current?.shouldAntialias = false
         let grid = Array(Sprites.art("AwaySign").suffix(height))
-        let left = 17 // the middle of the desk, just clear of the lamp
+        let left = 23 // the middle of the desk to the right of the nameplate
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
                 (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : c == "u" ? Sprites.color(0xFFF9E7) : Sprites.color(0xFFF1B8)).setFill()

@@ -23,7 +23,7 @@ final class FriendInteractions {
     static func touch(_ text: String) -> Int { text.contains("쓰담") ? 1 : text.contains("안겼") || text.contains("안아") ? 2 : 0 }
     static func treatDrink(_ text: String) -> Sprites.Drink { treats.first { text.contains($0.line) }?.drink ?? Sprites.Drink.none }
     static func isTreat(_ text: String) -> Bool { treatDrink(text) != Sprites.Drink.none }
-    private static let retorts = ["너도 얼른 공부해 !", "너는 언제 공부할 거야 ?", "그만 놀고 공부하자 !", "응원보다 공부부터 !", "말로만 응원이야 ?", "네 책상이 울고 있어 !", "놀면서 응원하기야 ?", "얼른 자리에 앉아 !", "너 지금 노는 중이지 ?", "공부하러 가라 ㅋㅋ"]
+    private static let retorts = ["너도 얼른 공부해 !", "너는 언제 공부할 거야 ?", "그만 놀고 공부하자 !", "응원도 고맙지만 같이 공부하자 !", "너도 얼른 자리에 앉아 !"]
     private static let coupleRetorts = ["자기도 얼른 공부해 !", "자기는 언제 공부할 거야 ?", "놀지 말고 옆에 앉아 !", "보고 싶으면 공부하러 와 !"]
     /// What a studying friend says back to someone who cheers them on without studying. Chosen from
     /// the message alone, so both screens show the same words. Wake-ups and invitations get none.
