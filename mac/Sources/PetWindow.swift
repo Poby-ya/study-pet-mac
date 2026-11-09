@@ -359,6 +359,9 @@ final class PetWindow: NSPanel {
 
     func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
+    /// Whose eyes light up as my pet cheers them on: -1 the left seat, 1 the right, 0 nobody.
+    static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") ? side : 0 }
+
     private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
     private var momentText: String { Routine.line(moment, Routine.momentFrame(tick), laptop: laptop) }
 
@@ -366,7 +369,7 @@ final class PetWindow: NSPanel {
     func nextSeason() {
         let stored = Int(Settings.get("season")) ?? -1
         let season = (0..<4).contains(stored) ? stored : Self.seasonAt(clock())
-        remember("season", String((season + 1) % 4)); sceneIndex = (sceneIndex + Int.random(in: 1...5)) % 6; redraw()
+        remember("season", String((season + 1) % 4)); sceneIndex = nextScene; redraw()
     }
     private var myPose: Sprites.Pose {
         switch mood {
@@ -412,6 +415,7 @@ final class PetWindow: NSPanel {
         let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부")
         let tapping = visiting && !cheering && !walking && !outgoing && (mood == .studying || mood == .dozing)
         let tap = tapping && frameCount % 2 == 0
+        let cheeredSide = Self.cheeredSide(outgoingTick, outgoingSide, outgoingText)
         func hop(_ travel: Double, fromSeat: Bool) -> CGFloat { (Travel.walking(travel) ? CGFloat(abs(sin(travel * .pi))) * scale : 0) - (fromSeat ? CGFloat(Travel.seated(travel)) * 4 * scale : 0) }
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering ? .cheer : tapping ? .reach : .wave, x: visitorX,
                                  hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave)) }
@@ -435,7 +439,8 @@ final class PetWindow: NSPanel {
             previousSeats[i] = seat
             if leavingTicks[i]>=0,let snapshot=departingSeats[i] {seat=snapshot;seat.here=false}
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
-            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : seatPose(seat)
+            let cheered = cheeredSide == (i == 0 ? -1 : 1) && seat.here && !seat.dozing
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : cheered ? .content : seatPose(seat)
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
@@ -444,6 +449,7 @@ final class PetWindow: NSPanel {
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+            if cheered { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
@@ -646,7 +652,7 @@ final class PetWindow: NSPanel {
         var open = windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale)
         if windowFrame == 1 { let arch = windowGlass.height * 0.42; open.origin.y += arch; open.size.height -= arch } // no petals in the arch's corners
         open.clip()
-        Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
+        Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: scene == Sprites.christmasScene ? 3 : season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -760,15 +766,16 @@ final class PetWindow: NSPanel {
         return (0..<4).contains(stored) ? stored : Self.seasonAt(now)
     }
 
-    private var sceneIndex = Int.random(in: 0..<6)
+    private var sceneIndex = Int.random(in: 0..<Sprites.windowScenes)
+    private var nextScene: Int { (sceneIndex + Int.random(in: 1..<Sprites.windowScenes)) % Sprites.windowScenes }
     private var sceneBucket = -1
     private var windowScene: Int {
         let bucket = Int(clock().timeIntervalSince1970 / 1800)
-        if sceneBucket != bucket { sceneBucket = bucket; sceneIndex = (sceneIndex + Int.random(in: 1...5)) % 6 }
+        if sceneBucket != bucket { sceneBucket = bucket; sceneIndex = nextScene }
         return sceneIndex
     }
     private var windowFrame: Int { (windowScene + Int(clock().timeIntervalSince1970 / 1800)) % Sprites.windowFrames }
-    func nextWindowScene() { sceneIndex = (sceneIndex + Int.random(in: 1...5)) % 6; redraw() }
+    func nextWindowScene() { sceneIndex = nextScene; redraw() }
 
     // ---- Mouse ----------------------------------------------------------------------
 

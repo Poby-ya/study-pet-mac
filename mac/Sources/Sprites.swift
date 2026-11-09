@@ -378,7 +378,7 @@ enum Sprites {
         var layers: [Layer] = []
         if decor != nil && (custom?.on("lamp") ?? true) {
             if let custom, custom.value("lamp") > 0 { layers += custom.layers("lamp", lit: d.lit) }
-            else { layers.append(Layer(art(d.lit ? "LampOn" : "LampOff"), 1, 11)) }
+            else { layers.append(Layer(art(d.lit ? "LampOn" : "LampOff"), 1, 10)) }
         }
         let desk = custom?.layers("desk").first ?? Layer(art("Desk"), 0, 26)
         let scene = decor != nil ? deskScene(d, look) : []
@@ -522,7 +522,7 @@ enum Sprites {
         }
         func warm(_ alpha: Int) { NSColor(srgbRed: 1, green: 216.0 / 255, blue: 96.0 / 255, alpha: CGFloat(alpha) / 255).setFill() }
         if which == 6 { // A lantern lights everything around it, like the garland's bulbs.
-            for (r, alpha) in night ? [(19, 26), (13, 51), (7, 82)] : [(11, 26), (6, 51)] {
+            for (r, alpha) in night ? [(19, 42), (13, 84), (7, 130)] : [(11, 40), (6, 76)] {
                 warm(alpha)
                 for y in (20 - r)...min(29, 20 + r) {
                     let half = Int(Double(r * r - (y - 20) * (y - 20)).squareRoot())
@@ -539,13 +539,13 @@ enum Sprites {
                 strip(y, max(0, l + round(Double(footL - l) * t)), min(46, r + round(Double(footR - r) * t)))
             }
         }
-        cone(a, b, c, d, night ? 50 : 28)
-        cone(a + 2, b, c + 4, d - 4, night ? 73 : 41) // a soft edge round a brighter middle
+        cone(a, b, c, d, night ? 84 : 40)
+        cone(a + 2, b, c + 4, d - 4, night ? 122 : 60) // a soft edge round a brighter middle
     }
 
     /// The warm pool where the light lands, drawn over the book or laptop and the desk under it.
     static func drawLampPool(left: CGFloat, top: CGFloat, scale: CGFloat, night: Bool = false) {
-        NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: (night ? 82 : 40) / 255).setFill()
+        NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: (night ? 124 : 58) / 255).setFill()
         // Only the bare desk beside the book or laptop, so white pages and a silver lid keep their colour.
         for (y, from, to) in [(27, 15, 19), (28, 14, 19), (29, 16, 45)] {
             NSRect(x: left + CGFloat(from) * scale, y: top + CGFloat(y) * scale, width: CGFloat(to - from + 1) * scale, height: scale).fill(using: .sourceOver)
@@ -613,9 +613,12 @@ enum Sprites {
 
     /// The classroom's window, w×h: the middle of its panorama, anchored at the sill (a taller
     /// window just shows more sky), inside a wooden frame. `drift` is how far the clouds have moved.
-    /// Window frames: pane width (0 = none), transom, row spacing, arch, shutter width, open. One changes with each view.
-    private static let frames: [(pane: Int, transom: Bool, rows: Int, arch: Bool, shutter: Int, open: Bool)] = [(34, true, 0, false, 0, false), (26, false, 0, true, 0, false), (16, false, 14, false, 0, false), (60, false, 0, false, 0, false), (34, true, 0, false, 9, false), (0, false, 0, false, 0, true)]
+    /// Window frames: pane width (0 = none), transom, arch, shutter width, open. One changes with each view.
+    private static let frames: [(pane: Int, transom: Bool, arch: Bool, shutter: Int, open: Bool)] = [(56, true, false, 0, false), (44, false, true, 0, false), (90, false, false, 0, false), (56, false, false, 9, false), (0, false, false, 0, true)]
     static var windowFrames: Int { frames.count }
+    static var windowScenes: Int { views.count }
+    /// Snow falls past this view whatever the season.
+    static let christmasScene = 6
 
     static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int, scene: Int = 0, drift: Int = 0, frame: Int = 0) -> [String] {
         let view = season == 3 ? views[scene].winter : views[scene].leafy
@@ -643,7 +646,6 @@ enum Sprites {
         }
         let third = h / 3
         for x in (L + 1)..<R { if style.transom { grid[third][x] = "_"; grid[third + 1][x] = "|" }; grid[h - 3][x] = "_"; grid[1][x] = "\"" }
-        if style.rows > 0 { for y in stride(from: style.rows, to: h - 4, by: style.rows) { for x in (L + 1)..<R { grid[y][x] = "_"; grid[y + 1][x] = "|" } } }
         for y in 1..<(h - 2) { grid[y][L + 1] = "|"; grid[y][R - 1] = "|" }
         for x in L...R { grid[0][x] = "#"; grid[h - 2][x] = "#" }
         for x in 0..<w { grid[h - 1][x] = "\"" }

@@ -625,7 +625,7 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id);profileDirty=deviceSync != nil;profileEdit += 1;syncNow() } } }
 
     private func pokeMember(_ mate: Member) {
-        guard let room else { return }
+        guard let room, state != .off else { return } // going over to a friend takes being at your own desk
         guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
@@ -753,7 +753,7 @@ final class AppController: NSObject, NSMenuDelegate {
             for friend in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
                 let call = item(friend.name, #selector(pokePerson(_:))); call.representedObject = friend.id; calls.addItem(call)
             }
-            let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; share.addItem(callItem)
+            let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; if state != .off { share.addItem(callItem) }
             share.addItem(item("초대 코드 복사", #selector(copyInvite)))
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {

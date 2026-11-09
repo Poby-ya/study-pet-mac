@@ -18,7 +18,7 @@ enum SelfTest {
     private static func checkCustomization(_ out: URL) {
         let basic=Look(girl:true,2,1,1,2,4,0).withExtras("00000000"),legacy=Customization.legacy(Look(girl:true,2,1,1,2,4,0).withExtras("00000000"))
         let entries=Customization.categories.flatMap { s in s.art.map { (s,$0) } }
-        check(entries.count==56,"customization: exactly 56 approved designs")
+        check(entries.count==77,"customization: exactly 77 approved designs")
         let calendar=Calendar(identifier:.gregorian),date=calendar.date(from:DateComponents(year:2026,month:11,day:5,hour:20,minute:10))!
         var fixtures: [[String:Any]]=[]
         func flatten(_ layers: [Sprites.Layer]) -> [String] {var rows=Array(repeating:Array(repeating:Character("."),count:64),count:64);for l in layers {for (y,line) in l.grid.enumerated(){for (x,c) in line.enumerated() where c != "." {let xx=x+l.x,yy=y+l.y;if xx>=0 && xx<64 && yy>=0 && yy<64 {rows[yy][xx]=c}}}};return rows.map{String($0)}}
@@ -92,8 +92,8 @@ enum SelfTest {
         let blendStart = blend.track(.stretchUp, 10), blendMid = blend.track(.stretchUp, 10 + Sprites.blendTicks(.stretchUp) / 2), blendEnd = blend.track(.stretchUp, 30)
         check(blendStart.from == .restHands && blendStart.blend == 0 && blendMid.blend > 0 && blendMid.blend < 1 && blendEnd.blend == 1, "motion: a new pose eases in from the old one")
         check(Set(Sprites.Pose.allCases.filter { $0 != .empty }.map { $0.rawValue }) == Sprites.rigNames, "poses: the code and the shared data name the same poses")
-        save(render(NSSize(width: 480, height: 612)) {
-            for scene in 0..<6 { for season in 0..<4 {
+        save(render(NSSize(width: 480, height: Sprites.windowScenes * 102)) {
+            for scene in 0..<Sprites.windowScenes { for season in 0..<4 {
                 let grid = Sprites.windowGrid(40,34,sky: 2,season: season,scene: scene)
                 check(grid.count == 34 && grid.allSatisfy { $0.count == 40 }, "window: valid variant")
                 for sky in 0..<4 { for (w, h) in [(40, 34), (98, 55), (68, 55), (180, 100)] {
@@ -156,7 +156,7 @@ enum SelfTest {
                                         Records.Rank(subject: "알고리즘 문제풀이 백준", month: 30, total: 30)],
                               anchor: NSRect(x: 0, y: 0, width: 10, height: 10))
         let area = NSScreen.main!.visibleFrame
-        check(abs(planner.frame.maxX - area.maxX) < 1 && abs(planner.frame.minY - area.minY) < 1, "planner: docks bottom-right above Dock")
+        check(abs(planner.frame.maxX - (area.maxX - 12)) < 1 && abs(planner.frame.minY - (area.minY + 12)) < 1, "planner: floats just inside the bottom-right corner")
         save(capture(planner.contentView!), out, "planner.png")
         let help = HelpWindow()
         help.orderFront(nil)
@@ -255,6 +255,10 @@ enum SelfTest {
         check(syncedTick==820 && Routine.momentPose(7,4) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
         let quietPoses: [Sprites.Pose] = [.writeA, .writeB, .writeC, .writeD, .writePause, .readA, .readB, .pageLift, .turnPage, .pageSettle]
         check((0..<1920).allSatisfy { quietPoses.contains(Routine.focusPose($0)) && quietPoses.contains(Routine.focusPose($0, seed: 7)) },"focus: only writing, reading and turning a page")
+        check(PetWindow.cheeredSide(10, -1, "민지에게\n파이팅 !") == -1 && PetWindow.cheeredSide(2, -1, "민지에게\n파이팅 !") == 0 && PetWindow.cheeredSide(10, 1, "민지에게\n일어나 !") == 0 && PetWindow.cheeredSide(-1, 1, "") == 0, "cheer: a friend's eyes light up only once my pet has arrived with a cheer")
+        check(Sprites.windowFrames == 5, "window: the dense lattice frame stays removed")
+        let colon = Customization.digital(Array(repeating: String(repeating: "1", count: 31), count: 18), Date())
+        check(Array(colon[7])[15] == "Y" && Array(colon[9])[15] == "Y" && Array(colon[8])[15] == "1", "clock: the digital face shows its colon")
         for f in 0..<Sprites.windowFrames { check(Sprites.windowGrid(98, 52, sky: 2, season: 1, scene: 0, drift: 0, frame: f).count == 52,"window: every frame style draws") }
         pet.setMood(.dozing)
         check(Mirror(reflecting:pet).children.first(where:{$0.label=="animating"})?.value as? Bool == true,"idle: a mood change wakes the timer at once")

@@ -62,7 +62,7 @@ final class Customization: Equatable {
         return rows.map{String($0)}
     }
     static let digits="111/101/101/101/111 010/110/010/010/111 111/001/111/100/111 111/001/111/001/111 101/101/111/001/001 111/100/111/001/111 111/100/111/101/111 111/001/010/010/010 111/101/111/101/111 111/101/111/001/111".split(separator:" ").map{$0.split(separator:"/").map{Array($0)}}
-    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? 2+(n%2)*3 : 7+n*4)+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : compact ? "G" : "1"}}}};return rows.map{String($0)} }
+    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? 2+(n%2)*3 : 7+n*4+(n>1 ? 2 : 0))+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : compact ? "G" : "1"}}}};if !compact {rows[7][15]="Y";rows[9][15]="Y"};return rows.map{String($0)} }
 
     static func resize(_ grid: [String],_ w: Int,_ h: Int) -> [String] {
         let rows=grid.map{Array($0)}
@@ -112,7 +112,7 @@ final class Customization: Equatable {
                 grid=Self.resize(grid,Int(rect.width/unit)+14,key == "window" ? Int(rect.height/unit)+6 : 10)
                 x-=7*unit;y-=3*unit
             }
-            if key == "wall" {x=rect.maxX+8*unit;y+=24*unit}
+            if key == "wall" {let standing=grid.count>24;x=rect.maxX+(standing ? -2 : 8)*unit;y=standing ? rect.maxY+CGFloat(17-grid.count)*unit : y+24*unit}
             if key == "hangingPlant" {x=rect.maxX-4*unit;y+=2*unit}
             if key == "lights" {for row in grid.indices {let cells=Array(grid[row]);for col in cells.indices where cells[col] == "Y" && (col==0 || cells[col-1] != "Y") && (row==0 || Array(grid[row-1])[col] != "Y") {
                 NSColor(calibratedRed:1,green:214.0/255,blue:100.0/255,alpha:26.0/255).setFill()
