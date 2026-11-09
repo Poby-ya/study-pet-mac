@@ -787,7 +787,7 @@ final class PetWindow: NSPanel {
     private func drawWindow(sky: Int, season: Int, scene: Int, drift: Int) {
         guard let glass = windowRect() else { return }
         Sprites.drawWindow(Int(glass.width / scale), Int(glass.height / scale), sky: sky, season: season, left: glass.minX, top: glass.minY, scale: scale, scene: scene, drift: drift, frame: windowFrame)
-        if let c = look.customization { c.drawRoom(look, glass, clock(), preview: false) }
+        if let c = look.customization { c.drawRoom(look, glass, clock(), preview: false, pixel: scale) }
     }
     private func seasonNow(_ now: Date) -> Int {
         let stored = Int(Settings.get("season")) ?? -1

@@ -90,7 +90,7 @@ final class Customization: Equatable {
         Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:scale)
         if value("clock")==1 {let face=Self.resize(Sprites.clockGrid(parts.hour ?? 0,parts.minute ?? 0),19,19);Sprites.draw(layers:[Sprites.Layer(face,6,5)],look,left:x,top:y,scale:scale)}
     }
-    func drawRoom(_ look: Look,_ rect: NSRect,_ date: Date,preview: Bool=true) {
+    func drawRoom(_ look: Look,_ rect: NSRect,_ date: Date,preview: Bool=true,pixel: CGFloat=0) {
         if preview {
             let scale=max(1,min(rect.width/226,rect.height/70).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
             Sprites.color(0xEFE7D8).setFill();rect.fill()
@@ -107,12 +107,12 @@ final class Customization: Equatable {
         let unit=max(1,min(rect.width/98,rect.height/32).rounded(.down))
         for key in ["window","wall","hangingPlant","lights"] {
             guard let layer=layers(key).first else {continue}
-            var grid=layer.grid,x=rect.minX,y=rect.minY
+            var grid=layer.grid,x=rect.minX,y=rect.minY,size=unit
             if key == "window" || key == "lights" {
                 grid=Self.resize(grid,Int(rect.width/unit)+14,key == "window" ? Int(rect.height/unit)+6 : 10)
                 x-=7*unit;y-=3*unit
             }
-            if key == "wall" {let standing=grid.count>24;x=rect.maxX+(standing ? -2 : 8)*unit;y=standing ? rect.maxY+CGFloat(17-grid.count)*unit : y+24*unit}
+            if key == "wall" {let standing=grid.count>24;if standing && pixel>0 {size=pixel};x=rect.maxX+CGFloat(standing ? max(Int(rect.width/size*0.194)+2-Array(grid[0]).count,-20) : 8)*size;y=standing ? rect.maxY+CGFloat(17-grid.count)*size : y+24*size}
             if key == "hangingPlant" {x=rect.maxX-4*unit;y+=2*unit}
             if key == "lights" {for row in grid.indices {let cells=Array(grid[row]);for col in cells.indices where cells[col] == "Y" && (col==0 || cells[col-1] != "Y") && (row==0 || Array(grid[row-1])[col] != "Y") {
                 NSColor(calibratedRed:1,green:214.0/255,blue:100.0/255,alpha:26.0/255).setFill()
@@ -120,7 +120,7 @@ final class Customization: Equatable {
                 NSColor(calibratedRed:1,green:226.0/255,blue:142.0/255,alpha:62.0/255).setFill()
                 NSRect(x:x+CGFloat(col-1)*unit,y:y+CGFloat(row-1)*unit,width:5*unit,height:5*unit).fill(using:.sourceOver)
             }}}
-            Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:unit)
+            Sprites.draw(layers:[Sprites.Layer(grid,0,0)],look,left:x,top:y,scale:size)
         }
     }
 }
