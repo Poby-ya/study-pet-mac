@@ -67,6 +67,7 @@ final class PetWindow: NSPanel {
     private var roomImage: NSImage?
     private var roomKey = ""
     private var subjectChangedAt = -100.0
+    private var animating = true
     private var updateAvailable = false
     static let updateMessage = "새 버전이 나왔어요\n우클릭 → 업데이트 확인"
     private var mood = Mood.away
@@ -117,6 +118,9 @@ final class PetWindow: NSPanel {
     var laptop = false
     /// The time of day for the window's sky and the lamps; the self-test sets it.
     var clock: () -> Date = { Date() }
+    /// Only quiet work and no bubbles, for when the pets would distract. A friend's visit still comes through.
+    var focus = false
+    func setFocus(_ on: Bool) { focus = on; wake(); redraw() }
     private var night: Bool { Self.skyAt(clock()) == 0 }
     var seatmate: () -> Seat? = { nil }
     var rightSeatmate: () -> Seat? = { nil }
@@ -227,6 +231,7 @@ final class PetWindow: NSPanel {
         if timer == nil {
             lastStepSeconds = ProcessInfo.processInfo.systemUptime
             let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(step), userInfo: nil, repeats: true)
+            t.tolerance = 0.01
             RunLoop.main.add(t, forMode: .common)
             timer = t
         }
@@ -238,6 +243,7 @@ final class PetWindow: NSPanel {
         mood = newMood
         tick = 0
         moodSeconds = 0
+        wake()
         redraw()
     }
 
@@ -268,12 +274,14 @@ final class PetWindow: NSPanel {
         visitText = text
         visitSide = side
         visitTick = 0
+        wake()
         if !isVisible || fading || mood == .leaving { appear(.away) }
     }
 
     func goVisit(_ name: String, message: String, side: Int) {
         if minimized { return }
         outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message
+        wake()
         if !isVisible { appear(.away) }
     }
 
@@ -299,7 +307,17 @@ final class PetWindow: NSPanel {
         let seconds = now - lastStepSeconds
         lastStepSeconds = now
         advanceAnimation(seconds)
+        timer?.fireDate = Date(timeIntervalSinceNow: nextStep)
     }
+
+    /// Nobody can see the window: covered, on another Space, or the display is asleep.
+    private var unseen: Bool { isVisible && !occlusionState.contains(.visible) }
+    /// Seconds to the next step: about 30 fps while something moves, otherwise asleep until the next pose is due.
+    var nextStep: TimeInterval {
+        if minimized || unseen { return 1 }
+        return animating ? 1.0 / 30 : max(0.001, Double(frameCount + 1) / 4 - animationSeconds)
+    }
+    private func wake() { animating = true; timer?.fireDate = Date() }
 
     func advanceAnimation(_ seconds: Double) {
         if minimized { return }
@@ -335,15 +353,16 @@ final class PetWindow: NSPanel {
         let seatEffects = [seatmate(), rightSeatmate()].contains { seat in seat.map { hasEffect(seatMoment($0)) } ?? false }
         let clockTicks = animationSeconds * 4
         let moving = (visitTick >= 0 && Travel.walking(visitTick)) || (outgoingTick >= 0 && Travel.walking(outgoingTick)) || blends.values.contains { $0.moving(clockTicks) } || hasEffect(moment) || seatEffects
-        if frameCount != beforeFrame || moving || fading || alphaValue < 1 { redraw() }
+        animating = moving || fading || alphaValue < 1
+        if (frameCount != beforeFrame || animating) && !unseen { redraw() }
     }
 
     func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
-    private var moment: Int { mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
+    private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
     private var momentText: String { Routine.line(moment, Routine.momentFrame(tick), laptop: laptop) }
 
-    func subjectChanged() { subjectChangedAt = animationSeconds; redraw() }
+    func subjectChanged() { subjectChangedAt = animationSeconds; wake(); redraw() }
     func nextSeason() {
         let stored = Int(Settings.get("season")) ?? -1
         let season = (0..<4).contains(stored) ? stored : Self.seasonAt(clock())
@@ -356,7 +375,7 @@ final class PetWindow: NSPanel {
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
             if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return .recover }
-            return Routine.studyPose(tick)
+            return focus ? Routine.focusPose(tick) : Routine.studyPose(tick)
         case .dozing: if moodSeconds < 0.75 { return .foldArms }; return tick / 8 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving: return Departure.pose(moodSeconds * 4)
@@ -369,14 +388,14 @@ final class PetWindow: NSPanel {
     /// Also picks a desk's bag and sticker, so a friend's screen shows mine the same.
     private static func nameSeed(_ name: String) -> Int { 1 + name.utf16.reduce(0) { $0 + Int($1) } % 211 }
 
-    private func seatMoment(_ seat: Seat) -> Int { seat.here && !seat.dozing ? Routine.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
+    private func seatMoment(_ seat: Seat) -> Int { !focus && seat.here && !seat.dozing ? Routine.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
 
     // Each seatmate works and dozes at their own pace, so no two pets move in lockstep.
     private func seatPose(_ seat: Seat) -> Sprites.Pose {
         if !seat.here { return .empty }
         let seed = Self.seatSeed(seat)
         if seat.dozing { return (frameCount + seed) / 8 % 2 == 0 ? .dozeA : .dozeB }
-        return Routine.studyPose(frameCount, seed: seed)
+        return focus ? Routine.focusPose(frameCount, seed: seed) : Routine.studyPose(frameCount, seed: seed)
     }
 
     /// Draws one frame into the current (flipped) graphics context.
@@ -411,7 +430,7 @@ final class PetWindow: NSPanel {
         for i in 0..<2 {
             guard var seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
             if previousSeats[i]?.id != seat.id {leavingTicks[i] = -1;departingSeats[i]=nil}
-            if let before = previousSeats[i], before.id == seat.id && before.here && !seat.here { leavingTicks[i] = 0;departingSeats[i]=before }
+            if let before = previousSeats[i], before.id == seat.id && before.here && !seat.here && !focus { leavingTicks[i] = 0;departingSeats[i]=before }
             if seat.here { leavingTicks[i] = -1 }
             previousSeats[i] = seat
             if leavingTicks[i]>=0,let snapshot=departingSeats[i] {seat=snapshot;seat.here=false}
@@ -458,7 +477,7 @@ final class PetWindow: NSPanel {
             let top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
             if !updateText.isEmpty { drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
-        else {
+        else if !focus {
             var top = tip
             if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
@@ -482,8 +501,8 @@ final class PetWindow: NSPanel {
         guard tick>=18 && tick<26 else {return}
         let x=origin-(origin+deskWidth)*CGFloat(Departure.walk(tick))
         drawVisitor(actor,pose:.carry,x:x,hop:CGFloat(abs(sin(tick * .pi)))*scale,mirror:false)
-        Sprites.drawBag(actor,left:x+10*scale,top:floorY+22*scale,scale:scale)
-        Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:13,targetY:23,leftHand:true)
+        Sprites.drawBag(actor,left:x+12*scale,top:floorY+22*scale,scale:scale)
+        Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:15,targetY:23,leftHand:true)
     }
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
@@ -512,7 +531,7 @@ final class PetWindow: NSPanel {
     /// wings mostly shut, and flies off up and away from phase 20.
     private func drawButterfly(_ deskX: CGFloat, _ phase: Double) {
         let small = scale / 2
-        var x = deskX + 26 * scale - 8.5 * small, y = floorY + 7 * scale - 12 * small
+        var x = deskX + 28 * scale - 8.5 * small, y = floorY + 7 * scale - 12 * small
         var folded = Int(phase * 2) % 2 == 0
         if phase < 12 {
             let away = CGFloat(1 - phase / 12)
@@ -534,7 +553,7 @@ final class PetWindow: NSPanel {
         for i in 0..<4 {
             let t = phase - Double(i * 5)
             if t < 0 || t > 10 { continue }
-            Sprites.drawHeart(left: deskX + CGFloat(36 + i % 2 * 3) * scale + CGFloat(sin(t * 1.2)) * small,
+            Sprites.drawHeart(left: deskX + CGFloat(38 + i % 2 * 3) * scale + CGFloat(sin(t * 1.2)) * small,
                               top: floorY + 20 * scale - CGFloat(t * 1.8) * scale, scale: small)
         }
     }
@@ -592,7 +611,7 @@ final class PetWindow: NSPanel {
         let w = min(maxName * scale, max(8 * scale, textWidth(name, font) + 3 * scale))
         let x = deskX + scale + (maxName * scale - w) / 2
         let labelHeight = max(5 * scale, font.ascender - font.descender + 2)
-        let face = NSRect(x: x, y: floorY + 27 * scale - labelHeight, width: w, height: labelHeight)
+        let face = NSRect(x: x, y: floorY + 29 * scale - labelHeight, width: w, height: labelHeight)
         PetWindow.plateTop.setFill()
         NSRect(x: x + scale / 2, y: face.minY - scale, width: w - scale, height: scale + 1).fill()
         PetWindow.plateFace.setFill()
@@ -624,7 +643,9 @@ final class PetWindow: NSPanel {
         if windowGlass == .zero { return }
         // Whatever the season blows past the glass, behind the desks and in front of the view.
         NSGraphicsContext.saveGraphicsState()
-        windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale).clip()
+        var open = windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale)
+        if windowFrame == 1 { let arch = windowGlass.height * 0.42; open.origin.y += arch; open.size.height -= arch } // no petals in the arch's corners
+        open.clip()
         Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
@@ -731,7 +752,7 @@ final class PetWindow: NSPanel {
     }
     private func drawWindow(sky: Int, season: Int, scene: Int, drift: Int) {
         guard let glass = windowRect() else { return }
-        Sprites.drawWindow(Int(glass.width / scale), Int(glass.height / scale), sky: sky, season: season, left: glass.minX, top: glass.minY, scale: scale, scene: scene, drift: drift)
+        Sprites.drawWindow(Int(glass.width / scale), Int(glass.height / scale), sky: sky, season: season, left: glass.minX, top: glass.minY, scale: scale, scene: scene, drift: drift, frame: windowFrame)
         if let c = look.customization { c.drawRoom(look, glass, clock(), preview: false) }
     }
     private func seasonNow(_ now: Date) -> Int {
@@ -746,6 +767,7 @@ final class PetWindow: NSPanel {
         if sceneBucket != bucket { sceneBucket = bucket; sceneIndex = (sceneIndex + Int.random(in: 1...5)) % 6 }
         return sceneIndex
     }
+    private var windowFrame: Int { (windowScene + Int(clock().timeIntervalSince1970 / 1800)) % Sprites.windowFrames }
     func nextWindowScene() { sceneIndex = (sceneIndex + Int.random(in: 1...5)) % 6; redraw() }
 
     // ---- Mouse ----------------------------------------------------------------------
@@ -788,7 +810,7 @@ final class PetWindow: NSPanel {
 
     private func hitSeat(_ p: NSPoint, x: CGFloat, actor: Look, pose: Sprites.Pose, drink: Sprites.Drink, laptop: Bool) -> Bool {
         let px = Int(floor((p.x - x) / scale)), py = Int(floor((p.y - floorY) / scale))
-        if px >= 1 && px < 17 && py >= 21 && py < 27 { return true }
+        if px >= 1 && px < 17 && py >= 23 && py < 29 { return true }
         if pose == .empty && px >= 17 && px < 39 && py >= 9 && py < 27 { return true }
         return Sprites.compose(pose, actor, decor: Sprites.Decor(drink: drink, laptop: laptop)).contains { layer in
             let row = py - layer.y, col = px - layer.x

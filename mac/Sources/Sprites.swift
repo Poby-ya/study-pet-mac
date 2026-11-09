@@ -19,7 +19,6 @@ struct Look: Equatable {
     var hat: Int { Int(Array(extra)[2].asciiValue! - 48) }
     var sleeve: Int { Int(Array(extra)[3].asciiValue! - 48) }
     var leftHanded: Bool { Array(extra)[4] == "1" }
-    var sticker: Int { Int(Array(extra)[5].asciiValue! - 48) }
     var bag: Int { Int(Array(extra)[6].asciiValue! - 48) }
     // Older seven-digit looks keep all additions visible.
     var additions: Int { extra.count == 8 ? Int(Array(extra)[7].asciiValue! - 48) : 7 }
@@ -75,7 +74,7 @@ enum Sprites {
 
     /// The person sits a little right of the desk's middle, leaving the left end of the
     /// desk top free for the nameplate (cols 1..16).
-    static let dx = 13
+    static let dx = 15
 
     enum Pose: String, CaseIterable {
         case empty = "Empty", writeA = "WriteA", writeB = "WriteB", writeC = "WriteC", writeD = "WriteD", writePause = "WritePause", ponder = "Ponder", readA = "ReadA", readB = "ReadB", bookNudgeA = "BookNudgeA", bookNudgeB = "BookNudgeB", restHands = "RestHands", content = "Content", glanceLeft = "GlanceLeft", glanceRight = "GlanceRight", lookLeft = "LookLeft", lookRight = "LookRight", lookUp = "LookUp", lookWindow = "LookWindow"
@@ -346,36 +345,9 @@ enum Sprites {
 
     /// On the desk's front and hook: its stickers and bag.
     private static func deskScene(_ d: Decor, _ look: Look) -> [Layer] {
-        let custom = look.customization
         var layers: [Layer] = []
         if !d.away { layers.append(Layer(bagArt(look.bag), 50, 28)) }
-        if let custom, custom.on("deskStickers"), custom.value("deskStickers") > 0 {
-            let designs = Customization.categories.first { $0.key == "deskStickers" }!.art
-            let points = [(44, 32), (30, 31), (19, 32), (5, 31)]
-            for i in 0..<4 {
-                let design = designs[(custom.value("deskStickers") - 1 + (3 - i) * 3) % designs.count]
-                layers.append(Layer(design["grid"] as! [String], points[i].0, points[i].1))
-            }
-        } else if custom?.on("deskStickers") ?? (look.additions & 2 != 0) {
-            let big = d.seed % 5
-            layers.append(Layer(art("BigSticker\(big)"), 5, 31))
-            layers.append(Layer(art("SmallSticker\(d.seed % 2)"), 19, 32))
-            layers.append(Layer(art("BigSticker\((big + 1 + d.seed / 5 % 4) % 5)"), 30, 31))
-            layers.append(Layer(art("SmallSticker\(1 - d.seed % 2)"), 44, 32))
-        }
         return layers
-    }
-
-    private static func documentSticker(_ d: Decor, _ look: Look) -> Layer? {
-        let custom = look.customization
-        if d.packed || d.away || !(custom?.on("documentSticker") ?? (look.additions & 2 != 0 && look.sticker > 0)) { return nil }
-        let value = custom?.value("documentSticker") ?? look.sticker
-        var grid = custom?.layers("documentSticker").first?.grid ?? art(value == 1 ? "BigSticker1" : value == 2 ? "BigSticker3" : "Pennant")
-        if value >= 4 {
-            let height = d.laptop ? 4 : 3, source = grid
-            grid = (0..<height).map { source[round(Double($0 * (source.count - 1)) / Double(height - 1))] }
-        }
-        return Layer(grid, d.laptop ? 27 : 24, d.laptop ? 22 : 26)
     }
 
     /// A cup's corner and the hand holding it, for each stage of raising it to the lips.
@@ -465,7 +437,6 @@ enum Sprites {
         // An open lid hides the hands as well.
         layers += shift(armsAt(2)) + shift(under) + prop
         layers += shift(arms.filter { $0.layer == 2 && !(d.laptop && now.lap == nil) }.map { Layer(art("Hand"), $0.handX - 1, $0.handY - 1) })
-        if decor != nil && !now.front, let sticker = documentSticker(d, look) { layers.append(sticker) }
         if now.front { layers += shift(back) + shift(armsAt(0)) + shift(faceLayers) + shift(armsAt(1)) }
 
         // After the lid and the book: the drink, pencil and whatever else is in hand.
@@ -533,14 +504,14 @@ enum Sprites {
         draw(layers: [Layer(art("Heart"), 0, 0)], plainLook, left: left, top: top, scale: scale)
     }
     static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) {
-        draw(layers: [Layer(art(alt ? "FlameB" : "FlameA"), 23, 12), Layer(art(alt ? "FlameA" : "FlameB"), 31, 12)], plainLook, left: left, top: top, scale: scale)
+        draw(layers: [Layer(art(alt ? "FlameB" : "FlameA"), 25, 10), Layer(art(alt ? "FlameA" : "FlameB"), 33, 10)], plainLook, left: left, top: top, scale: scale)
     }
 
     // ---- A lit lamp -----------------------------------------------------------------------------
 
     /// Each lamp's beam: the two ends of its opening at the top, and where its edges land on row 27.
     /// Tilted heads throw it toward the book; round shades spread it straight down and wide.
-    private static let lampBeams = [(10, 15, 17, 20, 40), (11, 14, 17, 22, 38), (4, 11, 18, -6, 33), (4, 11, 18, -6, 33), (4, 11, 16, -6, 34), (5, 13, 14, 2, 32), (3, 10, 17, -4, 30), (11, 14, 16, 22, 38)]
+    private static let lampBeams = [(10, 15, 17, 22, 42), (11, 14, 17, 24, 40), (4, 11, 18, -4, 35), (4, 11, 18, -4, 35), (4, 11, 16, -4, 36), (5, 13, 14, 4, 34), (3, 10, 17, -2, 32), (11, 14, 16, 24, 40)]
 
     /// The cone of light, drawn before the pet so it never washes over them: it shows on the wall
     /// beside them, and drawLampPool picks it up on the book and the desk top.
@@ -565,7 +536,7 @@ enum Sprites {
             warm(alpha)
             for y in oy...28 {
                 let t = Double(y - oy) / Double(28 - oy)
-                strip(y, max(0, l + round(Double(footL - l) * t)), min(44, r + round(Double(footR - r) * t)))
+                strip(y, max(0, l + round(Double(footL - l) * t)), min(46, r + round(Double(footR - r) * t)))
             }
         }
         cone(a, b, c, d, night ? 50 : 28)
@@ -576,7 +547,7 @@ enum Sprites {
     static func drawLampPool(left: CGFloat, top: CGFloat, scale: CGFloat, night: Bool = false) {
         NSColor(srgbRed: 1, green: 226.0 / 255, blue: 130.0 / 255, alpha: (night ? 82 : 40) / 255).setFill()
         // Only the bare desk beside the book or laptop, so white pages and a silver lid keep their colour.
-        for (y, from, to) in [(27, 15, 17), (27, 40, 44), (28, 14, 17), (28, 40, 45), (29, 16, 43)] {
+        for (y, from, to) in [(27, 15, 19), (28, 14, 19), (29, 16, 45)] {
             NSRect(x: left + CGFloat(from) * scale, y: top + CGFloat(y) * scale, width: CGFloat(to - from + 1) * scale, height: scale).fill(using: .sourceOver)
         }
     }
@@ -602,7 +573,7 @@ enum Sprites {
     }
     static func packingArm(_ look: Look, _ targetX: Int, _ targetY: Int, _ leftHand: Bool = false) -> Layer {
         var tx = targetX, ty = targetY
-        let sx = leftHand ? 22 : 34, ox = Double(tx - sx), oy = Double(ty - 18), distance = (ox * ox + oy * oy).squareRoot()
+        let sx = leftHand ? 24 : 36, ox = Double(tx - sx), oy = Double(ty - 18), distance = (ox * ox + oy * oy).squareRoot()
         // A hand follows the prop only within a normal arm's reach.
         if distance > 12 { tx = sx + round(ox * 12 / distance); ty = 18 + round(oy * 12 / distance) }
         return arm(look, (sx, 18), (round(Double(sx + tx) / 2), round(Double(18 + ty) / 2) + 2), (tx, ty))
@@ -642,7 +613,11 @@ enum Sprites {
 
     /// The classroom's window, w×h: the middle of its panorama, anchored at the sill (a taller
     /// window just shows more sky), inside a wooden frame. `drift` is how far the clouds have moved.
-    static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int, scene: Int = 0, drift: Int = 0) -> [String] {
+    /// Window frames: pane width (0 = none), transom, row spacing, arch, shutter width, open. One changes with each view.
+    private static let frames: [(pane: Int, transom: Bool, rows: Int, arch: Bool, shutter: Int, open: Bool)] = [(34, true, 0, false, 0, false), (26, false, 0, true, 0, false), (16, false, 14, false, 0, false), (60, false, 0, false, 0, false), (34, true, 0, false, 9, false), (0, false, 0, false, 0, true)]
+    static var windowFrames: Int { frames.count }
+
+    static func windowGrid(_ w: Int, _ h: Int, sky: Int, season: Int, scene: Int = 0, drift: Int = 0, frame: Int = 0) -> [String] {
         let view = season == 3 ? views[scene].winter : views[scene].leafy
         let glow = sky == 2 ? nil : glows[scene]
         let skyGrid = skies[sky]
@@ -661,19 +636,47 @@ enum Sprites {
                 if let glow { put(x, y, at(glow, x + ox, y + oy)) }
             }
         }
-        let panes = max(1, round(Double(w - 2) / 34))
-        if panes > 1 { for p in 1..<panes { let m = (w - 1) * p / panes; for y in 1..<(h - 2) { grid[y][m] = "|"; grid[y][m + 1] = "\"" } } }
-        let transom = h / 3
-        for x in 1..<(w - 1) { grid[transom][x] = "_"; grid[transom + 1][x] = "|"; grid[h - 3][x] = "_"; grid[1][x] = "\"" }
-        for y in 1..<(h - 2) { grid[y][1] = "|"; grid[y][w - 2] = "|" }
-        for x in 0..<w { grid[0][x] = "#"; grid[h - 2][x] = "#"; grid[h - 1][x] = "\"" }
-        for y in 0..<(h - 1) { grid[y][0] = "#"; grid[y][w - 1] = "#" }
+        let style = frames[frame], L = style.shutter, R = w - 1 - style.shutter
+        if style.pane > 0 {
+            let panes = max(1, round(Double(R - L - 1) / Double(style.pane)))
+            if panes > 1 { for p in 1..<panes { let m = L + (R - L) * p / panes; for y in 1..<(h - 2) { grid[y][m] = "|"; grid[y][m + 1] = "\"" } } }
+        }
+        let third = h / 3
+        for x in (L + 1)..<R { if style.transom { grid[third][x] = "_"; grid[third + 1][x] = "|" }; grid[h - 3][x] = "_"; grid[1][x] = "\"" }
+        if style.rows > 0 { for y in stride(from: style.rows, to: h - 4, by: style.rows) { for x in (L + 1)..<R { grid[y][x] = "_"; grid[y + 1][x] = "|" } } }
+        for y in 1..<(h - 2) { grid[y][L + 1] = "|"; grid[y][R - 1] = "|" }
+        for x in L...R { grid[0][x] = "#"; grid[h - 2][x] = "#" }
+        for x in 0..<w { grid[h - 1][x] = "\"" }
+        for y in 0..<(h - 1) { grid[y][L] = "#"; grid[y][R] = "#" }
+        if style.shutter > 0 {
+            for a in [0, w - style.shutter] { for y in 0..<(h - 1) { for x in a..<(a + style.shutter) {
+                grid[y][x] = x == a || x == a + style.shutter - 1 || y == 0 || y == h - 2 ? "#" : y % 3 == 0 ? "|" : y % 3 == 1 ? "_" : "\""
+            } } }
+        }
+        if style.arch {
+            let archTop = Int((Double(h) * 0.42).rounded(.down))
+            let a = Double(R - L) / 2, cx = Double(L + R) / 2, m = min(a, Double(archTop))
+            for y in 0...archTop { for x in L...R {
+                let ex = (Double(x) - cx) / a, ey = Double(y - archTop) / Double(archTop), e = (ex * ex + ey * ey).squareRoot(), d = (1 - e) * m
+                if e > 1 { grid[y][x] = "." } else if d < 1.2 { grid[y][x] = "#" } else if d < 2.4 && y < archTop { grid[y][x] = "|" }
+            } }
+            for x in (L + 1)..<R { grid[archTop][x] = "_"; grid[archTop + 1][x] = "|" }
+        }
+        if style.open {
+            let s = max(8, Int((Double(R - L) * 0.15).rounded(.down))), mid = s / 2
+            for side in 0..<2 { for i in 0...s {
+                let x = side == 1 ? R - 2 - i : L + 2 + i, k = Double(i) / Double(s)
+                let top = 2 + round(k * 4), bottom = h - 4 - round(k * 3)
+                grid[top][x] = "\""; grid[bottom][x] = "|"
+                if i == 0 || i == s || i == mid { for y in top...bottom { grid[y][x] = i == mid ? "|" : "\"" } }
+            } }
+        }
         return grid.map { String($0) }
     }
 
     static func isWindowColor(_ c: Character, sky: Int, season: Int) -> Bool { windowPalettes[sky][season][c] != nil }
-    static func drawWindow(_ w: Int, _ h: Int, sky: Int, season: Int, left: CGFloat, top: CGFloat, scale: CGFloat, scene: Int = 0, drift: Int = 0) {
-        drawGrid(windowGrid(w, h, sky: sky, season: season, scene: scene, drift: drift), windowPalettes[sky][season], left: left, top: top, scale: scale)
+    static func drawWindow(_ w: Int, _ h: Int, sky: Int, season: Int, left: CGFloat, top: CGFloat, scale: CGFloat, scene: Int = 0, drift: Int = 0, frame: Int = 0) {
+        drawGrid(windowGrid(w, h, sky: sky, season: season, scene: scene, drift: drift, frame: frame), windowPalettes[sky][season], left: left, top: top, scale: scale)
     }
 
     /// Petals, leaves or snow drifting past the glass; `t` in seconds. Summer stays clear.

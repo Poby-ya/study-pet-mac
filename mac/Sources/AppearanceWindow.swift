@@ -14,7 +14,7 @@ final class AppearanceWindow: NSWindow, NSWindowDelegate {
     init(_ look: Look) {
         values=[look.hair,look.hairColor,look.top,look.topColor,look.bottom,look.ribbon,0,look.skin,0,look.sleeve,look.leftHanded ? 1 : 0,0,look.bag,look.girl ? 1 : 0]
         custom=(look.customization ?? Customization.legacy(look)).copy();selected=look;ribbon=look.additions & 1
-        let saved=Array(Settings.get("appearanceLocks"));if look.customization == nil {for (key,index) in [("hair",0),("top",2),("hat",8),("documentSticker",11),("deskStickers",11)] {custom.slots[key]!.locked=saved.count>index && saved[index] == "1"}};for i in [1,3,4,5,9,12] {baseLocks[i]=i<saved.count && saved[i] == "1"}
+        let saved=Array(Settings.get("appearanceLocks"));if look.customization == nil {for (key,index) in [("hair",0),("top",2),("hat",8)] {custom.slots[key]!.locked=saved.count>index && saved[index] == "1"}};for i in [1,3,4,5,9,12] {baseLocks[i]=i<saved.count && saved[i] == "1"}
         let height=min(640,(NSScreen.main?.visibleFrame.height ?? 760)-50)
         super.init(contentRect:NSRect(x:0,y:0,width:528,height:height),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         title="꾸미기";isReleasedWhenClosed=false;delegate=self;let root=AppearanceContent(frame:NSRect(x:0,y:0,width:528,height:height));contentView=root

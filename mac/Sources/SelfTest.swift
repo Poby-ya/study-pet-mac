@@ -17,8 +17,8 @@ enum SelfTest {
 
     private static func checkCustomization(_ out: URL) {
         let basic=Look(girl:true,2,1,1,2,4,0).withExtras("00000000"),legacy=Customization.legacy(Look(girl:true,2,1,1,2,4,0).withExtras("00000000"))
-        let entries=Customization.categories.filter{$0.key != "deskStickers"}.flatMap { s in s.art.map { (s,$0) } }
-        check(entries.count==61,"customization: exactly 61 approved designs")
+        let entries=Customization.categories.flatMap { s in s.art.map { (s,$0) } }
+        check(entries.count==56,"customization: exactly 56 approved designs")
         let calendar=Calendar(identifier:.gregorian),date=calendar.date(from:DateComponents(year:2026,month:11,day:5,hour:20,minute:10))!
         var fixtures: [[String:Any]]=[]
         func flatten(_ layers: [Sprites.Layer]) -> [String] {var rows=Array(repeating:Array(repeating:Character("."),count:64),count:64);for l in layers {for (y,line) in l.grid.enumerated(){for (x,c) in line.enumerated() where c != "." {let xx=x+l.x,yy=y+l.y;if xx>=0 && xx<64 && yy>=0 && yy<64 {rows[yy][xx]=c}}}};return rows.map{String($0)}}
@@ -33,7 +33,7 @@ enum SelfTest {
         }
         for i in 0..<48 {
             let c=legacy.copy()
-            for (index,s) in Customization.categories.enumerated() {let minimum=s.optional && s.key != "lamp" && s.key != "deskStickers" ? 1 : 0;c.slots[s.key]!.enabled=true;c.slots[s.key]!.value=minimum+(i*7+index*3)%(s.count-minimum)}
+            for (index,s) in Customization.categories.enumerated() {let minimum=s.optional && s.key != "lamp" ? 1 : 0;c.slots[s.key]!.enabled=true;c.slots[s.key]!.value=minimum+(i*7+index*3)%(s.count-minimum)}
             let look=c.legacyLook(Look(girl:i%2==0,2,1,1,2,i%2==0 ? 4 : 0,0).withExtras("00000007"))
             for (name,pose) in [("WriteA",Sprites.Pose.writeA),("DozeA",.dozeA),("WaveA",.waveA),("Empty",.empty)] {for laptop in [false,true] {
                 let d=Sprites.Decor(laptop:laptop,seed:7,away:pose == .empty,clock:date)
@@ -41,10 +41,10 @@ enum SelfTest {
             }}
         }
         save(image,out,"customization.png")
-        for document in [false,true] {for desk in [false,true] {let c=legacy.copy();c.slots["documentSticker"]!.enabled=document;c.slots["deskStickers"]!.enabled=desk;let restored=Customization.parse(c.json,basic);check(restored.on("documentSticker")==document && restored.on("deskStickers")==desk,"customization: independent sticker flags round-trip")}}
+        check(!Customization.categories.contains { $0.key.lowercased().contains("sticker") },"customization: stickers are gone")
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
         check(Sprites.compose(.empty,basic).first!.grid[0].count==Sprites.width,"desk: visible art matches layout width")
-        check(Departure.bag(18).0==10 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
+        check(Departure.bag(18).0==12 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
         for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
         do {try JSONSerialization.data(withJSONObject:fixtures).write(to:out.appendingPathComponent("customization-fixtures.json"))}catch{check(false,"customization fixture export failed")}
     }
@@ -253,7 +253,11 @@ enum SelfTest {
         pet.advanceAnimation(5)
         let syncedTick=Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int
         check(syncedTick==820 && Routine.momentPose(7,4) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
+        let quietPoses: [Sprites.Pose] = [.writeA, .writeB, .writeC, .writeD, .writePause, .readA, .readB, .pageLift, .turnPage, .pageSettle]
+        check((0..<1920).allSatisfy { quietPoses.contains(Routine.focusPose($0)) && quietPoses.contains(Routine.focusPose($0, seed: 7)) },"focus: only writing, reading and turning a page")
+        for f in 0..<Sprites.windowFrames { check(Sprites.windowGrid(98, 52, sky: 2, season: 1, scene: 0, drift: 0, frame: f).count == 52,"window: every frame style draws") }
         pet.setMood(.dozing)
+        check(Mirror(reflecting:pet).children.first(where:{$0.label=="animating"})?.value as? Bool == true,"idle: a mood change wakes the timer at once")
         check((Mirror(reflecting:pet).children.first(where:{$0.label=="tick"})?.value as? Int)==0,"sync: a real mood change still starts its transition")
         pet.appear(.studying)
         pet.minimizeScene()

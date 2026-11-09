@@ -13,6 +13,7 @@ enum Routine {
         return list
     }
     private static let work = (Customization.root["work"] as! [[Any]]).map(expand)
+    private static let focusWork = (Customization.root["focus"] as! [[Any]]).map(expand)
     private static let momentData = Customization.root["moments"] as! [[String: Any]]
     private static let frames = momentData.map { expand($0["frames"] as! [Any]) }
 
@@ -28,6 +29,8 @@ enum Routine {
     static func effect(_ moment: Int) -> String { momentData[moment - 1]["effect"] as? String ?? "" }
 
     static func workPose(_ ticks: Int, seed: Int = 0) -> Sprites.Pose { work[(ticks / 48 + seed) % work.count][ticks % 48] }
+    /// Focus mode: nothing but writing, reading and turning a page.
+    static func focusPose(_ ticks: Int, seed: Int = 0) -> Sprites.Pose { focusWork[(ticks / 48 + seed) % focusWork.count][ticks % 48] }
     static func studyPose(_ ticks: Int, seed: Int = 0) -> Sprites.Pose {
         let moment = studyMoment(ticks, seed: seed)
         return moment > 0 ? frames[moment - 1][momentFrame(ticks, seed: seed)] : workPose(ticks, seed: seed)

@@ -123,6 +123,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next();self.profileDirty=self.deviceSync != nil;self.profileEdit += 1;self.syncNow() } }
         pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
         pet.laptop = Settings.get("laptop") == "1"
+        pet.focus = Settings.get("focusMode") == "1"
         pet.board = { [unowned self] in
             if Settings.get("background") == "hidden" { return nil }
             if let room = self.room {
@@ -719,6 +720,9 @@ final class AppController: NSObject, NSMenuDelegate {
             minimize.isEnabled = pet.isVisible
             menu.addItem(minimize)
         }
+        let focusItem = item("집중 모드", #selector(toggleFocus))
+        focusItem.state = pet.focus ? .on : .off
+        menu.addItem(focusItem)
         menu.addItem(.separator())
         menu.addItem(item("기록 보기", #selector(showStats)))
         menu.addItem(item("사용 설명서", #selector(showHelp)))
@@ -788,6 +792,12 @@ final class AppController: NSObject, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         return item
+    }
+
+    @objc private func toggleFocus() {
+        pet.setFocus(!pet.focus)
+        let on = pet.focus
+        safely("집중 모드 저장") { try Settings.set("focusMode", on ? "1" : "") }
     }
 
     @objc private func toggleLaptop() {

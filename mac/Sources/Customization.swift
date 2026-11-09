@@ -20,8 +20,6 @@ final class Customization: Equatable {
         let c=Customization();for s in categories { c.slots[s.key]=Choice(enabled: !s.optional || s.key == "lamp",value:0) }
         c.slots["hair"]!.value=look.hair;c.slots["top"]!.value=look.top
         c.slots["hat"]=Choice(enabled:look.additions & 4 != 0 && look.hat>0,value:max(1,look.hat))
-        c.slots["documentSticker"]=Choice(enabled:look.additions & 2 != 0 && look.sticker>0,value:max(1,look.sticker))
-        c.slots["deskStickers"]!.enabled=look.additions & 2 != 0
         c.slots["head"]=Choice(enabled:look.accessory == 2,value:1);c.slots["ear"]=Choice(enabled:look.accessory == 3,value:1)
         return c
     }
@@ -38,7 +36,7 @@ final class Customization: Equatable {
     static func ==(a: Customization,b: Customization) -> Bool {a.json == b.json}
     func on(_ key: String) -> Bool { slots[key]!.enabled }
     func value(_ key: String) -> Int { slots[key]!.value }
-    func roll(_ group: String) { for s in Self.categories where s.group == group { if on(s.key) && !slots[s.key]!.locked { let minValue=s.optional && s.key != "lamp" && s.key != "deskStickers" ? 1 : 0;slots[s.key]!.value=Int.random(in:minValue..<s.count) } } }
+    func roll(_ group: String) { for s in Self.categories where s.group == group { if on(s.key) && !slots[s.key]!.locked { let minValue=s.optional && s.key != "lamp" ? 1 : 0;slots[s.key]!.value=Int.random(in:minValue..<s.count) } } }
     func layers(_ key: String,_ x: Int=0,_ y: Int=0,lit: Bool=true,clock: Date=Date()) -> [Sprites.Layer] {
         guard on(key),let s=Self.categories.first(where:{$0.key == key}),let art=s.art.first(where:{$0["id"] as? Int == value(key)}) else {return []}
         var grid=art["grid"] as! [String];if key == "clock" && value(key)==1 {grid=Self.swing(grid,clock)};if key == "lamp" && !lit {grid=grid.map{$0.replacingOccurrences(of:"Y",with:"w")}}
@@ -48,23 +46,13 @@ final class Customization: Equatable {
     func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { ["head","hat","ear","neck","badge"].flatMap{layers($0,x,y)} }
     func legacyLook(_ look: Look) -> Look {
         var hair=value("hair");if hair>=8 {hair=Self.categories.first{$0.key == "hair"}!.art.first{$0["id"] as? Int == hair}!["base"] as! Int};let top=value("top")<9 ? value("top") : 0
-        var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]=on("documentSticker") ? Character(String(min(3,value("documentSticker")))) : "0"
-        let mask=(look.additions & 1) | (on("deskStickers") || on("documentSticker") ? 2 : 0) | (on("hat") ? 4 : 0)
-        return Look(girl:look.girl,hair,look.hairColor,top,look.topColor,look.bottom,look.ribbon).withExtras(String(e)+String(mask)).withCustomization(self)
-    }
-    static func swing(_ source: [String],_ date: Date) -> [String] {
-        var rows=source.map{Array($0)}
-        let second=Calendar.current.component(.second,from:date)
-        let fraction=date.timeIntervalSince1970-floor(date.timeIntervalSince1970)
-        let dx=Int(floor(sin((Double(second)+fraction)*Double.pi)*2+0.5))
-        for y in 29..<39 {for x in 11..<20 {rows[y][x]="k"}}
-        for y in 29...35 {let x=15+Int(floor(Double(dx)*Double(y-29)/6.0+0.5));rows[y][x]="y"}
+        var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]="0";rows[y][x]="y"}
         for y in 34..<38 {for x in (13+dx)..<(18+dx) {rows[y][x]="p"}}
         rows[34][14+dx]="Y"
         return rows.map{String($0)}
     }
     static let digits="111/101/101/101/111 010/110/010/010/111 111/001/111/100/111 111/001/111/001/111 101/101/111/001/001 111/100/111/001/111 111/100/111/101/111 111/001/010/010/010 111/101/111/101/111 111/101/111/001/111".split(separator:" ").map{$0.split(separator:"/").map{Array($0)}}
-    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? 1+(n%2)*3 : 7+n*4)+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : compact ? "G" : "1"}}}};return rows.map{String($0)} }
+    static func digital(_ source: [String],_ date: Date,compact: Bool=false) -> [String] { var rows=source.map{Array($0)};let parts=Calendar.current.dateComponents([.hour,.minute],from:date);let text=String(format:"%02d%02d",parts.hour ?? 0,parts.minute ?? 0).map{Int(String($0))!};for n in 0..<4 {for y in 0..<(compact ? 3 : 5) {for x in 0..<(compact ? 2 : 3) {let xx=(compact ? 2+(n%2)*3 : 7+n*4)+x,yy=(compact ? 1+(n/2)*4 : 6)+y;if yy<rows.count && xx<rows[yy].count {rows[yy][xx]=digits[text[n]][compact ? y*2 : y][compact ? x*2 : x] == "1" ? "Y" : compact ? "G" : "1"}}}};return rows.map{String($0)} }
 
     static func resize(_ grid: [String],_ w: Int,_ h: Int) -> [String] {
         let rows=grid.map{Array($0)}
