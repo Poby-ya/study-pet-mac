@@ -16,6 +16,12 @@ cp ../Shared/customization.json build/StudyPet.app/Contents/Resources/customizat
 cp ../Shared/사용\ 설명서.txt build/StudyPet.app/Contents/Resources/help.txt
 cp install-mac.sh build/StudyPet.app/Contents/Resources/updater.sh
 cp ../web/config.json build/StudyPet.app/Contents/Resources/web-config.json
+cp ../Shared/AppIcon.icns build/StudyPet.app/Contents/Resources/AppIcon.icns
+# Finder shows this name; the folder stays StudyPet.app because the updater looks for it.
+for lang in ko en; do
+  mkdir -p "build/StudyPet.app/Contents/Resources/$lang.lproj"
+  printf '"CFBundleDisplayName" = "공부 친구";\n"CFBundleName" = "공부 친구";\n' > "build/StudyPet.app/Contents/Resources/$lang.lproj/InfoPlist.strings"
+done
 cp Info.plist build/StudyPet.app/Contents/
 # Ad-hoc signature: Apple silicon won't run an unsigned binary. Not notarized, which the
 # one-line installer gets around (curl downloads carry no quarantine flag).

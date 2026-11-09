@@ -121,7 +121,9 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.autoenablesItems = false
         statusItem.button?.image = Sprites.face(pet.look)
         statusItem.button?.toolTip = "공부 친구 · ⌃⌥S로 공부 시작"
-        statusItem.menu = menu
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         pet.contextMenu = menu
         pet.bubbleText = { [unowned self] in self.bubble() }
@@ -651,8 +653,8 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     /// No window pops up by itself: I may be sharing my screen. The friend visits my desk
-    /// (unless minimized) and the menu bar face's red dot blinks; its menu
-    /// starts with the call, and choosing it answers.
+    /// (unless minimized) and the menu bar face's red dot blinks; clicking it
+    /// answers; otherwise it opens the menu.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
@@ -686,6 +688,14 @@ final class AppController: NSObject, NSMenuDelegate {
         statusItem.button?.toolTip = "공부 친구 · ⌃⌥S로 공부 시작"
     }
 
+    /// While a call waits, a click answers it; otherwise, and on a right-click, the menu opens.
+    @objc private func statusClicked() {
+        if waitingPoke != nil && NSApp.currentEvent?.type != .rightMouseUp { answerPoke(); return }
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
     @objc private func answerPoke() {
         guard let poke = waitingPoke, !quitting, !invitePromptOpen else { return }
         clearWaitingPoke()
@@ -713,12 +723,6 @@ final class AppController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        if let poke = waitingPoke {
-            let answer = item("\(poke.name) : \(poke.message) → 답하기", #selector(answerPoke))
-            answer.attributedTitle = NSAttributedString(string: answer.title, attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
-            menu.addItem(answer)
-            menu.addItem(.separator())
-        }
         let toggleItem = item(pet.minimized ? "다시 보이기" : state == .studying ? "일시정지" : state == .paused ? "다시 시작" : "공부 시작", #selector(toggle))
         toggleItem.keyEquivalent = "s"
         toggleItem.keyEquivalentModifierMask = [.control, .option]

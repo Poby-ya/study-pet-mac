@@ -8,6 +8,10 @@
 	<string>공부 친구</string>
 	<key>CFBundleDisplayName</key>
 	<string>공부 친구</string>
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>StudyPet</string>
 	<key>CFBundlePackageType</key>
