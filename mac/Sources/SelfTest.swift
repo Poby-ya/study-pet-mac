@@ -80,8 +80,9 @@ enum SelfTest {
         for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
         let sweet = FriendInteractions(); var gumi = Member(id: "g", name: "구미", subject: "", state: "studying", minutes: 0, updated: 1); gumi.version = "0.5.1"
         let said = (0..<200).map { _ in sweet.message(gumi, here: true, current: "0.5.1", me: "포비") }
-        check(said.allSatisfy(FriendInteractions.isLove) && said.allSatisfy { $0.count <= 20 } && said.contains(where: FriendInteractions.isPat) && said.contains(where: FriendInteractions.isTreat), "couple: 구미 and 포비 get their own interactions, within the message limit")
-        check(!FriendInteractions.isLove(FriendInteractions().message(gumi, here: true, current: "0.5.1", me: "민지")), "couple: nobody else gets them")
+        check(said.allSatisfy(FriendInteractions.noFlames) && said.allSatisfy { $0.count <= 20 } && said.contains { FriendInteractions.touch($0) == 2 } && said.contains(where: FriendInteractions.isPat) && said.contains(where: FriendInteractions.isTreat) && FriendInteractions.touch("구미 : 머리 쓰담쓰담") == 1 && FriendInteractions.treatDrink("구미 : 커피 사 왔어 !") == .icedCoffee, "couple: 구미 and 포비 get their own interactions, within the message limit")
+        let plain = FriendInteractions(); let others = (0..<200).map { _ in plain.message(gumi, here: true, current: "0.5.1", me: "민지") }
+        check(!others.contains(where: FriendInteractions.isLove) && others.contains(where: FriendInteractions.isTreat) && others.allSatisfy { $0.count <= 20 }, "couple: others get no love lines, but anyone can bring a drink")
         friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: unknown legacy version receives notice")
         let plainLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
         let onLaptop = Sprites.compose(.writeA, plainLook, decor: Sprites.Decor(drink: .mug, laptop: true))
@@ -259,7 +260,7 @@ enum SelfTest {
         check(syncedTick==820 && Routine.momentPose(7,4) == .yawn,"sync: repeated studying updates preserve animation until the yawn plays")
         let quietPoses: [Sprites.Pose] = [.writeA, .writeB, .writeC, .writeD, .writePause, .readA, .readB, .pageLift, .turnPage, .pageSettle]
         check((0..<1920).allSatisfy { quietPoses.contains(Routine.focusPose($0)) && quietPoses.contains(Routine.focusPose($0, seed: 7)) },"focus: only writing, reading and turning a page")
-        check(PetWindow.cheeredSide(10, -1, "민지에게\n파이팅 !") == -1 && PetWindow.cheeredSide(2, -1, "민지에게\n파이팅 !") == 0 && PetWindow.cheeredSide(10, 1, "민지에게\n일어나 !") == 0 && PetWindow.cheeredSide(-1, 1, "") == 0, "cheer: a friend's eyes light up only once my pet has arrived with a cheer")
+        check(PetWindow.cheeredSide(10, -1, "민지에게\n파이팅 !") == -1 && PetWindow.cheeredSide(2, -1, "민지에게\n파이팅 !") == 0 && PetWindow.cheeredSide(10, 1, "민지에게\n일어나 !") == 0 && PetWindow.cheeredSide(-1, 1, "") == 0 && PetWindow.cheeredSide(10, 1, "구미에게\n사랑해 !") == 1, "cheer: a friend's eyes light up only once my pet has arrived with a cheer")
         check(Sprites.windowFrames == 5, "window: the dense lattice frame stays removed")
         let colon = Customization.digital(Array(repeating: String(repeating: "1", count: 31), count: 18), Date())
         check(Array(colon[7])[15] == "Y" && Array(colon[9])[15] == "Y" && Array(colon[8])[15] == "1", "clock: the digital face shows its colon")

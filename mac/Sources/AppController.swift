@@ -254,8 +254,6 @@ final class AppController: NSObject, NSMenuDelegate {
         publish()
     }
 
-    private func newDrink() { pet.drink = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }.randomElement()! }
-
     private func pickSubject(_ picked: String) {
         if quitting { return }
         if deviceSync != nil { if subject != picked { syncChange(state == .off ? "start" : "subject",picked) }; return }
@@ -265,7 +263,8 @@ final class AppController: NSObject, NSMenuDelegate {
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
         pet.subjectChanged()
-        newDrink()
+        let drinks = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }
+        pet.drink = drinks.randomElement()!
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
@@ -657,10 +656,11 @@ final class AppController: NSObject, NSMenuDelegate {
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
-        if FriendInteractions.isTreat(poke.message) && state != .off { newDrink(); publish() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let text = "\(poke.name) : \(poke.message)"
-        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side)
+        var arrived: (() -> Void)?
+        if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
+        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived)
         guard state != .studying else { return }
         waitingPoke = poke
         statusItem.button?.toolTip = text + " · 눌러서 답하기"

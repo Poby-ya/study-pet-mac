@@ -487,8 +487,14 @@ enum Sprites {
 
     /// The visitor's arm reaching right to a shoulder; drawn after the pet it taps.
     /// `down` is the tap, the other frame the hand lifted.
-    static func reachLayers(_ look: Look, down: Bool) -> [Layer] {
-        let reach = arm(look, (21, 18), (25, down ? 21 : 20), (30, down ? 21 : 20))
+    /// `touch`: 0 a tap on the shoulder, 1 stroking the top of the head, 2 an arm round them.
+    static func reachLayers(_ look: Look, down: Bool, touch: Int = 0) -> [Layer] {
+        let reach: Layer
+        switch touch {
+        case 1: reach = arm(look, (21, 18), (27, 13), (down ? 32 : 35, 8))
+        case 2: reach = arm(look, (21, 18), (29, 21), (down ? 38 : 37, 22))
+        default: reach = arm(look, (21, 18), (25, down ? 21 : 20), (30, down ? 21 : 20))
+        }
         return [Layer(reach.grid, reach.x + dx, reach.y)]
     }
 
@@ -502,6 +508,10 @@ enum Sprites {
     }
     static func drawHeart(left: CGFloat, top: CGFloat, scale: CGFloat) {
         draw(layers: [Layer(art("Heart"), 0, 0)], plainLook, left: left, top: top, scale: scale)
+    }
+    /// A drink carried in the hand on the way to someone's desk.
+    static func drawCarried(_ look: Look, drink: Drink, left: CGFloat, top: CGFloat, scale: CGFloat) {
+        draw(layers: [Layer(art("Drink\(drink.rawValue)"), dx + 13, 19)], look, left: left, top: top, scale: scale)
     }
     static func drawFlameEyes(left: CGFloat, top: CGFloat, scale: CGFloat, alt: Bool) {
         draw(layers: [Layer(art(alt ? "FlameB" : "FlameA"), 25, 10), Layer(art(alt ? "FlameA" : "FlameB"), 33, 10)], plainLook, left: left, top: top, scale: scale)

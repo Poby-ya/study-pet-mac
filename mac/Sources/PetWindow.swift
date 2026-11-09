@@ -77,6 +77,7 @@ final class PetWindow: NSPanel {
     private var visitTick = -1.0 // four units per second, with fractional travel
     private var visitLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
     private var visitText = ""
+    private var onArrival: (() -> Void)? // what happens once the visitor reaches the desk
     private var visitSide = 0
     private var outgoingTick = -1.0
     private var outgoingSide = 0
@@ -268,8 +269,9 @@ final class PetWindow: NSPanel {
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
     /// `side` is where they come from: -1 the left seat, 1 the right, 0 from outside.
-    func visit(_ friend: Look, text: String, side: Int) {
-        if minimized { return }
+    func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil) {
+        if minimized { arrived?(); return }
+        onArrival = arrived
         visitLook = friend
         visitText = text
         visitSide = side
@@ -326,6 +328,7 @@ final class PetWindow: NSPanel {
         frameCount = Int(animationSeconds * 4); tick = Int(moodSeconds * 4)
         for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
         if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away { fading = true } } }
+        if visitTick >= Travel.arrive, let arrive = onArrival { onArrival = nil; arrive() }
         if visitTick >= 0 {
             visitTick += seconds * 4
             if visitTick > Travel.total {
@@ -360,7 +363,7 @@ final class PetWindow: NSPanel {
     func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
     /// Whose eyes light up as my pet cheers them on: -1 the left seat, 1 the right, 0 nobody.
-    static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") && !FriendInteractions.isLove(text) ? side : 0 }
+    static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") ? side : 0 }
 
     private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
     private var momentText: String { Routine.line(moment, Routine.momentFrame(tick), laptop: laptop) }
@@ -374,7 +377,7 @@ final class PetWindow: NSPanel {
     private var myPose: Sprites.Pose {
         switch mood {
         case .studying:
-            if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") && !FriendInteractions.isPat(visitText) { return .content }
+            if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") { return .content }
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
             if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return .recover }
@@ -409,21 +412,25 @@ final class PetWindow: NSPanel {
         let visiting = visitTick >= 0
         let outgoing = outgoingTick >= 0
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
-        let arrived = myX + (visitSide == 1 ? 25 : -25) * scale
+        let arrived = myX + (visitSide == 1 ? 1 : -1) * (FriendInteractions.touch(visitText) == 2 ? 18 : 25) * scale // a hug stands right up close
         let visitorX = start + (arrived - start) * CGFloat(Travel.progress(visitTick))
         let walking = Travel.walking(visitTick)
         let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부") && !FriendInteractions.isPat(visitText)
-        let tapping = visiting && !cheering && !walking && !outgoing && (mood == .studying || mood == .dozing)
+        let pat = visiting && FriendInteractions.isPat(visitText)
+        let tapping = visiting && !cheering && !walking && !outgoing && (mood == .studying || mood == .dozing) && (!pat || (visitTick >= 6 && visitTick <= 16))
         let tap = tapping && frameCount % 2 == 0
         let cheeredSide = Self.cheeredSide(outgoingTick, outgoingSide, outgoingText)
+        let targetSeat = cheeredSide == 0 ? nil : seats[cheeredSide < 0 ? 0 : 1]
+        let patting = FriendInteractions.isPat(outgoingText) && targetSeat?.here == true && targetSeat?.dozing == false
         func hop(_ travel: Double, fromSeat: Bool) -> CGFloat { (Travel.walking(travel) ? CGFloat(abs(sin(travel * .pi))) * scale : 0) - (fromSeat ? CGFloat(Travel.seated(travel)) * 4 * scale : 0) }
-        if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering ? .cheer : tapping ? .reach : .wave, x: visitorX,
-                                 hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave)) }
-        let destination = outgoingSide < 0 ? seatX + 25 * scale : outgoingSide > 0 ? rightX - 25 * scale : canvasSize.width - deskWidth / 2
+        if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering && !FriendInteractions.noFlames(visitText) ? .cheer : tapping ? .reach : .wave, x: visitorX,
+                                 hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave), carried: visitTick < Travel.arrive ? FriendInteractions.treatDrink(visitText) : Sprites.Drink.none) }
+        let beside = (FriendInteractions.touch(outgoingText) == 2 ? 18 : 25) * scale
+        let destination = outgoingSide < 0 ? seatX + beside : outgoingSide > 0 ? rightX - beside : canvasSize.width - deskWidth / 2
         let outX = myX + (destination - myX) * CGFloat(Travel.progress(outgoingTick))
         // Wave with the far hand: the near one would be behind the friend I'm visiting.
-        if outgoing { drawVisitor(look, pose: Travel.walking(outgoingTick) ? .walk : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") || FriendInteractions.isPat(outgoingText) ? .wave : .cheer, x: outX,
-                                 hop: hop(outgoingTick, fromSeat: true), mirror: (destination < myX) != (outgoingTick > Travel.leave), leftHand: true) }
+        if outgoing { drawVisitor(look, pose: Travel.walking(outgoingTick) ? .walk : patting ? .reach : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") || FriendInteractions.noFlames(outgoingText) ? .wave : .cheer, x: outX,
+                                 hop: hop(outgoingTick, fromSeat: true), mirror: (destination < myX) != (outgoingTick > Travel.leave), leftHand: true, carried: outgoingTick < Travel.arrive ? FriendInteractions.treatDrink(outgoingText) : Sprites.Drink.none) }
         for i in 0..<2 {
             if let departing = seats[i], !departing.here && leavingTicks[i] >= 0 { drawDepartureWalker((departingSeats[i] ?? departing).look, origin: i == 0 ? seatX : rightX, tick: leavingTicks[i]) }
         }
@@ -449,7 +456,7 @@ final class PetWindow: NSPanel {
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
-            if cheered { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
+            if cheered && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
@@ -460,14 +467,21 @@ final class PetWindow: NSPanel {
         if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
         let shownPose: Sprites.Pose = outgoing ? .empty : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
-        Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping, lift: tap ? 1 : 0,
+        Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping && !pat, lift: tap && !pat ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
-        if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && !FriendInteractions.isLove(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
+        if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && !FriendInteractions.noFlames(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
             if visitSide == 1 { let t = NSAffineTransform(); t.translateX(by: visitorX + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
-            Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
+            Sprites.draw(layers: Sprites.reachLayers(visitLook, down: tap, touch: FriendInteractions.touch(visitText)), visitLook, left: visitSide == 1 ? 0 : visitorX, top: floorY, scale: scale)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        if patting {
+            NSGraphicsContext.saveGraphicsState()
+            let fromRight = destination < myX
+            if fromRight { let t = NSAffineTransform(); t.translateX(by: outX + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
+            Sprites.draw(layers: Sprites.reachLayers(look, down: frameCount % 2 == 0, touch: FriendInteractions.touch(outgoingText)), look, left: fromRight ? 0 : outX, top: floorY, scale: scale)
             NSGraphicsContext.restoreGraphicsState()
         }
         drawNameplate(myName(), deskX: myX)
@@ -497,8 +511,8 @@ final class PetWindow: NSPanel {
             drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint)
         }
         // 구미 and 포비: hearts while one visits the other, and now and then from each other's desk.
-        if visitTick >= Travel.arrive && visitTick <= Travel.leave && FriendInteractions.isLove(visitText) { drawHearts(myX, visitTick - Travel.arrive) }
-        if outgoingTick >= Travel.arrive && outgoingTick <= Travel.leave && FriendInteractions.isLove(outgoingText) && outgoingSide != 0 { drawHearts(outgoingSide < 0 ? seatX : rightX, outgoingTick - Travel.arrive) }
+        if visitTick >= Travel.arrive && visitTick <= Travel.leave && FriendInteractions.isLove(visitText) { drawHearts(myX, visitTick - Travel.arrive, column: visitSide == 1 ? 44 : 16) }
+        if outgoingTick >= Travel.arrive && outgoingTick <= Travel.leave && FriendInteractions.isLove(outgoingText) && outgoingSide != 0 { drawHearts(outgoingSide < 0 ? seatX : rightX, outgoingTick - Travel.arrive, column: outgoingSide < 0 ? 44 : 16) }
         for i in 0..<2 { if !focus, let partner = seats[i], partner.here, FriendInteractions.isCouple(myName(), partner.name) { drawHearts(i == 0 ? seatX : rightX, Double(frameCount % 480)) } }
         // Over the bubbles, so a bubble never hides them.
         for effect in effects where effect.moment > 0 {
@@ -558,20 +572,21 @@ final class PetWindow: NSPanel {
     }
 
     /// Little hearts rising one after another beside the head.
-    private func drawHearts(_ deskX: CGFloat, _ phase: Double) {
+    private func drawHearts(_ deskX: CGFloat, _ phase: Double, column: Int = 38) {
         let small = scale / 2
         for i in 0..<4 {
             let t = phase - Double(i * 5)
             if t < 0 || t > 10 { continue }
-            Sprites.drawHeart(left: deskX + CGFloat(38 + i % 2 * 3) * scale + CGFloat(sin(t * 1.2)) * small,
+            Sprites.drawHeart(left: deskX + CGFloat(column + i % 2 * 3) * scale + CGFloat(sin(t * 1.2)) * small,
                               top: floorY + 20 * scale - CGFloat(t * 1.8) * scale, scale: small)
         }
     }
-    private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool, leftHand: Bool = false) {
+    private func drawVisitor(_ actor: Look, pose: Sprites.Visiting, x: CGFloat, hop: CGFloat, mirror: Bool, leftHand: Bool = false, carried: Sprites.Drink = Sprites.Drink.none) {
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height).clip()
         if mirror { let t = NSAffineTransform(); t.translateX(by: x + 58 * scale, yBy: 0); t.scaleX(by: -1, yBy: 1); t.concat() }
         Sprites.draw(layers: Sprites.visitor(actor, pose, alt: frameCount % 2 == 0, leftHand: leftHand), actor, left: mirror ? 0 : x, top: floorY - hop, scale: scale)
+        if carried != Sprites.Drink.none { Sprites.drawCarried(actor, drink: carried, left: mirror ? 0 : x, top: floorY - hop, scale: scale) }
         NSGraphicsContext.restoreGraphicsState()
     }
 
