@@ -69,7 +69,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private var farewell = ""
     private var lastPokes: [String: Date] = [:]
     private var invitePromptOpen = false
-    // A friend's call not answered yet: the menu bar face blinks, then keeps a red dot.
+    // A friend's call not answered yet: the menu bar face's red dot blinks until it is.
     private var waitingPoke: Poke?
     private var blink: Timer?
     private var blinks = 0
@@ -651,7 +651,7 @@ final class AppController: NSObject, NSMenuDelegate {
     }
 
     /// No window pops up by itself: I may be sharing my screen. The friend visits my desk
-    /// (unless minimized) and the menu bar face blinks, then keeps a red dot; its menu
+    /// (unless minimized) and the menu bar face's red dot blinks; its menu
     /// starts with the call, and choosing it answers.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
@@ -674,8 +674,7 @@ final class AppController: NSObject, NSMenuDelegate {
 
     @objc private func blinkFace() {
         blinks += 1
-        statusItem.button?.image = Sprites.face(pet.look, dot: blinks % 2 == 0 || blinks >= 20)
-        if blinks >= 20 { blink?.invalidate(); blink = nil }
+        statusItem.button?.image = Sprites.face(pet.look, dot: blinks % 2 == 0)
     }
 
     private func clearWaitingPoke() {
