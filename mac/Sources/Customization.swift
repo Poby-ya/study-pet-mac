@@ -46,7 +46,17 @@ final class Customization: Equatable {
     func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { ["head","hat","ear","neck","badge"].flatMap{layers($0,x,y)} }
     func legacyLook(_ look: Look) -> Look {
         var hair=value("hair");if hair>=8 {hair=Self.categories.first{$0.key == "hair"}!.art.first{$0["id"] as? Int == hair}!["base"] as! Int};let top=value("top")<9 ? value("top") : 0
-        var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]="0";rows[y][x]="y"}
+        var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]="0"
+        let mask=(look.additions & 1) | (on("hat") ? 4 : 0)
+        return Look(girl:look.girl,hair,look.hairColor,top,look.topColor,look.bottom,look.ribbon).withExtras(String(e)+String(mask)).withCustomization(self)
+    }
+    static func swing(_ source: [String],_ date: Date) -> [String] {
+        var rows=source.map{Array($0)}
+        let second=Calendar.current.component(.second,from:date)
+        let fraction=date.timeIntervalSince1970-floor(date.timeIntervalSince1970)
+        let dx=Int(floor(sin((Double(second)+fraction)*Double.pi)*2+0.5))
+        for y in 29..<39 {for x in 11..<20 {rows[y][x]="k"}}
+        for y in 29...35 {let x=15+Int(floor(Double(dx)*Double(y-29)/6.0+0.5));rows[y][x]="y"}
         for y in 34..<38 {for x in (13+dx)..<(18+dx) {rows[y][x]="p"}}
         rows[34][14+dx]="Y"
         return rows.map{String($0)}
