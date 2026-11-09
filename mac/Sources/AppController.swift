@@ -461,11 +461,6 @@ final class AppController: NSObject, NSMenuDelegate {
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
         if let sync = deviceSync, !syncReady || !sync.mine || !sync.pending.isEmpty || quitting { return }
-        // Stamped once when I stop, so friends see the whole time even if the app is reopened since.
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let awaySince = state != .off ? "" : Settings.get("awaySince").isEmpty ? String(nowMs) : Settings.get("awaySince")
-        if awaySince != Settings.get("awaySince") { safely("자리 비움 시각 저장") { try Settings.set("awaySince", awaySince) } }
-        let awayMinutes = Int64(awaySince).map { Int(min(10080, max(0, (nowMs - $0) / 60_000))) } ?? 0
         var status: [String:Any] = [
             "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
@@ -481,6 +476,10 @@ final class AppController: NSObject, NSMenuDelegate {
         if let sync = deviceSync { status["syncRevision"] = DeviceSync.num(sync.data,"revision") }
         room?.publish(status)
     }
+
+    /// Off: how long since I last studied. The records are the same on every linked device and
+    /// outlast the app, so neither reopening it nor studying elsewhere upsets the count.
+    private var awayMinutes: Int { (try? Records.load()).map { Records.minutesSinceLast($0, now: Date()) } ?? 0 }
 
     @discardableResult
     @objc private func askNickname() -> Bool {
@@ -642,14 +641,21 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id);profileDirty=deviceSync != nil;profileEdit += 1;syncNow() } } }
 
     private func pokeMember(_ mate: Member) {
-        guard let room, state != .off else { return } // going over to a friend takes being at your own desk
+        guard let room else { return }
         guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
         let message = interactions.message(mate, here: here, current: Updater.current, me: nickname)
         room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
         pet.goVisit(mate.name, message: here ? message : message + "\n" + Room.offPokeHint,
-                    side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0)
+                    side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0,
+                    retort: state != .studying && here && mate.state == "studying" ? FriendInteractions.retort(message, couple: FriendInteractions.isCouple(nickname, mate.name)) : "")
+    }
+
+    /// What my pet says back when someone who isn't studying comes to cheer me on.
+    private func retort(to poke: Poke) -> String {
+        guard state == .studying, !poke.missed, let sender = members.first(where: { $0.id == poke.from }) else { return "" }
+        return Room.isHere(sender, Room.latest(members)) && sender.state == "studying" ? "" : FriendInteractions.retort(poke.message, couple: FriendInteractions.isCouple(nickname, sender.name))
     }
 
     /// No window pops up by itself: I may be sharing my screen. The friend visits my desk
@@ -662,7 +668,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let text = "\(poke.name) : \(poke.message)"
         var arrived: (() -> Void)?
         if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
-        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived)
+        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke))
         guard state != .studying else { return }
         waitingPoke = poke
         statusItem.button?.toolTip = text + " · 눌러서 답하기"
@@ -776,7 +782,7 @@ final class AppController: NSObject, NSMenuDelegate {
             for friend in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
                 let call = item(friend.name, #selector(pokePerson(_:))); call.representedObject = friend.id; calls.addItem(call)
             }
-            let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; if state != .off { share.addItem(callItem) }
+            let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; share.addItem(callItem)
             share.addItem(item("초대 코드 복사", #selector(copyInvite)))
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {

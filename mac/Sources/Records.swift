@@ -41,6 +41,12 @@ enum Records {
 
     private static var files: FileManager { FileManager.default }
 
+    /// Minutes since the last study session ended, 0 with no sessions; a room's rules accept up to a week.
+    static func minutesSinceLast(_ segments: [Segment], now: Date) -> Int {
+        guard let last = segments.map(\.end).max() else { return 0 }
+        return Int(min(10080, max(0, now.timeIntervalSince(last) / 60)))
+    }
+
     static func load() throws -> [Segment] {
         guard files.fileExists(atPath: sessionsURL.path) else { return [] }
         return lines(try String(contentsOf: sessionsURL, encoding: .utf8)).dropFirst().compactMap(parse)

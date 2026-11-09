@@ -81,6 +81,7 @@ enum SelfTest {
         let sweet = FriendInteractions(); var gumi = Member(id: "g", name: "구미", subject: "", state: "studying", minutes: 0, updated: 1); gumi.version = "0.5.1"
         let said = (0..<200).map { _ in sweet.message(gumi, here: true, current: "0.5.1", me: "포비") }
         check(said.allSatisfy(FriendInteractions.noFlames) && said.allSatisfy { $0.count <= 20 } && said.contains { FriendInteractions.touch($0) == 2 } && said.contains(where: FriendInteractions.isPat) && said.contains(where: FriendInteractions.isTreat) && FriendInteractions.touch("구미 : 머리 쓰담쓰담") == 1 && FriendInteractions.treatDrink("구미 : 커피 사 왔어 !") == .icedCoffee, "couple: 구미 and 포비 get their own interactions, within the message limit")
+        check(FriendInteractions.retort("파이팅 !", couple: false) == "말로만 응원이야 ?" && FriendInteractions.retort("일어나 !", couple: false).isEmpty && FriendInteractions.retort("같이 공부하자 !", couple: false).isEmpty && FriendInteractions.retort(FriendInteractions.updateNotice, couple: false).isEmpty && FriendInteractions.retort("커피 사 왔어 !", couple: false).hasPrefix("고마워"), "retort: a cheer from someone not studying gets an answer, the same one on both platforms")
         let plain = FriendInteractions(); let others = (0..<200).map { _ in plain.message(gumi, here: true, current: "0.5.1", me: "민지") }
         check(!others.contains(where: FriendInteractions.isLove) && others.contains(where: FriendInteractions.isTreat) && others.allSatisfy { $0.count <= 20 }, "couple: others get no love lines, but anyone can bring a drink")
         friend.version = ""; check(interactions.message(friend, here: true, current: "0.5.1") == FriendInteractions.updateNotice, "friend: unknown legacy version receives notice")
@@ -648,6 +649,9 @@ enum SelfTest {
         check(Room.seatText(members[2], here: Room.isHere(members[2], latest)) == "공부 · 1시간 5분\n잠깐 쉬는 중", "seat: paused text")
         check(Room.seatText(members[4], here: Room.isHere(members[4], latest), now: now) == "3분째 노는 중", "seat: gone quiet reads as away")
         check(Room.awayText(Member(id: "x", name: "x", subject: "", state: "off", minutes: 5 * 60, updated: 1), now: 1 + 3 * 3_600_000) == "8시간째 노는 중" && Room.awayText(Member(id: "x", name: "x", subject: "", state: "off", minutes: 0, updated: 1), now: 1 + 200 * 3_600_000) == "200시간째 노는 중" && Room.awayText(m("x", "x", "off", 59 * 60_000), now: now) == "59분째 노는 중", "away: minutes under an hour, then always hours, counting time before the app was reopened")
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let studied = [Segment(start: day, end: day.addingTimeInterval(3600), subject: "a"), Segment(start: day.addingTimeInterval(7200), end: day.addingTimeInterval(10800), subject: "b")]
+        check(Records.minutesSinceLast(studied, now: day.addingTimeInterval(10800 + 5400)) == 90 && Records.minutesSinceLast([], now: day) == 0 && Records.minutesSinceLast(studied, now: day.addingTimeInterval(30 * 86400)) == 10080, "away: counted from the end of the last session, up to the room's limit")
         check(Room.pokeMessage(members[1], here: true) == "화이팅 !" && Room.pokeMessage(members[2], here: true) == "일어나 !" &&
               Room.pokeMessage(members[3], here: Room.isHere(members[3], latest)) == "같이 공부하자 !", "poke: message follows their state")
 

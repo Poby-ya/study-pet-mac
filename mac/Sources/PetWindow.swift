@@ -78,6 +78,7 @@ final class PetWindow: NSPanel {
     private var visitLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
     private var visitText = ""
     private var onArrival: (() -> Void)? // what happens once the visitor reaches the desk
+    private var visitRetort = "", outgoingRetort = "" // the answer to a cheer from someone not studying
     private var visitSide = 0
     private var outgoingTick = -1.0
     private var outgoingSide = 0
@@ -269,20 +270,21 @@ final class PetWindow: NSPanel {
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
     /// `side` is where they come from: -1 the left seat, 1 the right, 0 from outside.
-    func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil) {
+    func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil, retort: String = "") {
         if minimized { arrived?(); return }
         onArrival = arrived
         visitLook = friend
         visitText = text
+        visitRetort = retort
         visitSide = side
         visitTick = 0
         wake()
         if !isVisible || fading || mood == .leaving { appear(.away) }
     }
 
-    func goVisit(_ name: String, message: String, side: Int) {
+    func goVisit(_ name: String, message: String, side: Int, retort: String = "") {
         if minimized { return }
-        outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message
+        outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message; outgoingRetort = side == 0 && !retort.isEmpty ? name + " : " + retort : retort // no desk on screen to say it from
         wake()
         if !isVisible { appear(.away) }
     }
@@ -377,6 +379,7 @@ final class PetWindow: NSPanel {
     private var myPose: Sprites.Pose {
         switch mood {
         case .studying:
+            if !visitRetort.isEmpty && visitTick >= 10 && visitTick < Travel.leave { return visitSide == 1 ? .lookRight : .lookLeft }
             if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") { return .content }
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
@@ -422,6 +425,9 @@ final class PetWindow: NSPanel {
         let cheeredSide = Self.cheeredSide(outgoingTick, outgoingSide, outgoingText)
         let targetSeat = cheeredSide == 0 ? nil : seats[cheeredSide < 0 ? 0 : 1]
         let patting = FriendInteractions.isPat(outgoingText) && targetSeat?.here == true && targetSeat?.dozing == false
+        let retorting = visiting && !visitRetort.isEmpty && visitTick >= 10 && visitTick < 22 && mood == .studying
+        let answeringSeat = outgoingSide == 0 ? nil : seats[outgoingSide < 0 ? 0 : 1]
+        let sentRetort = outgoing && !outgoingRetort.isEmpty && outgoingTick >= 10 && outgoingTick < 22 && (outgoingSide == 0 || (answeringSeat?.here == true && answeringSeat?.dozing == false))
         func hop(_ travel: Double, fromSeat: Bool) -> CGFloat { (Travel.walking(travel) ? CGFloat(abs(sin(travel * .pi))) * scale : 0) - (fromSeat ? CGFloat(Travel.seated(travel)) * 4 * scale : 0) }
         if visiting { drawVisitor(visitLook, pose: walking ? .walk : cheering && !FriendInteractions.noFlames(visitText) ? .cheer : tapping ? .reach : .wave, x: visitorX,
                                  hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave), carried: visitTick < Travel.arrive ? FriendInteractions.treatDrink(visitText) : Sprites.Drink.none) }
@@ -447,7 +453,7 @@ final class PetWindow: NSPanel {
             if leavingTicks[i]>=0,let snapshot=departingSeats[i] {seat=snapshot;seat.here=false}
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
             let cheered = cheeredSide == (i == 0 ? -1 : 1) && seat.here && !seat.dozing
-            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : cheered ? .content : seatPose(seat)
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : cheered ? (sentRetort ? (cheeredSide < 0 ? .lookRight : .lookLeft) : .content) : seatPose(seat)
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
@@ -456,7 +462,7 @@ final class PetWindow: NSPanel {
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
                          decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
-            if cheered && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
+            if cheered && outgoingRetort.isEmpty && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
             if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
@@ -469,7 +475,7 @@ final class PetWindow: NSPanel {
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping && !pat, lift: tap && !pat ? 1 : 0,
                      decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
-        if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && !FriendInteractions.noFlames(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
+        if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && visitRetort.isEmpty && !FriendInteractions.noFlames(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
             NSGraphicsContext.saveGraphicsState()
@@ -494,7 +500,10 @@ final class PetWindow: NSPanel {
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = min(canvasSize.width-2,max(deskWidth+16,deskWidth+deskGap-6))
         if visiting || outgoing {
-            let top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
+            let top: CGFloat
+            if retorting { top = drawBubble(visitRetort, cx: myX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
+            else if sentRetort { top = drawBubble(outgoingRetort, cx: (outgoingSide == 0 ? myX : outgoingSide < 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
+            else { top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
             if !updateText.isEmpty { drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
         else if !focus {
@@ -502,7 +511,7 @@ final class PetWindow: NSPanel {
             if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
                 if let seat = seats[i] { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : seat.text,
-                                                    cx: (i == 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: narrow, fill: .white) }
+                                                    cx: (i == 0 ? seatX : rightX) + (seat.here || leavingTicks[i] >= 0 ? mid : 28 * scale), tipY: tip, maxWidth: narrow, fill: .white) }
             }
             let news = mood != .away ? newsText() : ""
             if news != shownNews { shownNews = news; newsShownAt = animationSeconds }
@@ -531,7 +540,7 @@ final class PetWindow: NSPanel {
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
         if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}}
-        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:40,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
+        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:28,targetY:Int((20-Departure.signLift(tick)).rounded()),leftHand:true)}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18
@@ -539,7 +548,7 @@ final class PetWindow: NSPanel {
         let antialias = NSGraphicsContext.current?.shouldAntialias ?? true
         NSGraphicsContext.current?.shouldAntialias = false
         let grid = Array(Sprites.art("AwaySign").suffix(height))
-        let left = Sprites.width - 22
+        let left = 17 // the middle of the desk, just clear of the lamp
         for (y, row) in grid.enumerated() {
             for (col, c) in row.enumerated() where c != "." {
                 (c == "k" ? PetWindow.wood : c == "d" ? PetWindow.floorWood : c == "u" ? Sprites.color(0xFFF9E7) : Sprites.color(0xFFF1B8)).setFill()
