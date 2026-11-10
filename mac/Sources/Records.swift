@@ -148,6 +148,30 @@ enum Records {
         try ("\u{FEFF}" + ([header] + kept).joined(separator: "\r\n") + "\r\n").write(to: sessionsURL, atomically: true, encoding: .utf8)
     }
 
+    /// Fixes one finished stretch: ends it earlier at `end`, or drops it when `end` is nil. Only ever
+    /// shorter, never longer or moved. The file as it was is kept as sessions.bak.csv, like deleteSubject.
+    static func edit(_ segment: Segment, end: Date?) throws {
+        if let end, end <= segment.start || end > segment.end { throw RoomError("끝 시각은 시작과 원래 끝 사이로만 줄일 수 있어요.") }
+        var all = files.fileExists(atPath: sessionsURL.path) ? lines(try String(contentsOf: sessionsURL, encoding: .utf8)) : []
+        guard !all.isEmpty else { throw RoomError("그 기록을 찾지 못했어요. 기록 창을 다시 열어 주세요.") }
+        let header = all.removeFirst().replacingOccurrences(of: "\u{FEFF}", with: "")
+        guard let at = all.firstIndex(where: { parse($0).map { $0.start == segment.start && $0.end == segment.end && $0.subject == segment.subject } ?? false }) else { throw RoomError("그 기록을 찾지 못했어요. 기록 창을 다시 열어 주세요.") }
+        if let end { all[at] = format(Segment(start: segment.start, end: end, subject: segment.subject)) } else { all.remove(at: at) }
+        if files.fileExists(atPath: backupURL.path) { try files.removeItem(at: backupURL) }
+        try files.copyItem(at: sessionsURL, to: backupURL)
+        try ("\u{FEFF}" + ([header] + all).joined(separator: "\r\n") + "\r\n").write(to: sessionsURL, atomically: true, encoding: .utf8)
+    }
+
+    /// Days in a row with some study, up to today (or up to yesterday while today is still empty).
+    static func streak(_ daily: [Date: [String: Double]], today: Date) -> Int {
+        let calendar = Calendar.current
+        func studied(_ day: Date) -> Bool { (daily[day]?.values.reduce(0, +) ?? 0) >= 1 }
+        var day = studied(today) ? today : calendar.date(byAdding: .day, value: -1, to: today)!
+        var count = 0
+        while studied(day) { count += 1; day = calendar.date(byAdding: .day, value: -1, to: day)! }
+        return count
+    }
+
     /// Subjects removed from the planner. Unless deleted too, their study time stays in sessions.csv.
     static func hidden() throws -> Set<String> {
         guard files.fileExists(atPath: hiddenURL.path) else { return [] }

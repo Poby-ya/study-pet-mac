@@ -180,14 +180,23 @@ enum SelfTest {
         }
         let today = Calendar.current.startOfDay(for: Date())
         func at(_ day: Int, _ hours: Double) -> Date { Calendar.current.date(byAdding: .day, value: day, to: today)!.addingTimeInterval(hours * 3600) }
-        let stats = StatsWindow(segments: [
+        let sample = [
             Segment(start: at(0, 9), end: at(0, 10.5), subject: "영어"),
             Segment(start: at(0, 13), end: at(0, 13.75), subject: "국어"),
             Segment(start: at(-1, 20), end: at(-1, 22), subject: "수학"),
             Segment(start: at(-60, 20), end: at(-60, 23), subject: "수학"),
-        ])
+            Segment(start: at(-2, 19.2), end: at(-1, 16.9), subject: "HCS"), // left running overnight
+        ]
+        let stats = StatsWindow(segments: sample, closed: { sample }, edit: { _, _ in })
+        check(Records.streak(Records.daily(sample), today: today) == 3, "stats: the streak counts days in a row up to today")
+        let base: [String: Any] = ["segments": ["row": ["start": NSNumber(value: 1000), "end": NSNumber(value: 61000), "subject": "수학"]]]
+        let trimmed = try? DeviceSync.transition(base, ["id": "t", "type": "trim", "at": NSNumber(value: 5), "device": "pc", "segment": "row", "end": NSNumber(value: 31000)])
+        let dropped = try? DeviceSync.transition(base, ["id": "d", "type": "drop", "at": NSNumber(value: 6), "device": "pc", "segment": "row"])
+        let longer = try? DeviceSync.transition(base, ["id": "x", "type": "trim", "at": NSNumber(value: 7), "device": "pc", "segment": "row", "end": NSNumber(value: 90000)])
+        check(DeviceSync.num(DeviceSync.obj(DeviceSync.obj(trimmed ?? [:], "segments"), "row"), "end") == 31000 && DeviceSync.obj(dropped ?? ["segments": ["x": 1]], "segments").isEmpty && longer == nil,
+              "sync: a record can be shortened or removed, never lengthened")
         // The subjects tab last: the very first off-screen capture comes out with blank tab labels.
-        for (i, name) in [(1, "stats-daily.png"), (2, "stats-monthly.png"), (0, "stats-subjects.png")] {
+        for (i, name) in [(1, "stats-daily.png"), (2, "stats-monthly.png"), (3, "stats-recent.png"), (0, "stats-subjects.png")] {
             stats.tabs.selectTabViewItem(at: i)
             save(capture(stats.contentView!), out, name)
         }

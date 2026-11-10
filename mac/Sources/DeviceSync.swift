@@ -82,6 +82,11 @@ final class DeviceSync {
         let closed = Self.obj(data,"segments").values.compactMap { $0 as? [String:Any] }.filter { Self.str($0,"session") == Self.str(active,"id") }.reduce(Int64(0)) { $0 + Self.num($1,"end") - Self.num($1,"start") }
         return Double(closed + (Self.str(active,"state") == "studying" ? max(0,Self.now-Self.num(active,"start")) : 0))/1000
     }
+    /// The cloud's key for a finished stretch as the records file shows it (to the second), or "".
+    func keyOf(_ s: Segment) -> String {
+        let from = Int64(s.start.timeIntervalSince1970.rounded(.down)), to = Int64(s.end.timeIntervalSince1970.rounded(.down))
+        return DeviceSync.obj(data, "segments").first { pair in let v = pair.value as? [String: Any] ?? [:]; return DeviceSync.num(v, "start") / 1000 == from && DeviceSync.num(v, "end") / 1000 == to && DeviceSync.str(v, "subject") == s.subject }?.key ?? ""
+    }
     func mirror() throws {
         let segments = Self.obj(data,"segments").values.compactMap { $0 as? [String:Any] }.map { s in Segment(start:Date(timeIntervalSince1970:Double(Self.num(s,"start"))/1000),end:Date(timeIntervalSince1970:Double(Self.num(s,"end"))/1000),subject:Self.str(s,"subject")) }
         try Records.replaceSynced(segments,hidden:Array(Self.obj(data,"hidden").values.compactMap { $0 as? String }))
@@ -110,6 +115,12 @@ final class DeviceSync {
         } else if type == "profile" { state["profile"] = obj(state,"profile").merging(obj(op,"profile")) { _,value in value } }
         else if type == "import" { var imports = obj(state,"imports"); let importId = str(op,"importId"); if imports[importId] == nil { segments.merge(obj(op,"segments")) { old,_ in old }; imports[importId] = true }; state["imports"] = imports }
         else if ["hide","delete"].contains(type) { guard str(active,"subject") != str(op,"subject") else { throw RoomError("공부를 마친 뒤 지워 주세요.") }; hidden[hash(str(op,"subject"))] = str(op,"subject"); if type == "delete" { segments = segments.filter { str($0.value as? [String:Any] ?? [:],"subject") != str(op,"subject") } } }
+        else if ["trim","drop"].contains(type) {
+            // Fixing a stretch left running: only shorter or gone, never longer or moved.
+            guard var seg = segments[str(op,"segment")] as? [String:Any] else { throw RoomError("그 기록을 찾지 못했어요. 기록 창을 다시 열어 주세요.") }
+            if type == "drop" { segments.removeValue(forKey: str(op,"segment")) }
+            else { guard num(op,"end") > num(seg,"start") && num(op,"end") <= num(seg,"end") else { throw RoomError("끝 시각은 시작과 원래 끝 사이로만 줄일 수 있어요.") }; seg["end"] = num(op,"end"); segments[str(op,"segment")] = seg }
+        }
         else { throw RoomError("지원하지 않는 작업이에요.") }
         if ["start","subject"].contains(type) { hidden = hidden.filter { ($0.value as? String) != str(op,"subject") } }
         if !active.isEmpty && str(active,"subject").isEmpty { throw RoomError("과목을 적어 주세요.") }

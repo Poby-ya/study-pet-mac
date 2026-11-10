@@ -1143,7 +1143,7 @@ final class AppController: NSObject, NSMenuDelegate {
         var segments: [Segment] = []
         safely("기록 읽기") { segments = try Records.load() }
         if let start = segmentStart { segments.append(Segment(start: start, end: segmentEnd(start), subject: subject)) }
-        let window = StatsWindow(segments: segments)
+        let window = StatsWindow(segments: segments, closed: { (try? Records.load()) ?? [] }, edit: { [weak self] segment, end in self?.editRecord(segment, end: end) })
         window.follow { [weak self] in
             var latest = (try? Records.load()) ?? []
             if let self, let start = self.segmentStart { latest.append(Segment(start: start, end: self.segmentEnd(start), subject: self.subject)) }
@@ -1152,6 +1152,20 @@ final class AppController: NSObject, NSMenuDelegate {
         stats = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// From the record book: a finished stretch ends earlier (`end`) or goes. A linked account changes
+    /// the cloud, which every device then mirrors; the file alone would be overwritten within seconds.
+    private func editRecord(_ segment: Segment, end: Date?) {
+        guard let sync = deviceSync else { safely("기록 고치기") { try Records.edit(segment, end: end) }; return }
+        let key = sync.keyOf(segment)
+        guard !key.isEmpty else { alert("그 기록을 찾지 못했어요. 기록 창을 다시 열어 주세요."); return }
+        var fields: [String: Any] = ["segment": key]
+        if let end { fields["end"] = Int64((end.timeIntervalSince1970 * 1000).rounded()) }
+        Task { @MainActor in
+            do { try await sync.change(end == nil ? "drop" : "trim", fields: fields); if self.deviceSync === sync && !self.quitting { try self.applySync() } }
+            catch { self.alert("기록을 고치지 못했어요.\n" + error.localizedDescription) }
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
