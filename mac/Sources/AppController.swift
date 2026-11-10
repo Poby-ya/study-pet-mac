@@ -687,7 +687,9 @@ final class AppController: NSObject, NSMenuDelegate {
             return [act("같이 공부하자 !", nil), noteItem]
         }
         if mate.state == "paused" { return [act("깨우기", nil)] }
-        return [act("응원하기", nil), act("간식 주기", FriendInteractions.snacks.randomElement()!), act("뭐 공부해 ?", FriendInteractions.whatStudy)]
+        var actions = [act("응원하기", nil), act("간식 주기", FriendInteractions.snacks.randomElement()!), act("뭐 공부해 ?", FriendInteractions.whatStudy), act("지우개 빌리기", FriendInteractions.borrow)]
+        if mate.id != Settings.get("seatmate") && mate.id != Settings.get("seatmateRight") { actions.append(act("내 옆에 앉아 !", FriendInteractions.seatInvite)) }
+        return actions
     }
 
     private func friendMenu(_ side: Int) -> NSMenu? {
@@ -697,6 +699,28 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         for action in friendActions(mate) { menu.addItem(action) }
         return menu
+    }
+
+    /// 내 옆에 앉아 !: the friend goes in an empty seat beside me, or I pick which of the two to give up.
+    private func acceptSeat(_ poke: Poke) {
+        guard let friend = members.first(where: { $0.id == poke.from }) else { return }
+        if friend.id == Settings.get("seatmate") || friend.id == Settings.get("seatmateRight") { news = friend.name + " · 이미 옆자리예요"; newsUntil = Date().addingTimeInterval(5); return }
+        var key = findSeatmate("seatmate") == nil ? "seatmate" : findSeatmate("seatmateRight") == nil ? "seatmateRight" : ""
+        if key.isEmpty {
+            invitePromptOpen = true
+            defer { invitePromptOpen = false }
+            let alert = NSAlert()
+            alert.messageText = "\(friend.name) · 어느 쪽에 앉힐까요?"
+            alert.informativeText = "그쪽에 있던 친구는 자리에서 빠져요."
+            alert.addButton(withTitle: "왼쪽 (\(findSeatmate("seatmate")?.name ?? "") 대신)")
+            alert.addButton(withTitle: "오른쪽 (\(findSeatmate("seatmateRight")?.name ?? "") 대신)")
+            alert.addButton(withTitle: "취소")
+            NSApp.activate(ignoringOtherApps: true)
+            switch alert.runModal() { case .alertFirstButtonReturn: key = "seatmate"; case .alertSecondButtonReturn: key = "seatmateRight"; default: return }
+        }
+        let other = key == "seatmate" ? "seatmateRight" : "seatmate"
+        safely("옆자리 저장") { try Settings.setMany((key, friend.id), (other, Settings.get(other) == friend.id ? "" : Settings.get(other))); profileDirty = deviceSync != nil; profileEdit += 1; syncNow() }
+        news = Room.withSubjectMarker(friend.name) + " 옆자리에 앉았어요"; newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
     }
 
     private func sendThanks() {
@@ -715,9 +739,9 @@ final class AppController: NSObject, NSMenuDelegate {
         let here = Room.isHere(mate, Room.latest(members))
         let message = chosen ?? interactions.message(mate, here: here, current: Updater.current, me: nickname)
         room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
-        pet.goVisit(mate.name, message: here ? message : message + "\n" + Room.offPokeHint,
+        pet.goVisit(mate.name, message: !here ? message + "\n" + Room.offPokeHint : FriendInteractions.isSeatInvite(message) ? message + "\n받아 줬는지는 알 수 없어요" : message,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0,
-                    retort: !here || mate.state != "studying" ? "" : FriendInteractions.isWhatStudy(message) ? FriendInteractions.answer(mate.subject, mate.minutes)
+                    retort: !here || mate.state != "studying" ? "" : FriendInteractions.isWhatStudy(message) ? FriendInteractions.answer(mate.subject, mate.minutes) : FriendInteractions.isBorrow(message) ? FriendInteractions.handOver
                         : state != .studying ? FriendInteractions.retort(message, couple: FriendInteractions.isCouple(nickname, mate.name)) : "")
     }
 
@@ -725,6 +749,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func retort(to poke: Poke) -> String {
         guard state == .studying, !poke.missed, let sender = members.first(where: { $0.id == poke.from }) else { return "" }
         // The minutes the room shows for me, which is what the friend asking sees too.
+        if FriendInteractions.isBorrow(poke.message) { return FriendInteractions.handOver }
         if FriendInteractions.isWhatStudy(poke.message) { return FriendInteractions.answer(subject, members.first(where: { $0.id == myId })?.minutes ?? Int(elapsed / 60)) }
         return Room.isHere(sender, Room.latest(members)) && sender.state == "studying" ? "" : FriendInteractions.retort(poke.message, couple: FriendInteractions.isCouple(nickname, sender.name))
     }
@@ -745,7 +770,8 @@ final class AppController: NSObject, NSMenuDelegate {
             thankable = poke; thankUntil = Date().addingTimeInterval(16)
             if state != .off { news = "눌러서 " + poke.name + "에게 고마워 !"; newsUntil = thankUntil }
         }
-        guard state != .studying else { return }
+        // An invitation to sit together waits for one click on the menu bar face, even mid-study.
+        guard state != .studying || FriendInteractions.isSeatInvite(poke.message) else { return }
         waitingPoke = poke
         statusItem.button?.toolTip = text + " · 눌러서 답하기"
         blink?.invalidate()
@@ -782,6 +808,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard let poke = waitingPoke, !quitting, !invitePromptOpen else { return }
         clearWaitingPoke()
         if poke.message == FriendInteractions.updateNotice { DispatchQueue.main.async { [weak self] in self?.showSettings() }; return }
+        if FriendInteractions.isSeatInvite(poke.message) { DispatchQueue.main.async { [weak self] in self?.acceptSeat(poke) }; return }
         invitePromptOpen = true
         // After the menu has closed: a modal alert inside its tracking loop misbehaves.
         DispatchQueue.main.async { [weak self] in

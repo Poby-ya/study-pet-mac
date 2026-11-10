@@ -521,9 +521,9 @@ enum Sprites {
     static func drawCarried(_ look: Look, drink: Drink, left: CGFloat, top: CGFloat, scale: CGFloat) {
         drawCarried(look, art: "Drink\(drink.rawValue)", left: left, top: top, scale: scale)
     }
-    /// A snack, carried the same way.
-    static func drawCarried(_ look: Look, art name: String, left: CGFloat, top: CGFloat, scale: CGFloat) {
-        draw(layers: [Layer(art(name), dx + 13, 19)], look, left: left, top: top, scale: scale)
+    /// A snack, carried the same way; `held` out toward someone's head (an alarm clock, a pot), shaking.
+    static func drawCarried(_ look: Look, art name: String, left: CGFloat, top: CGFloat, scale: CGFloat, held: Bool = false, shake: Int = 0) {
+        draw(layers: [Layer(art(name), dx + (held ? 24 : 13) + shake, held ? 13 : 19)], look, left: left, top: top, scale: scale)
     }
     /// A loose piece of shared art (a note, a sparkle) with its top-left at left, top.
     static func drawArt(_ name: String, left: CGFloat, top: CGFloat, scale: CGFloat) {

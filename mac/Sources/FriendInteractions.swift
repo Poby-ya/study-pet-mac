@@ -17,6 +17,24 @@ final class FriendInteractions {
     static let whatStudy = "뭐 공부해 ?"
     static let thanks = "고마워 !"
     static func celebration(_ hours: Int) -> String { "\(hours)시간 달성 축하해 !" }
+    /// Waking a friend gets louder each time they don't get up: a tap, an alarm clock, a pot and spoon.
+    /// Every one says 일어나, so older versions still take it as a wake-up.
+    private static let wakes = ["일어나 !", "일어나 ! 따르릉 !", "일어나 !! 땡땡땡 !"]
+    static func wake(_ level: Int, couple: Bool) -> String { (couple ? "자기야 " : "") + wakes[max(1, min(3, level)) - 1] }
+    /// 1 a tap, 2 the alarm clock, 3 the pot, read from the words alone.
+    static func wakeLevel(_ text: String) -> Int { text.contains("땡땡땡") ? 3 : text.contains("따르릉") ? 2 : text.contains("일어나") ? 1 : 0 }
+    static let seatInvite = "내 옆에 앉아 !"
+    /// Only the invitation itself, not "너도 얼른 내 옆에 앉아 !" said back to a cheer.
+    static func isSeatInvite(_ text: String) -> Bool { text == seatInvite || text.hasSuffix(" : " + seatInvite) || text.contains("에게\n" + seatInvite) }
+    static let borrow = "지우개 좀 빌려줘 !", giveBack = "고마워, 잘 썼어 !", handOver = "여기 !"
+    static func isBorrow(_ text: String) -> Bool { text.contains(borrow) }
+    static func isGiveBack(_ text: String) -> Bool { text.contains(giveBack) }
+    /// A cheer for the friend right beside me is passed over on a folded note instead of a walk: every
+    /// other cheer, chosen from its words, so both screens agree. Only plain cheers; the rest still walk.
+    static func passesNote(_ text: String) -> Bool {
+        guard let cheer = cheers.first(where: { text.hasSuffix($0) }) else { return false }
+        return cheer.utf16.reduce(0) { sum, unit in sum + Int(unit) } % 2 == 0
+    }
     static func snackArt(_ text: String) -> String { snacks.firstIndex { text.contains($0) }.map { snackArts[$0] } ?? "" }
     static func isSnack(_ text: String) -> Bool { !snackArt(text).isEmpty }
     static func isNote(_ text: String) -> Bool { notes.contains { text.contains($0) } }
@@ -25,9 +43,15 @@ final class FriendInteractions {
     static func isThanks(_ text: String) -> Bool { text == thanks || text.hasSuffix(" : " + thanks) || text.hasSuffix("\n" + thanks) }
     /// What earns a thank-you: cheers, drinks, snacks, celebrations. Not a wake-up, an invitation, a
     /// note, a question or another thank-you, so the two can't go on thanking each other.
-    static func thankable(_ text: String) -> Bool { !text.contains("일어나") && !text.contains("같이 공부") && text != updateNotice && !isThanks(text) && !isNote(text) && !isWhatStudy(text) }
-    /// What a visitor holds on the way over: a drink or a snack.
-    static func carriedArt(_ text: String) -> String { treatDrink(text) != .none ? "Drink\(treatDrink(text).rawValue)" : snackArt(text) }
+    static func thankable(_ text: String) -> Bool { !text.contains("일어나") && !text.contains("같이 공부") && text != updateNotice && !isThanks(text) && !isNote(text) && !isWhatStudy(text) && !isSeatInvite(text) && !isBorrow(text) && !isGiveBack(text) }
+    /// What a visitor holds on the way over (`back`: on the way home): a drink or a snack to give, an
+    /// eraser borrowed or brought back, the alarm clock or pot they wake you with (all the way).
+    static func carriedArt(_ text: String, back: Bool = false) -> String {
+        let wake = wakeLevel(text)
+        if wake >= 2 { return wake == 2 ? "AlarmClock" : "Pot" }
+        if back { return isBorrow(text) ? "Eraser" : "" }
+        return isGiveBack(text) ? "Eraser" : treatDrink(text) != .none ? "Drink\(treatDrink(text).rawValue)" : snackArt(text)
+    }
     /// The answer to 뭐 공부해 ?, e.g. "수학 32분째 !": the one asked uses their own subject and minutes,
     /// the one asking the friend's from the room, so both screens say the same.
     static func answer(_ subject: String, _ minutes: Int) -> String {
@@ -42,7 +66,7 @@ final class FriendInteractions {
     /// A pat on the shoulder rather than a cheer.
     static func isPat(_ text: String) -> Bool { pats.contains { text.contains($0) } }
     /// A cheer gets flames in the eyes; these are gentler.
-    static func noFlames(_ text: String) -> Bool { isLove(text) || isTreat(text) || isSnack(text) || isNote(text) || isWhatStudy(text) || isThanks(text) }
+    static func noFlames(_ text: String) -> Bool { isLove(text) || isTreat(text) || isSnack(text) || isNote(text) || isWhatStudy(text) || isThanks(text) || isSeatInvite(text) || isBorrow(text) || isGiveBack(text) }
     /// Where the hand goes: 0 the shoulder, 1 the head, 2 round them in a hug.
     static func touch(_ text: String) -> Int { text.contains("쓰담") ? 1 : text.contains("안겼") || text.contains("안아") ? 2 : 0 }
     static func treatDrink(_ text: String) -> Sprites.Drink { treats.first { text.contains($0.line) }?.drink ?? Sprites.Drink.none }
@@ -52,13 +76,15 @@ final class FriendInteractions {
     /// What a studying friend says back to someone who cheers them on without studying. Chosen from
     /// the message alone, so both screens show the same words. Wake-ups and invitations get none.
     static func retort(_ message: String, couple: Bool) -> String {
-        if message.contains("일어나") || message.contains("같이 공부") || message == updateNotice || isNote(message) || isWhatStudy(message) || isThanks(message) { return "" }
+        if message.contains("일어나") || message.contains("같이 공부") || message == updateNotice || isNote(message) || isWhatStudy(message) || isThanks(message) || isSeatInvite(message) || isGiveBack(message) { return "" }
+        if isBorrow(message) { return handOver }
         if isTreat(message) || isSnack(message) { return "고마워 ! 너도 공부해 !" }
         let lines = couple ? coupleRetorts : retorts
         return lines[message.utf16.reduce(0) { $0 + Int($1) } % lines.count]
     }
     private var states: [String: String] = [:], greetings: [String: String] = [:]
     private var last: [String: Int] = [:], minutes: [String: Int] = [:]
+    private var wakeLevels: [String: (level: Int, at: Date)] = [:] // how loud my last wake-up for each friend was
     /// Returns the friends who just passed another hour of study: their next cheer from me congratulates them.
     /// Nobody does on the first look at the room, which only sets where everyone is.
     @discardableResult func observe(_ members: [Member]) -> [String] {
@@ -73,6 +99,7 @@ final class FriendInteractions {
                 if state == "studying", let was = minutes[m.id], m.minutes >= 60, m.minutes / 60 > was / 60 { greetings[m.id] = Self.celebration(m.minutes / 60); crossed.append(m.id) }
             }
             minutes[m.id] = state == "off" ? 0 : m.minutes
+            if state != "paused" { wakeLevels.removeValue(forKey: m.id) } // up again: next time starts with a tap
             if state == "off" { greetings.removeValue(forKey: m.id) }; states[m.id] = state
         }
         return crossed
@@ -84,8 +111,12 @@ final class FriendInteractions {
         }
         let couple = Self.isCouple(me, m.name)
         if couple && !here { return "자기야 같이 공부하자 !" }
-        if couple && m.state == "paused" { return "자기야 일어나 !" }
-        if !here || m.state == "paused" { return Room.pokeMessage(m, here: here) }
+        if here && m.state == "paused" {
+            let level = wakeLevels[m.id].map { Date().timeIntervalSince($0.at) < 1800 ? $0.level + 1 : 1 } ?? 1
+            wakeLevels[m.id] = (min(3, level), Date())
+            return Self.wake(level, couple: couple)
+        }
+        if !here { return Room.pokeMessage(m, here: here) }
         if let greeting = greetings.removeValue(forKey: m.id) { return greeting }
         let lines = couple ? Self.coupleLines : Self.friendLines
         var index = Int.random(in: 0..<(lines.count - 1))

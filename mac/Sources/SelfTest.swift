@@ -369,6 +369,23 @@ enum SelfTest {
         pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note.png")
         pet.preview(.studying, frame: 30, visitTick: 14, friend: minji, friendText: "민지 : 뭐 공부해 ?")
         save(render(pet.canvasSize) { pet.paint() }, out, "what-study.png")
+
+        // Stage 3: louder wake-ups, the eraser, the seat invitation, a folded note between neighbours.
+        let waker = FriendInteractions()
+        func sleeper(_ state: String = "paused") -> Member { Member(id: "s1", name: "준혁", state: state, updated: Int64(Date().timeIntervalSince1970 * 1000)) }
+        waker.observe([sleeper()])
+        let wakes = (0..<4).map { _ in waker.message(sleeper(), here: true, current: "", me: "지우") }
+        waker.observe([sleeper("studying")]); waker.observe([sleeper()])
+        check(wakes == ["일어나 !", "일어나 ! 따르릉 !", "일어나 !! 땡땡땡 !", "일어나 !! 땡땡땡 !"] && waker.message(sleeper(), here: true, current: "", me: "지우") == "일어나 !", "wake: louder each time, back to a tap once they've been up")
+        check(FriendInteractions.carriedArt("준혁에게\n일어나 ! 따르릉 !", back: true) == "AlarmClock" && FriendInteractions.carriedArt(FriendInteractions.borrow, back: true) == "Eraser" && FriendInteractions.carriedArt(FriendInteractions.borrow).isEmpty && FriendInteractions.carriedArt(FriendInteractions.giveBack) == "Eraser", "eraser and wake props are carried the right way")
+        check(FriendInteractions.isSeatInvite("민지 : 내 옆에 앉아 !") && !FriendInteractions.isSeatInvite("너도 얼른 내 옆에 앉아 !") && FriendInteractions.retort(FriendInteractions.borrow, couple: false) == FriendInteractions.handOver, "invite and eraser words")
+        let passed = FriendInteractions.cheers.filter(FriendInteractions.passesNote)
+        check(!passed.isEmpty && passed.count < FriendInteractions.cheers.count && !FriendInteractions.passesNote("사탕 받아 !"), "note: some cheers are passed over, decided by their words")
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: minji, here: true, dozing: false, text: "수학\n32분째 공부 중") }
+        pet.preview(.studying, frame: 30, visitTick: 3, friend: minji, friendText: "민지 : " + passed[0])
+        save(render(pet.canvasSize) { pet.paint() }, out, "note-pass.png")
+        pet.preview(.dozing, frame: 30, visitTick: 10, friend: minji, friendText: "민지 : " + FriendInteractions.wake(2, couple: false))
+        save(render(pet.canvasSize) { pet.paint() }, out, "wake-alarm.png")
         pet.close()
     }
 
