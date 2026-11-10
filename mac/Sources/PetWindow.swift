@@ -903,8 +903,8 @@ final class PetWindow: NSPanel {
         if windowFrame == 1 { let arch = windowGlass.height * 0.42; open.origin.y += arch; open.size.height -= arch } // no petals in the arch's corners
         open.clip()
         Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: scene == Sprites.christmasScene ? 3 : season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
-        let now = skyNow(clock())
-        Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: now.weather, kind: now.kind, phase: now.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
+        let passing = skyNow(clock())
+        Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: passing.weather, kind: passing.kind, phase: passing.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 
