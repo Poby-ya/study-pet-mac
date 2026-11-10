@@ -57,6 +57,12 @@ final class AppController: NSObject, NSMenuDelegate {
     private var deviceSync: DeviceSync?
     private var syncCheck: Timer?
     private var syncBusy = false
+    private var changing = false                 // one of my own changes to the shared timer is on its way
+    private var queuedChange: (String, String)?  // pressed during the background sync; runs when it ends
+    private var sleptFrom: Int64 = 0             // linked devices: where an unmeasured stretch began, until the shared timer has it
+    private var sleepPaused = false              // ...and its pause is in, with the resume still to send
+    private var carryOver = false                // an update restarts the app: the shared timer runs on
+    private var endingSession = false            // quitting ends the shared timer this Mac runs
     private var syncReady = false
     private var profileDirty = false
     private var profileEdit = 0
@@ -256,6 +262,12 @@ final class AppController: NSObject, NSMenuDelegate {
         publish()
     }
 
+    /// A new subject, or a new session, brings a drink other than the last one.
+    private func newDrink() {
+        let drinks = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }
+        pet.drink = drinks.randomElement()!
+    }
+
     private func pickSubject(_ picked: String) {
         if quitting { return }
         if deviceSync != nil { if subject != picked { syncChange(state == .off ? "start" : "subject",picked) }; return }
@@ -265,8 +277,7 @@ final class AppController: NSObject, NSMenuDelegate {
         safely("과목 목록 저장") { try Records.unhide(picked) }
         subject = picked
         pet.subjectChanged()
-        let drinks = (1...Sprites.drinks).compactMap(Sprites.Drink.init(rawValue:)).filter { $0 != pet.drink }
-        pet.drink = drinks.randomElement()!
+        newDrink()
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
@@ -396,7 +407,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if let saved = Invite.parse(Settings.get("room")) { invite = saved } else if Settings.get("cloudSync") == "1", let configured = try? DeviceLinkWindow.defaultInvite() { invite = configured } else { return }
         auth = invite.key.isEmpty ? nil : Auth(apiKey: invite.key)
         myId = auth != nil ? (Settings.get("linkedUid").isEmpty ? Settings.get("uid") : Settings.get("linkedUid")) : localId
-        if let auth, Settings.get("cloudSync") == "1" { deviceSync = DeviceSync(invite:invite,auth:auth); syncCheck = Timer.scheduledTimer(withTimeInterval:10,repeats:true) { [weak self] _ in self?.syncNow() }; syncNow() }
+        if let auth, Settings.get("cloudSync") == "1" { deviceSync = DeviceSync(invite:invite,auth:auth); syncCheck = Timer.scheduledTimer(withTimeInterval:10,repeats:true) { [weak self] _ in self?.skipSyncedSleep(); self?.syncNow() }; syncNow() }
         if Settings.get("pending") == "1" {
             let check = Timer(timeInterval: 10, target: self, selector: #selector(checkPending), userInfo: nil, repeats: true)
             RunLoop.main.add(check, forMode: .common)
@@ -460,7 +471,7 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         // A new drink for each study session: cleared on stopping, picked on starting.
         if state == .off { pet.drink = .none } else if pet.drink == .none { pet.drink = Sprites.Drink(rawValue: Int.random(in: 1...Sprites.drinks))! }
-        if let sync = deviceSync, !syncReady || !sync.mine || !sync.pending.isEmpty || quitting { return }
+        if let sync = deviceSync, !syncReady || !sync.mine || !endingSession && (!sync.pending.isEmpty || quitting) { return }
         var status: [String:Any] = [
             "desk": (state == .off ? 0 : pet.drink.rawValue) + (pet.laptop ? 10 : 0),
             "name": nickname,
@@ -470,12 +481,23 @@ final class AppController: NSObject, NSMenuDelegate {
             "customization": (pet.look.customization ?? Customization.legacy(pet.look)).data(shared:true),
             "state": state == .studying ? "studying" : state == .paused ? "paused" : "off",
             "subject": state == .off ? "" : subject,
-            "minutes": state == .off ? awayMinutes : min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
-            "updated": Room.serverTime,
+            "minutes": state == .off ? 0 : min(10080, Int(elapsed / 60)), // the room's rules cap it at a week
         ]
         if let sync = deviceSync { status["syncRevision"] = DeviceSync.num(sync.data,"revision") }
+        // Linked devices sync every ten seconds and each sync ends here. The same status goes out
+        // again only as a sign of life: each minute at the desk, now and then while away. Every
+        // write is passed on to everyone in the room, so the rest would be traffic for nothing.
+        let key = (try? JSONSerialization.data(withJSONObject: status, options: .sortedKeys)) ?? Data()
+        let now = ProcessInfo.processInfo.systemUptime
+        if key == publishedKey && room === publishedRoom && now - publishedAt < (state == .off ? 300 : 55) { return }
+        publishedKey = key; publishedRoom = room; publishedAt = now
+        if state == .off { status["minutes"] = awayMinutes }
+        status["updated"] = Room.serverTime
         room?.publish(status)
     }
+    private var publishedKey = Data()
+    private weak var publishedRoom: StudyRooms?
+    private var publishedAt = 0.0
 
     /// Off: how long since I last studied. The records are the same on every linked device and
     /// outlast the app, so neither reopening it nor studying elsewhere upsets the count.
@@ -829,29 +851,44 @@ final class AppController: NSObject, NSMenuDelegate {
         let slept = total - sleepSeen
         sleepSeen = total
         guard slept >= 60, !countWhileClosed, state == .studying, deviceSync?.mine != false else { return }
-        if deviceSync != nil { syncSkipSleep(slept) }
+        if deviceSync != nil { if sleptFrom == 0 { sleptFrom = DeviceSync.now - Int64(slept * 1000) }; skipSyncedSleep() }
         else if closeSegment() { openSegment() }
         else { state = .paused; pet.setMood(.dozing); publish(); return }
         if !pet.minimized { pet.showFeedback("화면이 꺼져 있는 동안은 측정되지 않았어요!\n메뉴에서 닫혀 있어도 계속 재게 할 수 있어요!") }
     }
 
-    private func syncSkipSleep(_ slept: Double) {
-        guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
+    /// Linked devices share one timer that runs by the clock: the stretch asleep comes out of it as
+    /// a pause where it began and a resume now. The network usually returns a little after the lid
+    /// opens and another sync may be under way, so every sync tick tries again until it is in.
+    private func skipSyncedSleep() {
+        guard sleptFrom != 0, let sync = deviceSync, !syncBusy, !quitting else { return }; syncBusy = true
         Task { @MainActor in
-            defer { syncBusy = false }
+            defer { syncBusy = false; runQueuedChange() }
             do {
-                let fellAsleep = Int64(Date().timeIntervalSince1970 * 1000) - Int64(slept * 1000)
-                // The network usually comes back a little after the lid opens; until it does, nothing changes.
-                var tries = 0
-                while true {
-                    do { try await sync.pull(); break }
-                    catch { tries += 1; if tries > 12 { throw error }; try await Task.sleep(nanoseconds: 5_000_000_000) }
+                try await sync.pull()
+                // Someone else's timer, or one started after the sleep, has nothing to take out.
+                if sync.mine && !sleepPaused && DeviceSync.str(sync.active,"state") == "studying" && DeviceSync.num(sync.active,"start") < sleptFrom {
+                    try await sync.change("pause", fields: ["at": sleptFrom]); sleepPaused = true
+                    if self.deviceSync === sync && !quitting { try applySync() } // paused on screen too until the resume is in
                 }
-                try await sync.change("pause", fields: ["at": fellAsleep])
-                try await sync.change("resume")
+                // Still paused by me alone: a resume or stop pressed meanwhile already settled it.
+                if sync.mine && sleepPaused && DeviceSync.str(sync.active,"state") == "paused" { try await sync.change("resume") }
+                sleptFrom = 0; sleepPaused = false
                 if self.deviceSync === sync && !quitting { try applySync(); syncReady = true; publish() }
-            } catch { feedback = error.localizedDescription; feedbackUntil = Date().addingTimeInterval(8) }
+            } catch { }
         }
+    }
+
+    /// A pause or stop of my own before that lands ends the study where the sleep began.
+    private func sleepCut(_ action: String) -> [String: Any] {
+        guard sleptFrom != 0, !sleepPaused, ["pause", "stop"].contains(action), let sync = deviceSync, sync.mine, DeviceSync.num(sync.active,"start") < sleptFrom else { return [:] }
+        let at = sleptFrom; sleptFrom = 0
+        return ["at": at]
+    }
+
+    private func runQueuedChange() {
+        guard let queued = queuedChange else { return }
+        queuedChange = nil; syncChange(queued.0, queued.1)
     }
 
     @objc private func toggleCountWhileClosed() {
@@ -905,7 +942,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func syncNow() {
         guard let current = deviceSync, !syncBusy, !quitting else { return }; syncBusy = true
         Task { @MainActor in
-            defer { syncBusy = false }
+            defer { syncBusy = false; runQueuedChange() }
             do {
                 try await current.pull()
                 if current.account == (await auth?.uid),!DeviceSync.obj(current.data,"profile").isEmpty {var local=SocialProfile.capture();local["invite"]=Settings.get("room");let missing=SocialProfile.missing(DeviceSync.obj(current.data,"profile"),local);if !missing.isEmpty {try await current.change("profile",fields:["profile":missing])}}
@@ -922,10 +959,20 @@ final class AppController: NSObject, NSMenuDelegate {
         }
     }
     private func syncChange(_ action: String, _ picked: String = "") {
-        guard let sync = deviceSync, !syncBusy else { return }; syncBusy = true
+        guard let sync = deviceSync, !changing else { return }
+        // A press during the background sync waits for it instead of being lost.
+        if syncBusy { queuedChange = (action, picked); return }
+        syncBusy = true; changing = true
         Task { @MainActor in
-            defer { syncBusy = false }
-            do { try await sync.change(action,subject:picked); if self.deviceSync === sync && !quitting { try applySync(); syncReady = true; publish() } }
+            defer { syncBusy = false; changing = false }
+            do {
+                try await sync.change(action, subject: picked, fields: sleepCut(action))
+                guard self.deviceSync === sync && !quitting else { return }
+                try applySync(); syncReady = true
+                // As without linked devices: the bookmark goes in and the drink changes. It travels with my profile.
+                if action == "start" || action == "subject" { if action == "subject" { pet.subjectChanged() }; newDrink(); profileDirty = true; profileEdit += 1 }
+                publish()
+            }
             catch { alert(error.localizedDescription) }
         }
     }
@@ -939,7 +986,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if !profileDirty && !DeviceSync.str(profile,"name").isEmpty { try Settings.set("name",DeviceSync.str(profile,"name")) }
         if !profileDirty && !DeviceSync.str(profile,"style").isEmpty { let next=Look.parse(DeviceSync.str(profile,"style"),girl:false).withExtras(DeviceSync.str(profile,"extra"));pet.look=next.withCustomization(Customization.parse(profile["customization"],next)) }
         if !profileDirty {try SocialProfile.apply(profile);if let shared=Invite.parse(DeviceSync.str(profile,"invite")),shared.database == sync.database {try Settings.set("room",shared.code)};if let restored=Invite.parse(Settings.get("room")) ?? Invite.parse(sync.defaultRoomCode) {connectRoomView(restored)};if let id=profile["viewRoom"] as? String,let room,room.choices.contains(where:{$0.id == id}),room.selected != id {try room.select(id)}}
-        let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none
+        if !profileDirty { let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none }
         let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
         let changed = state != next; state = next; subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0
         if state != .off { startHeartbeat(); if changed || !pet.isVisible && !pet.minimized { pet.appear(state == .studying ? .studying : .dozing) } else { pet.setMood(state == .studying ? .studying : .dozing) } }
@@ -982,6 +1029,7 @@ final class AppController: NSObject, NSMenuDelegate {
                     let saved = UpdateSession(state: previous == .studying ? "studying" : "paused", subject: subject, seconds: banked)
                     try Settings.set("updateResume", previous == .off ? "" : saved.encode())
                     try Updater.launch(prepared)
+                    carryOver = true
                     NSApp.terminate(nil)
                 } catch {
                     try? Settings.set("updateResume", "")
@@ -1041,14 +1089,18 @@ final class AppController: NSObject, NSMenuDelegate {
     func prepareQuit() -> Bool { closeSegment() }
 
     func beginFarewell() -> Bool {
+        // Quitting, logging out or shutting down ends a shared timer this Mac runs, instead of
+        // leaving it to run on by the clock with nobody at it. Kept on this Mac first, so it holds offline.
+        endingSession = !carryOver && state != .off && deviceSync?.mine == true
+        if endingSession, let sync = deviceSync { let cut = sleepCut("stop"); Task { @MainActor in try? await sync.change("stop", fields: cut) } }
         quitting = true
         pet.setUpdateAvailable(false)
-        guard state != .off, pet.isVisible else { return false }
+        guard state != .off, pet.isVisible || endingSession else { return false }
         state = .off
         farewell = "다녀올게요!"
         publish()
         heartbeat?.invalidate()
-        pet.standUpAndLeave()
+        if pet.isVisible { pet.standUpAndLeave() }
         return true
     }
 

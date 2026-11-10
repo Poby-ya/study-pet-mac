@@ -43,7 +43,10 @@ final class Customization: Equatable {
         if key == "prop" && value(key) == 7 {grid=Self.digital(grid,clock,compact:true)}
         return [Sprites.Layer(grid,x+(art["x"] as! Int),y+(art["y"] as! Int))]
     }
-    func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { ["head","hat","ear","neck","badge"].flatMap{layers($0,x,y)} }
+    /// The first row of hair that shows under the hat; nil without a hat or under an open one, like a crown.
+    var hatCut: Int? { on("hat") ? Self.categories.first{$0.key == "hat"}?.art.first{$0["id"] as? Int == value("hat")}?["cut"] as? Int : nil }
+    /// The hat goes on over an earmuff's band, and hides a hairpin.
+    func headLayers(_ x: Int,_ y: Int) -> [Sprites.Layer] { let covered=hatCut != nil;return ["head","ear","hat","neck","badge"].filter{!(covered && $0 == "head")}.flatMap{layers($0,x,y)} }
     func legacyLook(_ look: Look) -> Look {
         var hair=value("hair");if hair>=8 {hair=Self.categories.first{$0.key == "hair"}!.art.first{$0["id"] as? Int == hair}!["base"] as! Int};let top=value("top")<9 ? value("top") : 0
         var e=Array(look.extra.prefix(7));e[0]=on("head") && value("head")==1 ? "2" : on("ear") && value("ear")==1 ? "3" : "0";e[2]=on("hat") && value("hat")<=2 ? Character(String(value("hat"))) : "0";e[5]="0"

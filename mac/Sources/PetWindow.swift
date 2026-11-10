@@ -73,6 +73,8 @@ final class PetWindow: NSPanel {
     private var mood = Mood.away
     private var frameCount = 0  // always counts, for animations that don't restart with the mood
     private var tick = 0        // restarts with each mood
+    // My own rhythm for this stretch of study, so no two sessions open with the same moments.
+    private var routineSeed = 0
     private var fading = false
     private var visitTick = -1.0 // four units per second, with fractional travel
     private var visitLook = Look(girl: false, 0, 0, 0, 0, 0, 0)
@@ -219,6 +221,7 @@ final class PetWindow: NSPanel {
 
     func appear(_ newMood: Mood) {
         mood = newMood
+        routineSeed = Int.random(in: 1...211)
         minimized = false
         tick = 0
         moodSeconds = 0
@@ -243,6 +246,7 @@ final class PetWindow: NSPanel {
         if mood == newMood { redraw(); return }
         transitionFrom = myPose
         mood = newMood
+        routineSeed = Int.random(in: 1...211)
         tick = 0
         moodSeconds = 0
         wake()
@@ -293,6 +297,7 @@ final class PetWindow: NSPanel {
     func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Double = -1,
                  friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1) {
         mood = atMood
+        routineSeed = 0
         frameCount = atFrame
         tick = atFrame
         animationSeconds = Double(atFrame) / 4; moodSeconds = animationSeconds
@@ -367,8 +372,8 @@ final class PetWindow: NSPanel {
     /// Whose eyes light up as my pet cheers them on: -1 the left seat, 1 the right, 0 nobody.
     static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") ? side : 0 }
 
-    private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick) : 0 }
-    private var momentText: String { Routine.line(moment, Routine.momentFrame(tick), laptop: laptop) }
+    private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick, seed: routineSeed) : 0 }
+    private var momentText: String { Routine.line(moment, Routine.momentFrame(tick, seed: routineSeed), laptop: laptop) }
 
     func subjectChanged() { subjectChangedAt = animationSeconds; wake(); redraw() }
     func nextSeason() {
@@ -384,7 +389,7 @@ final class PetWindow: NSPanel {
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
             if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return .recover }
-            return focus ? Routine.focusPose(tick) : Routine.studyPose(tick)
+            return focus ? Routine.focusPose(tick, seed: routineSeed) : Routine.studyPose(tick, seed: routineSeed)
         case .dozing: if moodSeconds < 0.75 { return .foldArms }; return tick / 8 % 2 == 0 ? .dozeA : .dozeB
         case .away: return .empty
         case .leaving: return Departure.pose(moodSeconds * 4)
@@ -495,7 +500,7 @@ final class PetWindow: NSPanel {
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
         for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale, night: night) }
-        effects.append((myX, moment, Routine.momentPhase(moodSeconds * 4)))
+        effects.append((myX, moment, Routine.momentPhase(moodSeconds * 4, seed: routineSeed)))
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = min(canvasSize.width-2,max(deskWidth+16,deskWidth+deskGap-6))

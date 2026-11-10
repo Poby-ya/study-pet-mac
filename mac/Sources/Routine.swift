@@ -19,10 +19,24 @@ enum Routine {
 
     static var moments: Int { frames.count }
 
-    /// 1...moments while one is playing, 0 otherwise.
+    private static func mix(_ a: Int, _ b: Int) -> UInt32 {
+        var h = (UInt32(truncatingIfNeeded: a) &* 0x9E37_79B1) ^ (UInt32(truncatingIfNeeded: b) &* 0x85EB_CA6B)
+        h ^= h >> 15; h = h &* 0x2C1B_3C6D; h ^= h >> 12
+        return h
+    }
+    private static func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+
+    /// 1...moments while one is playing, 0 otherwise. Every moment plays once in each round of them,
+    /// in an order that changes from round to round and from seed to seed: a stride through the
+    /// list that shares no factor with its length, from a start of its own.
     static func studyMoment(_ ticks: Int, seed: Int = 0) -> Int {
         let t = ticks + seed * 97
-        return t % 120 >= 96 ? (t / 120 + seed) % moments + 1 : 0
+        if t % 120 < 96 { return 0 }
+        let slot = t / 120 + seed, n = moments
+        let h = mix(slot / n, seed)
+        var stride = 1 + Int(h % UInt32(n - 1))
+        while gcd(stride, n) != 1 { stride = stride % (n - 1) + 1 }
+        return (slot % n * stride + Int((h >> 8) % UInt32(n))) % n + 1
     }
     static func momentFrame(_ ticks: Int, seed: Int = 0) -> Int { (ticks + seed * 97) % 120 - 96 }
     static func momentPhase(_ ticks: Double, seed: Int = 0) -> Double { (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 120) - 96 }

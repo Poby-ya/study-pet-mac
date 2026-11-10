@@ -208,7 +208,14 @@ enum Sprites {
             if ribbon && style["pin"] != nil { front.append(Layer(art("Hairpin"), x + 13, y + 7)) }
         }
         if let custom { front.insert(contentsOf: custom.layers("hair", x, y), at: 1) }
-        if custom.map({ $0.on("head") && $0.value("head") == 1 }) ?? (look.accessory == 2) { front.append(Layer(art("StarClip"), x + 12, y + 5)) }
+        // A hat pulled down to its `cut` row hides the hair above it, and with it any bun, bow or hairpin.
+        let cut = custom?.hatCut
+        if let cut {
+            front = front.map { layer in
+                Layer(layer.grid.enumerated().map { j, row in layer.y + j < y + cut ? String(repeating: ".", count: row.count) : row }, layer.x, layer.y)
+            }
+        }
+        if cut == nil, custom.map({ $0.on("head") && $0.value("head") == 1 }) ?? (look.accessory == 2) { front.append(Layer(art("StarClip"), x + 12, y + 5)) }
         if custom.map({ $0.on("ear") && $0.value("ear") == 1 }) ?? (look.accessory == 3) {
             back.append(Layer(art("EarBand"), x, y + 4))
             front.append(Layer(art("EarPad"), x - 1, y + 9))

@@ -203,6 +203,9 @@ enum SelfTest {
         check(StudyCheer.text(1799).isEmpty && StudyCheer.text(1810).isEmpty && !StudyCheer.text(150).isEmpty && StudyCheer.text(158).isEmpty, "cheer: brief messages return to normal time display")
         check([95, 96, 119, 120, 216, 336, 360].map { Routine.studyMoment($0) } == [0, 1, 1, 0, 2, 3, 0], "moments: stretch, pencil and butterfly briefly rotate")
         check([456, 576, 696, 816, 1296, 1416, 1896].map { Routine.studyMoment($0) } == [4, 5, 6, 7, 11, 12, 16], "moments: all of them play before the cycle repeats")
+        func playRound(_ r: Int, _ seed: Int) -> [Int] { (0..<Routine.moments).map { Routine.studyMoment((r * Routine.moments + $0 - seed) * 120 + 96 - seed * 97, seed: seed) } }
+        check((3..<9).allSatisfy { r in [0, 37].allSatisfy { playRound(r, $0).sorted() == Array(1...Routine.moments) } } && Set((3..<9).map { playRound($0, 0) }).count > 3 && playRound(3, 0) != playRound(3, 37),
+              "moments: later rounds play every moment once, in an order of their own")
         check((0..<3600).filter { Routine.studyMoment($0, seed: 37) > 0 }.count == 720 && !(0..<3600).allSatisfy { Routine.studyMoment($0, seed: 37) == Routine.studyMoment($0) },
               "moments: a seatmate acts as often as me, on their own schedule")
         check((1...Routine.moments).allSatisfy { m in !Routine.line(m, 0, laptop: false).isEmpty }, "moments: every moment has a line")
