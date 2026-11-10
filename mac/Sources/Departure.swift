@@ -7,6 +7,10 @@ enum Departure {
  static func hand(_ t: Double,_ laptop: Bool=false) -> (Double,Double) {let b=bag(t),p=item(t,laptop),mix=ease(t-3)*(1-ease(t-9));return (b.0+(p.0-b.0)*mix+3,b.1+(p.1-b.1)*mix+1)}
  static func walk(_ tick: Double) -> Double {let t=max(0,min(1,(tick-18)/8));return t*t*(2-t)}
  static func pose(_ t: Double) -> Sprites.Pose {t<2 ? .stand : t<11 ? .packR : t<16 ? .packBoth : t<18 ? (Int(t)%2==0 ? .packWaveA : .packWaveB) : .empty}
+ /// Coming in to study is leaving played backwards, without the sign and the wave: two seconds'
+ /// walk in with the bag (departure ticks 26 → 18), then unpacking at the desk (12 → 0).
+ static let arrivalTicks = 18.0
+ static func arrival(_ tick: Double) -> Double {tick<8 ? 26-tick : max(0,11.9*(1-(tick-8)/10))}
 }
 
 /// A friend's trip across the room, in ticks: up from their seat and over, a visit, then back.

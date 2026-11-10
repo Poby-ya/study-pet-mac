@@ -301,7 +301,46 @@ enum SelfTest {
             check(onDesk.count > packed.count && packed.contains { $0.grid == desk }, "packing: work item leaves the desk while the desk stays visible")
             let item = Sprites.packingItemGrid(laptop)
             check(item.count == 14 && item.allSatisfy { $0.count == 3 }, "packing: book and closed laptop fit upright into the bag")
+            for phase in [2, 6, 9, 12, 15, 17] {
+                pet.preview(.studying, frame: 40, arrivalTick: Double(phase))
+                save(render(pet.canvasSize) { pet.paint() }, out, "arrival-\(laptop ? "laptop" : "book")-\(phase).png")
+            }
         }
+        pet.laptop = false
+        let walkIn = (0..<180).map { Departure.arrival(Double($0) / 10) }
+        check(walkIn[0] == 26 && walkIn[179] < 0.2 && Departure.arrival(Departure.arrivalTicks) == 0 && walkIn.allSatisfy { $0 < 12 || $0 >= 18 } && zip(walkIn, walkIn.dropFirst()).allSatisfy { $1 <= $0 },
+              "arrival: leaving played backwards, never through the sign or the wave")
+        func arrivalTick() -> Double? { Mirror(reflecting: pet).children.first { $0.label == "arrivalTick" }?.value as? Double }
+        pet.appear(.studying, arrive: true)
+        check(arrivalTick() == 0, "arrival: starting to study walks in from outside")
+        pet.advanceAnimation(Departure.arrivalTicks / 4 + 0.05)
+        check(arrivalTick() == -1, "arrival: over within five seconds")
+        pet.appear(.studying)
+        check(arrivalTick() == -1, "arrival: reopening already studying just appears")
+        pet.appear(.studying, arrive: true); pet.setMood(.dozing)
+        check(arrivalTick() == -1, "arrival: pausing stops it")
+        pet.orderOut(nil)
+        let hour: Int64 = 1_794_315_600 // 2026-11-10 13:00 UTC
+        let ways = Set((1...30).map { Routine.restPose(0, seed: $0, restSeconds: 0, unixSeconds: hour) })
+        check(ways.count == 3 && ways.allSatisfy(Routine.resting), "rest: names sleep three different ways")
+        check((0..<40).allSatisfy { Routine.restPose($0, seed: 5, restSeconds: 60, unixSeconds: hour) == Routine.restPose(0, seed: 5, restSeconds: 60, unixSeconds: hour + 600) }, "rest: the way holds for twenty minutes and the first three are still")
+        func turns(_ rest: Double) -> Int { (0..<96).filter { Routine.restPose($0, seed: 5, restSeconds: rest, unixSeconds: hour) != Routine.restPose($0 + 1, seed: 5, restSeconds: rest, unixSeconds: hour) }.count }
+        check(turns(300) > turns(900) && turns(900) > 0, "rest: breathing slows after ten minutes")
+        check((0..<2000).allSatisfy { Routine.sleepTalk($0, seed: 5, restSeconds: 120).isEmpty } && ["5분만…", "음냐…", "다 외웠는데…"].allSatisfy { line in (0..<2000).contains { Routine.sleepTalk($0, seed: 5, restSeconds: 400) == line } }, "rest: sleep talk once a rest has gone on a while")
+        pet.preview(.dozing, frame: 800)
+        save(render(pet.canvasSize) { pet.paint() }, out, "rest-scene.png")
+        let minji = Look.parse("g213402", girl: true)
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: minji, here: false, dozing: false, text: "자리 비움") }
+        pet.preview(.studying, frame: 40); _ = render(pet.canvasSize) { pet.paint() }
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: minji, here: true, dozing: false, text: "수학\n공부 시작!") }
+        pet.preview(.studying, frame: 40); _ = render(pet.canvasSize) { pet.paint() }
+        pet.advanceAnimation(1.5)
+        pet.preview(.studying, frame: 40); save(render(pet.canvasSize) { pet.paint() }, out, "seat-arrival.png")
+        pet.advanceAnimation(4)
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: minji, here: false, dozing: false, text: "자리 비움") }
+        pet.preview(.studying, frame: 40); _ = render(pet.canvasSize) { pet.paint() }
+        pet.advanceAnimation(4.25)
+        pet.preview(.studying, frame: 40); save(render(pet.canvasSize) { pet.paint() }, out, "send-off.png")
         pet.close()
     }
 

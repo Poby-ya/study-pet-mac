@@ -67,6 +67,26 @@ enum Routine {
     }
     /// The head settles a row and rises again every five seconds.
     static func breathing(_ ticks: Int, seed: Int = 0) -> Bool { (ticks + seed * 5) % 20 >= 12 }
+
+    private static let restPoses: [Sprites.Pose] = [.dozeA, .dozeB, .leanBackA, .leanBackB, .pillowA, .pillowB]
+    static func resting(_ pose: Sprites.Pose) -> Bool { restPoses.contains(pose) }
+
+    /// Asleep at the desk: head on the arms, leaning back, or cheek on one arm. The way comes from the
+    /// name seed and the twenty-minute stretch of the clock, so every screen shows a friend sleeping the
+    /// same way without a word between them. Still for the first three minutes, then breathing deeply,
+    /// more slowly after ten.
+    static func restPose(_ ticks: Int, seed: Int, restSeconds: Double, unixSeconds: Int64) -> Sprites.Pose {
+        let way = Int((Int64(seed) + unixSeconds / 1200) % 3)
+        let deep = restSeconds >= 180 && ticks / (restSeconds >= 600 ? 12 : 8) % 2 == 1
+        return restPoses[way * 2 + (deep ? 1 : 0)]
+    }
+
+    private static let sleepLines = ["5분만…", "음냐…", "다 외웠는데…"]
+    /// Once a rest has gone on three minutes, a few words in their sleep: four seconds in every 48.
+    static func sleepTalk(_ ticks: Int, seed: Int, restSeconds: Double) -> String {
+        let t = ticks + seed * 31
+        return restSeconds >= 180 && t % 192 < 16 ? sleepLines[t / 192 % sleepLines.count] : ""
+    }
 }
 
 /// Follows one pet's pose over time, so a change sweeps from the old pose to the new one.

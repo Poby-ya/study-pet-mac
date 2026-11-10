@@ -82,6 +82,7 @@ enum Sprites {
         case teaReach = "TeaReach", teaHold = "TeaHold", teaLift = "TeaLift", teaSip = "TeaSip", cheer = "Cheer", yawnStart = "YawnStart", yawn = "Yawn", yawnEnd = "YawnEnd", nodA = "NodA", nodB = "NodB", nodC = "NodC", startle = "Startle", munchA = "MunchA", munchB = "MunchB", cookieSmall = "CookieSmall", crumbs = "Crumbs"
         case think = "Think", idea = "Idea", spinA = "SpinA", spinB = "SpinB", spinC = "SpinC", spinD = "SpinD", chinRest = "ChinRest", chinRestB = "ChinRestB", scratchA = "ScratchA", scratchB = "ScratchB", neckLeft = "NeckLeft", neckRight = "NeckRight", eraseA = "EraseA", eraseB = "EraseB", blowCrumbs = "BlowCrumbs"
         case foldArms = "FoldArms", dozeA = "DozeA", dozeB = "DozeB", stand = "Stand", waveA = "WaveA", waveB = "WaveB", packR = "PackR", packBoth = "PackBoth", packWaveA = "PackWaveA", packWaveB = "PackWaveB"
+        case leanBackA = "LeanBackA", leanBackB = "LeanBackB", pillowA = "PillowA", pillowB = "PillowB", sitWaveLeftA = "SitWaveLeftA", sitWaveLeftB = "SitWaveLeftB", sitWaveRightA = "SitWaveRightA", sitWaveRightB = "SitWaveRightB"
     }
 
     /// A friend on their feet: walking, carrying a bag (their left arm is the one holding it),

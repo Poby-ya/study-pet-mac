@@ -92,6 +92,11 @@ final class PetWindow: NSPanel {
     private var departureLook: Look?
     private var departureLaptop=false
     private var leavingTicks = [-1.0, -1.0]
+    // Walking in to study (Departure.arrival), mine and each seatmate's; -1 when not.
+    private var arrivalTick = -1.0
+    private var arrivingTicks = [-1.0, -1.0]
+    // When I first saw each seatmate resting, by my clock: how deeply they sleep.
+    private var restSince = [-1.0, -1.0]
     static let displaySizes = Array(stride(from: 50, through: 150, by: 5))
     private(set) var sizePercent = PetWindow.displaySizes.contains(Int(Settings.get("petSize")) ?? 75) ? (Int(Settings.get("petSize")) ?? 75) : 75
     private var dragFrom: NSPoint?
@@ -219,7 +224,9 @@ final class PetWindow: NSPanel {
         redraw(); orderFrontRegardless(); startAnimation()
     }
 
-    func appear(_ newMood: Mood) {
+    /// `arrive`: walk in with the bag and unpack, for a study session just started here.
+    func appear(_ newMood: Mood, arrive: Bool = false) {
+        arrivalTick = arrive && newMood == .studying && !minimized && !focus ? 0 : -1
         mood = newMood
         routineSeed = Int.random(in: 1...211)
         minimized = false
@@ -245,6 +252,7 @@ final class PetWindow: NSPanel {
     func setMood(_ newMood: Mood) {
         if mood == newMood { redraw(); return }
         transitionFrom = myPose
+        arrivalTick = -1
         mood = newMood
         routineSeed = Int.random(in: 1...211)
         tick = 0
@@ -277,6 +285,7 @@ final class PetWindow: NSPanel {
     func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil, retort: String = "") {
         if minimized { arrived?(); return }
         onArrival = arrived
+        arrivalTick = -1 // a visit comes first
         visitLook = friend
         visitText = text
         visitRetort = retort
@@ -288,6 +297,7 @@ final class PetWindow: NSPanel {
 
     func goVisit(_ name: String, message: String, side: Int, retort: String = "") {
         if minimized { return }
+        arrivalTick = -1
         outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message; outgoingRetort = side == 0 && !retort.isEmpty ? name + " : " + retort : retort // no desk on screen to say it from
         wake()
         if !isVisible { appear(.away) }
@@ -295,8 +305,9 @@ final class PetWindow: NSPanel {
 
     /// For the self-test: one moment of the animation, set up without showing the window.
     func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Double = -1,
-                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1) {
+                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1, arrivalTick atArrivalTick: Double = -1) {
         mood = atMood
+        arrivalTick = atArrivalTick
         routineSeed = 0
         frameCount = atFrame
         tick = atFrame
@@ -334,6 +345,8 @@ final class PetWindow: NSPanel {
         animationSeconds += seconds; moodSeconds += seconds
         frameCount = Int(animationSeconds * 4); tick = Int(moodSeconds * 4)
         for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
+        for i in 0..<2 where arrivingTicks[i] >= 0 { arrivingTicks[i] += seconds * 4; if arrivingTicks[i] >= Departure.arrivalTicks { arrivingTicks[i] = -1 } }
+        if arrivalTick >= 0 { arrivalTick += seconds * 4; if arrivalTick >= Departure.arrivalTicks { arrivalTick = -1 } }
         if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away { fading = true } } }
         if visitTick >= Travel.arrive, let arrive = onArrival { onArrival = nil; arrive() }
         if visitTick >= 0 {
@@ -362,7 +375,7 @@ final class PetWindow: NSPanel {
         func hasEffect(_ moment: Int) -> Bool { moment > 0 && !Routine.effect(moment).isEmpty }
         let seatEffects = [seatmate(), rightSeatmate()].contains { seat in seat.map { hasEffect(seatMoment($0)) } ?? false }
         let clockTicks = animationSeconds * 4
-        let moving = (visitTick >= 0 && Travel.walking(visitTick)) || (outgoingTick >= 0 && Travel.walking(outgoingTick)) || blends.values.contains { $0.moving(clockTicks) } || hasEffect(moment) || seatEffects
+        let moving = (visitTick >= 0 && Travel.walking(visitTick)) || (outgoingTick >= 0 && Travel.walking(outgoingTick)) || arrivalTick >= 0 || arrivingTicks.contains { $0 >= 0 } || blends.values.contains { $0.moving(clockTicks) } || hasEffect(moment) || seatEffects
         animating = moving || fading || alphaValue < 1
         if (frameCount != beforeFrame || animating) && !unseen { redraw() }
     }
@@ -372,7 +385,15 @@ final class PetWindow: NSPanel {
     /// Whose eyes light up as my pet cheers them on: -1 the left seat, 1 the right, 0 nobody.
     static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") ? side : 0 }
 
-    private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 ? Routine.studyMoment(tick, seed: routineSeed) : 0 }
+    /// Seatmate `side` (-1 left, 1 right) packing up and setting off: my pet waves them off from its chair.
+    /// A visit or my own arrival comes first; focus mode has no departures to wave at.
+    private var sendOffSide: Int {
+        if mood != .studying || arrivalTick >= 0 || visitTick >= 0 || outgoingTick >= 0 { return 0 }
+        return leavingTicks[0] >= 14 && leavingTicks[0] < 22 ? -1 : leavingTicks[1] >= 14 && leavingTicks[1] < 22 ? 1 : 0
+    }
+    private var unixSeconds: Int64 { Int64(clock().timeIntervalSince1970.rounded(.down)) }
+
+    private var moment: Int { !focus && mood == .studying && visitTick < 0 && outgoingTick < 0 && arrivalTick < 0 && sendOffSide == 0 ? Routine.studyMoment(tick, seed: routineSeed) : 0 }
     private var momentText: String { Routine.line(moment, Routine.momentFrame(tick, seed: routineSeed), laptop: laptop) }
 
     func subjectChanged() { subjectChangedAt = animationSeconds; wake(); redraw() }
@@ -388,9 +409,11 @@ final class PetWindow: NSPanel {
             if visitTick >= 6 && visitTick <= 16 && !visitText.contains("일어나") { return .content }
             if animationSeconds - subjectChangedAt < 1.5 { return .bookmark }
             if visitTick >= 0 && visitTick < Travel.arrive { return visitTick < 1 ? (visitSide == 1 ? .glanceRight : .glanceLeft) : visitSide == 1 ? .lookRight : .lookLeft }
-            if moodSeconds < 0.75 && [.dozeA, .dozeB].contains(transitionFrom) { return .recover }
+            if arrivalTick >= 0 { return Departure.pose(Departure.arrival(arrivalTick)) }
+            if sendOffSide != 0 { return sendOffSide < 0 ? (tick / 2 % 2 == 0 ? .sitWaveLeftA : .sitWaveLeftB) : tick / 2 % 2 == 0 ? .sitWaveRightA : .sitWaveRightB }
+            if moodSeconds < 0.75 && Routine.resting(transitionFrom) { return .recover }
             return focus ? Routine.focusPose(tick, seed: routineSeed) : Routine.studyPose(tick, seed: routineSeed)
-        case .dozing: if moodSeconds < 0.75 { return .foldArms }; return tick / 8 % 2 == 0 ? .dozeA : .dozeB
+        case .dozing: if moodSeconds < 0.75 { return .foldArms }; return Routine.restPose(tick, seed: Self.nameSeed(myName()), restSeconds: moodSeconds, unixSeconds: unixSeconds)
         case .away: return .empty
         case .leaving: return Departure.pose(moodSeconds * 4)
         case .notifying: return tick < 2 ? .stand : tick / 2 % 2 == 0 ? .waveA : .waveB
@@ -405,12 +428,14 @@ final class PetWindow: NSPanel {
     private func seatMoment(_ seat: Seat) -> Int { !focus && seat.here && !seat.dozing ? Routine.studyMoment(frameCount, seed: Self.seatSeed(seat)) : 0 }
 
     // Each seatmate works and dozes at their own pace, so no two pets move in lockstep.
-    private func seatPose(_ seat: Seat) -> Sprites.Pose {
+    private func seatPose(_ seat: Seat, _ i: Int) -> Sprites.Pose {
         if !seat.here { return .empty }
+        if arrivingTicks[i] >= 0 { return Departure.pose(Departure.arrival(arrivingTicks[i])) }
         let seed = Self.seatSeed(seat)
-        if seat.dozing { return (frameCount + seed) / 8 % 2 == 0 ? .dozeA : .dozeB }
+        if seat.dozing { return Routine.restPose(frameCount + seed, seed: seed, restSeconds: restSeconds(i), unixSeconds: unixSeconds) }
         return focus ? Routine.focusPose(frameCount, seed: seed) : Routine.studyPose(frameCount, seed: seed)
     }
+    private func restSeconds(_ i: Int) -> Double { restSince[i] < 0 ? 0 : animationSeconds - restSince[i] }
 
     /// Draws one frame into the current (flipped) graphics context.
     func paint() {
@@ -444,42 +469,49 @@ final class PetWindow: NSPanel {
                                  hop: hop(outgoingTick, fromSeat: true), mirror: (destination < myX) != (outgoingTick > Travel.leave), leftHand: true, carried: outgoingTick < Travel.arrive ? FriendInteractions.treatDrink(outgoingText) : Sprites.Drink.none) }
         for i in 0..<2 {
             if let departing = seats[i], !departing.here && leavingTicks[i] >= 0 { drawDepartureWalker((departingSeats[i] ?? departing).look, origin: i == 0 ? seatX : rightX, tick: leavingTicks[i]) }
+            if let coming = seats[i], coming.here && arrivingTicks[i] >= 0 && !(visiting && visitSide == (i == 0 ? -1 : 1)) { drawDepartureWalker(coming.look, origin: i == 0 ? seatX : rightX, tick: Departure.arrival(arrivingTicks[i])) }
         }
         if mood == .leaving { drawDepartureWalker(departureLook ?? look, origin: myX, tick: moodSeconds * 4) }
+        else if arrivalTick >= 0 { drawDepartureWalker(look, origin: myX, tick: Departure.arrival(arrivalTick)) }
         // All desks and seated pets cover the visitors walking behind them.
         var effects: [(x: CGFloat, moment: Int, phase: Double)] = []
         var lamps: [CGFloat] = []
         for i in 0..<2 {
-            guard var seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; continue }
-            if previousSeats[i]?.id != seat.id {leavingTicks[i] = -1;departingSeats[i]=nil}
+            guard var seat = seats[i] else { previousSeats[i] = nil; leavingTicks[i] = -1; arrivingTicks[i] = -1; restSince[i] = -1; continue }
+            if previousSeats[i]?.id != seat.id {leavingTicks[i] = -1;arrivingTicks[i] = -1;departingSeats[i]=nil}
+            if let away = previousSeats[i], away.id == seat.id && !away.here && seat.here && !focus { arrivingTicks[i] = 0 }
+            if !seat.here { arrivingTicks[i] = -1 }
+            if !seat.here || !seat.dozing { restSince[i] = -1 } else if restSince[i] < 0 { restSince[i] = animationSeconds }
             if let before = previousSeats[i], before.id == seat.id && before.here && !seat.here && !focus { leavingTicks[i] = 0;departingSeats[i]=before }
             if seat.here { leavingTicks[i] = -1 }
             previousSeats[i] = seat
             if leavingTicks[i]>=0,let snapshot=departingSeats[i] {seat=snapshot;seat.here=false}
             let gone = visiting && visitSide == (i == 0 ? -1 : 1)
             let cheered = cheeredSide == (i == 0 ? -1 : 1) && seat.here && !seat.dozing
-            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : cheered ? (sentRetort ? (cheeredSide < 0 ? .lookRight : .lookLeft) : .content) : seatPose(seat)
+            let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i]) : cheered ? (sentRetort ? (cheeredSide < 0 ? .lookRight : .lookLeft) : .content) : seatPose(seat, i)
+            let arriving = !gone && arrivingTicks[i] >= 0 ? Departure.arrival(arrivingTicks[i]) : -1
             let x = i == 0 ? seatX : rightX
-            let lit = seat.here && !seat.dozing && !gone && (seat.look.customization?.on("lamp") ?? true)
+            let lit = seat.here && !seat.dozing && !gone && arriving < 0 && (seat.look.customization?.on("lamp") ?? true)
             if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
             if lit { Sprites.drawLampGlow(left: x, top: floorY, scale: scale, lamp: seat.look.customization?.value("lamp") ?? 0, night: night) }
             let seed = Self.seatSeed(seat)
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here, packed: leavingTicks[i] >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here || arriving >= 0, packed: leavingTicks[i] >= 4 || arriving >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
             if cheered && outgoingRetort.isEmpty && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
-            if !gone && leavingTicks[i] < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
+            if !gone && leavingTicks[i] < 0 && arriving < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
+            if arriving >= 0 && arriving < 12 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: arriving) }
             if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
             if lit { lamps.append(x) }
         }
-        let myLamp = mood == .studying && !outgoing && (look.customization?.on("lamp") ?? true)
+        let myLamp = mood == .studying && !outgoing && arrivalTick < 0 && (look.customization?.on("lamp") ?? true)
         if myLamp { lamps.append(myX); Sprites.drawLampGlow(left: myX, top: floorY, scale: scale, lamp: look.customization?.value("lamp") ?? 0, night: night) }
         if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
         let shownPose: Sprites.Pose = outgoing ? .empty : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping && !pat, lift: tap && !pat ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving, packed: mood == .leaving && moodSeconds >= 1), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
+                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving || arrivalTick >= 0, packed: (mood == .leaving && moodSeconds >= 1) || (arrivalTick >= 0 && Departure.arrival(arrivalTick) >= 4)), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && visitRetort.isEmpty && !FriendInteractions.noFlames(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -497,6 +529,7 @@ final class PetWindow: NSPanel {
         }
         drawNameplate(myName(), deskX: myX)
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
+        else if arrivalTick >= 0 && Departure.arrival(arrivalTick) < 12 { drawDepartureProps(look, laptop: laptop, x: myX, tick: Departure.arrival(arrivalTick)) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         // The lamps' light over everything at their desks (but under the speech bubbles).
         for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale, night: night) }
@@ -513,9 +546,10 @@ final class PetWindow: NSPanel {
         }
         else if !focus {
             var top = tip
-            if mood != .away { top = drawBubble(!updateText.isEmpty ? updateText : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
+            let talk = mood == .dozing ? Routine.sleepTalk(tick, seed: Self.nameSeed(myName()), restSeconds: moodSeconds) : ""
+            if mood != .away && (arrivalTick < 0 || !updateText.isEmpty) { top = drawBubble(!updateText.isEmpty ? updateText : sendOffSide != 0 ? "잘 가 !" : !talk.isEmpty ? talk : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
-                if let seat = seats[i] { drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : seat.text,
+                if let seat = seats[i] { let talk = seat.here && seat.dozing ? Routine.sleepTalk(frameCount, seed: Self.seatSeed(seat), restSeconds: restSeconds(i)) : ""; drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : !talk.isEmpty ? talk : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + (seat.here || leavingTicks[i] >= 0 ? mid : 34 * scale), tipY: tip, maxWidth: narrow, fill: .white) }
             }
             let news = mood != .away ? newsText() : ""
@@ -841,8 +875,8 @@ final class PetWindow: NSPanel {
         }
         if hitBoard(p) { boardClicked(); return }
         if p.y >= floorY - 8 {
-            if let seat = seatmate(), hitSeat(p, x: seatX, actor: seat.look, pose: seatPose(seat), drink: seat.drink, laptop: seat.laptop) { seatmateClicked(); return }
-            if let seat = rightSeatmate(), hitSeat(p, x: rightX, actor: seat.look, pose: seatPose(seat), drink: seat.drink, laptop: seat.laptop) { rightSeatmateClicked(); return }
+            if let seat = seatmate(), hitSeat(p, x: seatX, actor: seat.look, pose: seatPose(seat, 0), drink: seat.drink, laptop: seat.laptop) { seatmateClicked(); return }
+            if let seat = rightSeatmate(), hitSeat(p, x: rightX, actor: seat.look, pose: seatPose(seat, 1), drink: seat.drink, laptop: seat.laptop) { rightSeatmateClicked(); return }
             if hitSeat(p, x: myX, actor: look, pose: myPose, drink: drink, laptop: laptop) { if mood == .away { awayClicked() } else { petClicked() }; return }
         }
         if windowGlass.contains(p) { nextSeason() }

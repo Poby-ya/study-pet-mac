@@ -258,7 +258,7 @@ final class AppController: NSObject, NSMenuDelegate {
         startHeartbeat()
         companyAt = Date().addingTimeInterval(AppController.companyEvery)
         clearWaitingPoke()
-        pet.appear(.studying)
+        pet.appear(.studying, arrive: true)
         publish()
     }
 
@@ -988,8 +988,8 @@ final class AppController: NSObject, NSMenuDelegate {
         if !profileDirty {try SocialProfile.apply(profile);if let shared=Invite.parse(DeviceSync.str(profile,"invite")),shared.database == sync.database {try Settings.set("room",shared.code)};if let restored=Invite.parse(Settings.get("room")) ?? Invite.parse(sync.defaultRoomCode) {connectRoomView(restored)};if let id=profile["viewRoom"] as? String,let room,room.choices.contains(where:{$0.id == id}),room.selected != id {try room.select(id)}}
         if !profileDirty { let desk = Int(DeviceSync.num(profile,"desk")); pet.laptop = desk >= 10; pet.drink = Sprites.Drink(rawValue:desk%10) ?? .none }
         let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
-        let changed = state != next; state = next; subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0
-        if state != .off { startHeartbeat(); if changed || !pet.isVisible && !pet.minimized { pet.appear(state == .studying ? .studying : .dozing) } else { pet.setMood(state == .studying ? .studying : .dozing) } }
+        let changed = state != next; let started = changed && state == .off && syncReady; state = next; // not the first pull: already studying when the app opened subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0
+        if state != .off { startHeartbeat(); if changed || !pet.isVisible && !pet.minimized { pet.appear(state == .studying ? .studying : .dozing, arrive: started) } else { pet.setMood(state == .studying ? .studying : .dozing) } }
         else if changed { heartbeat?.invalidate(); pet.standUpAndLeave() }
         pet.redraw()
     }
