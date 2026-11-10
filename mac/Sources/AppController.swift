@@ -267,6 +267,7 @@ final class AppController: NSObject, NSMenuDelegate {
         startHeartbeat()
         companyAt = Date().addingTimeInterval(AppController.companyEvery)
         clearWaitingPoke()
+        updateProps()
         pet.appear(.studying, arrive: true)
         publish()
     }
@@ -287,6 +288,7 @@ final class AppController: NSObject, NSMenuDelegate {
         subject = picked
         pet.subjectChanged()
         newDrink()
+        updateProps() // a new subject adds a book
         banked = 0
         if state == .studying { openSegment() }
         pet.setMood(state == .studying ? .studying : .dozing)
@@ -297,6 +299,19 @@ final class AppController: NSObject, NSMenuDelegate {
         saveOpen()
         publish()
         remindCompany()
+        updateProps()
+    }
+
+    /// My desk prop, kept on this device only: the timer's minutes, a plant that grows with all the hours
+    /// recorded here (under 10, under 50, more), and a book for each subject studied today.
+    private func updateProps() {
+        let all = (try? Records.load()) ?? []
+        let hours = all.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) / 3600 } + (state == .off ? 0 : elapsed / 3600)
+        pet.propGrowth = hours < 10 ? 0 : hours < 50 ? 1 : 2
+        let today = Calendar.current.startOfDay(for: Date())
+        let subjects = Set(all.filter { $0.end > today }.map(\.subject) + (state == .off ? [] : [subject])).filter { !$0.isEmpty }
+        pet.propBooks = max(1, min(5, subjects.count))
+        pet.studyMinutes = state == .off ? -1 : Int(elapsed / 60)
     }
 
     /// Every 20 minutes of study, a reminder of who else is at their desk.
@@ -517,6 +532,24 @@ final class AppController: NSObject, NSMenuDelegate {
     private var awayMinutes: Int { (try? Records.load()).map { Records.minutesSinceLast($0, now: Date()) } ?? 0 }
 
     @discardableResult
+    /// The D-day in the chalkboard's corner, kept on this device only.
+    @objc private func askDday() {
+        let current = Settings.get("dday").components(separatedBy: "|")
+        var text = current.count == 2 ? current[0] + " " + current[1] : ""
+        var prompt = "칠판 오른쪽 위에 보일 날을 적어 주세요. 이 기기에만 저장돼요.\n예: 기말 12/23, 수능 2026-11-19  (지우려면 비워 두세요)"
+        while true {
+            let alert = NSAlert(); alert.messageText = "칠판 D-day"; alert.informativeText = prompt
+            alert.addButton(withTitle: "확인"); alert.addButton(withTitle: "취소")
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24)); field.stringValue = text
+            alert.accessoryView = field; alert.window.initialFirstResponder = field
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            text = field.stringValue
+            if let value = PetWindow.parseDday(text, today: Date()) { safely("D-day 저장") { try Settings.set("dday", value) }; pet.redraw(); return }
+            prompt = "날짜를 읽지 못했어요. 이름 뒤에 월/일을 적어 주세요.\n예: 기말 12/23"
+        }
+    }
+
     @objc private func askNickname() -> Bool {
         let name = Room.cleanName(ask("친구들에게 보일 이름을 정해 주세요. (\(Room.maxNameLength)자까지)", title: "닉네임", value: nickname))
         if name.isEmpty { return false }
@@ -662,7 +695,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
         let latest = Room.latest(members)
         let here = Room.isHere(mate, latest)
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here, now: max(Int64(Date().timeIntervalSince1970 * 1000), latest)), drink: mate.drink, laptop: mate.laptop, id: mate.id, note: !here && FriendInteractions.isNote(mate.waiting))
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here, now: max(Int64(Date().timeIntervalSince1970 * 1000), latest)), drink: mate.drink, laptop: mate.laptop, id: mate.id, note: !here && FriendInteractions.isNote(mate.waiting), minutes: here ? mate.minutes : -1)
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
@@ -896,7 +929,7 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         func group(_ title: String, _ items: [NSMenuItem]) { let sub = NSMenu(); items.forEach(sub.addItem); let g = NSMenuItem(title: title, action: nil, keyEquivalent: ""); g.submenu = sub; menu.addItem(g) }
         group("꾸미기", [item("캐릭터 꾸미기…", #selector(switchLook)), item(pet.laptop ? "책상에 책 놓기" : "책상에 노트북 놓기", #selector(toggleLaptop)),
-                        item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)), item("크기 조정…", #selector(showSizes))])
+                        item(nickname.isEmpty ? "닉네임 정하기…" : "닉네임: \(nickname) (바꾸기…)", #selector(askNickname)), item("칠판 D-day…", #selector(askDday)), item("크기 조정…", #selector(showSizes))])
         var view: [NSMenuItem] = []
         if !pet.minimized { let minimize = item("최소화 (공부 상태 유지)", #selector(toggleMinimized)); minimize.isEnabled = pet.isVisible; view.append(minimize) }
         let focusItem = item("집중 모드", #selector(toggleFocus)); focusItem.state = pet.focus ? .on : .off

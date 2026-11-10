@@ -37,10 +37,23 @@ final class Customization: Equatable {
     func on(_ key: String) -> Bool { slots[key]!.enabled }
     func value(_ key: String) -> Int { slots[key]!.value }
     func roll(_ group: String) { for s in Self.categories where s.group == group { if on(s.key) && !slots[s.key]!.locked { let minValue=s.optional && s.key != "lamp" ? 1 : 0;slots[s.key]!.value=Int.random(in:minValue..<s.count) } } }
-    func layers(_ key: String,_ x: Int=0,_ y: Int=0,lit: Bool=true,clock: Date=Date()) -> [Sprites.Layer] {
+    /// `minutes` turns the timer's hand, `growth` (0..2) and `books` (1..5) pick a plant's or a book stack's
+    /// stage, and a vase stays in bud until `studying`. Left out (-1), a desk prop shows its usual stage.
+    func layers(_ key: String,_ x: Int=0,_ y: Int=0,lit: Bool=true,clock: Date=Date(),minutes: Int = -1,growth: Int = -1,books: Int = -1,studying: Bool = true) -> [Sprites.Layer] {
         guard on(key),let s=Self.categories.first(where:{$0.key == key}),let art=s.art.first(where:{$0["id"] as? Int == value(key)}) else {return []}
         var grid=art["grid"] as! [String];if key == "clock" && value(key)==1 {grid=Self.swing(grid,clock)};if key == "lamp" && !lit {grid=grid.map{$0.replacingOccurrences(of:"Y",with:"w")}}
         if key == "prop" && value(key) == 7 {grid=Self.digital(grid,clock,compact:true)}
+        if key == "prop", let stages = art["stages"] as? [[String]] {
+            let stage = art["stageBy"] as? String == "growth" ? growth : books < 0 ? -1 : books - 1
+            if stage >= 0 { grid = stages[min(stage, stages.count - 1)] }
+        }
+        if key == "prop" && !studying, let bud = art["bud"] as? [String] { grid = bud }
+        if key == "prop" && minutes >= 0, let hand = art["hand"] as? [String: Any], let at = hand["at"] as? [Int], let ticks = hand["ticks"] as? [[[Int]]] {
+            // The timer's hand: one of twelve 3-pixel lines from the face's centre, every five minutes.
+            var rows = grid.map { Array($0) }
+            for step in ticks[minutes / 5 % 12] where rows[at[1] + step[1]][at[0] + step[0]] == "w" { rows[at[1] + step[1]][at[0] + step[0]] = "t" }
+            grid = rows.map { String($0) }
+        }
         return [Sprites.Layer(grid,x+(art["x"] as! Int),y+(art["y"] as! Int))]
     }
     /// The first row of hair that shows under the hat; nil without a hat or under an open one, like a crown.
@@ -71,8 +84,16 @@ final class Customization: Equatable {
         let rows=grid.map{Array($0)}
         return (0..<h).map { y in String((0..<w).map{x in rows[y*rows.count/h][x*rows[0].count/w]}) }
     }
-    static func drawFloor(_ rect: NSRect,_ scale: CGFloat,_ light: Bool) {
-        Sprites.color(light ? 0xEFDCB9 : 0xDEC7A5).setFill();rect.fill()
+    /// A classroom theme's colour for `part` (wall, wainscot, rail, shade, floor, seam, wood, woodLit,
+    /// woodDark, slate); nil in the usual classroom, which keeps the renderers' own colours.
+    func themeColor(_ part: String) -> NSColor? {
+        guard let theme = slots["theme"], theme.value > 0, let art = Self.categories.first(where: { $0.key == "theme" })?.art.first(where: { $0["id"] as? Int == theme.value }),
+              let colors = art["colors"] as? [String: String], let hex = colors[part], let rgb = Int(hex.dropFirst(), radix: 16) else { return nil }
+        return Sprites.color(rgb)
+    }
+    /// A theme brings its own floor (`fill`, `seam`); the light-wood floor is the usual classroom's.
+    static func drawFloor(_ rect: NSRect,_ scale: CGFloat,_ light: Bool, fill: NSColor? = nil, seam: NSColor? = nil) {
+        (fill ?? Sprites.color(light ? 0xEFDCB9 : 0xDEC7A5)).setFill();rect.fill()
         let seams=NSBezierPath();seams.lineWidth=1
         var row=0
         while CGFloat(row)*8*scale<rect.height {
@@ -82,7 +103,7 @@ final class Customization: Equatable {
             while x<rect.maxX {seams.move(to:NSPoint(x:x,y:y));seams.line(to:NSPoint(x:x,y:min(rect.maxY,y+8*scale)));x+=40*scale}
             row+=1
         }
-        Sprites.color(light ? 0xDCC6A2 : 0xC8AF8F).setStroke();seams.stroke()
+        (seam ?? Sprites.color(light ? 0xDCC6A2 : 0xC8AF8F)).setStroke();seams.stroke()
         Sprites.color(0x936F4F).setFill();NSRect(x:rect.minX,y:rect.minY-2*scale,width:rect.width,height:2*scale).fill()
         Sprites.color(0xC29D74).setFill();NSRect(x:rect.minX,y:rect.minY-2*scale,width:rect.width,height:scale).fill()
     }
@@ -97,7 +118,7 @@ final class Customization: Equatable {
         if preview {
             let scale=max(1,min(rect.width/226,rect.height/70).rounded(.down)),x=rect.minX+(rect.width-226*scale)/2,y=rect.minY
             Sprites.color(0xEFE7D8).setFill();rect.fill()
-            Self.drawFloor(NSRect(x:rect.minX,y:y+58*scale,width:rect.width,height:max(0,rect.maxY-y-58*scale)),scale,on("floor"))
+            Self.drawFloor(NSRect(x:rect.minX,y:y+58*scale,width:rect.width,height:max(0,rect.maxY-y-58*scale)),scale,on("floor"),fill:themeColor("floor"),seam:themeColor("seam"))
             Sprites.color(0xA87452).setFill();NSRect(x:x+51*scale,y:y,width:124*scale,height:14*scale).fill()
             Sprites.color(0x3F5C4E).setFill();NSRect(x:x+53*scale,y:y+2*scale,width:120*scale,height:10*scale).fill()
             Sprites.color(0xEEEBD5).setFill();NSRect(x:x+90*scale,y:y+7*scale,width:46*scale,height:2*scale).fill()

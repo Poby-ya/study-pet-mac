@@ -32,6 +32,9 @@ test('one-time pairing requires original-device approval and preserves private a
     await assertFails(set(ref(phone,`rooms/${room}/wardrobe/original`),'13231338'));
     await assertFails(set(ref(phone,'deviceAccounts/phone'),{account:'stranger',pair:code}));
     await assertSucceeds(set(ref(phone,'users/original'),{...state,revision:2,active:{id:'session',device:'phone',subject:'수학',state:'studying',start:1000}}));
+    // A record fixed from the record book: shortened, then removed (v0.7 trim and drop).
+    await assertSucceeds(set(ref(phone,'users/original'),{...state,revision:3,segments:{first:{start:1000,end:1500,subject:'수학'}}}));
+    await assertSucceeds(set(ref(phone,'users/original'),{...state,revision:4,segments:{}}));
     const presence={name:'나',look:'boy',state:'studying',subject:'수학',minutes:1,updated:serverTimestamp()};
     await assertSucceeds(update(ref(phone),{[`rooms/${room}/members/original`]:presence,[`rooms/${room}/presenceRevisions/original`]:2}));
     await assertFails(set(ref(owner,`rooms/${room}/members/original`),{...presence,state:'off'}));

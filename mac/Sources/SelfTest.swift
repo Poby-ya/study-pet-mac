@@ -18,7 +18,7 @@ enum SelfTest {
     private static func checkCustomization(_ out: URL) {
         let basic=Look(girl:true,2,1,1,2,4,0).withExtras("00000000"),legacy=Customization.legacy(Look(girl:true,2,1,1,2,4,0).withExtras("00000000"))
         let entries=Customization.categories.flatMap { s in s.art.map { (s,$0) } }
-        check(entries.count==77,"customization: exactly 77 approved designs")
+        check(entries.count==86,"customization: exactly 86 approved designs (77 + six wall pieces and three themes in v0.7)")
         let calendar=Calendar(identifier:.gregorian),date=calendar.date(from:DateComponents(year:2026,month:11,day:5,hour:20,minute:10))!
         var fixtures: [[String:Any]]=[]
         func flatten(_ layers: [Sprites.Layer]) -> [String] {var rows=Array(repeating:Array(repeating:Character("."),count:64),count:64);for l in layers {for (y,line) in l.grid.enumerated(){for (x,c) in line.enumerated() where c != "." {let xx=x+l.x,yy=y+l.y;if xx>=0 && xx<64 && yy>=0 && yy<64 {rows[yy][xx]=c}}}};return rows.map{String($0)}}
@@ -110,6 +110,14 @@ enum SelfTest {
                 Sprites.drawWindow(40,34,sky: 2,season: season,left: CGFloat(season*120),top: CGFloat(scene*102),scale: 3,scene: scene)
             } }
         }, out, "window-variants.png")
+        // Weather and passers-by, compared pixel for pixel with the Windows sheet.
+        save(render(NSSize(width: 4 * 196, height: 2 * 110)) {
+            let cases: [(Int, Int, Int, Int, Double, Double)] = [(2, 0, 1, 0, 0, 3.3), (0, 3, 2, 0, 0, 0), (0, 1, 3, 0, 0, 5.1), (2, 2, 0, 1, 0.45, 1), (2, 0, 0, 2, 0.5, 2), (3, 2, 0, 3, 0.4, 1), (2, 1, 1, 4, 0.3, 4), (0, 2, 0, 5, 0.5, 1)]
+            for (i, c) in cases.enumerated() {
+                Sprites.drawWindow(98, 55, sky: c.0, season: c.1, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2)
+                Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2)
+            }
+        }, out, "weather.png")
         save(render(NSSize(width: 624,height: 630)) {
             for drink in 1...5 { for f in 0..<4 { Sprites.draw([Sprites.Pose.teaReach,.teaHold,.teaLift,.teaSip][f], Look(girl: true,1,0,2,2,0,0), left: CGFloat(f*156),top: CGFloat((drink-1)*126),scale: 3,decor: Sprites.Decor(drink: Sprites.Drink(rawValue: drink)!,laptop: true,seed: 7)) } }
         }, out, "tea.png")
@@ -351,6 +359,10 @@ enum SelfTest {
         pet.advanceAnimation(4.25)
         pet.preview(.studying, frame: 40); save(render(pet.canvasSize) { pet.paint() }, out, "send-off.png")
 
+        // Stage 5: the chalkboard's corner, the same as Windows.
+        let nov11 = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 11, hour: 9))!
+        check(PetWindow.parseDday("기말 12/23", today: nov11) == "기말|2026-12-23" && PetWindow.parseDday("1/5", today: nov11) == "D-day|2027-01-05" && PetWindow.parseDday("2/30", today: nov11) == nil && PetWindow.parseDday("", today: nov11) == "", "board: a D-day reads from a name and a date")
+        check(PetWindow.boardCorner(nov11, "기말|2026-12-23") == ["11/11 수", "기말 D-42"], "board: the corner shows the date and the D-day")
         // Stage 2 words, the same as Windows: within 20 characters, recognised for what they are.
         let lines = FriendInteractions.snacks + FriendInteractions.notes + [FriendInteractions.whatStudy, FriendInteractions.thanks, FriendInteractions.celebration(12)]
         check(lines.allSatisfy { $0.count <= 20 }, "words: every new message fits the room's 20 characters")

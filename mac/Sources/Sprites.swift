@@ -344,6 +344,12 @@ enum Sprites {
         var away = false
         var packed = false
         var clock = Date()
+        /// The desk prop's life: the timer's minutes, a plant's growth (0..2), books in the stack (1..5),
+        /// -1 for its usual look (a friend's desk); a vase blooms and a mug steams while `studying`.
+        var minutes = -1
+        var growth = -1
+        var books = -1
+        var studying = true
     }
 
     private static func bagArt(_ color: Int) -> [String] {
@@ -384,14 +390,16 @@ enum Sprites {
         let d = decor ?? Decor()
         let custom = look.customization
         var layers: [Layer] = []
+        // The desk prop stands at the back, behind the lamp and whoever sits there.
+        let prop = decor != nil ? (custom?.layers("prop", clock: d.clock, minutes: d.minutes, growth: d.growth, books: d.books, studying: d.studying) ?? []) : []
+        layers += prop
         if decor != nil && (custom?.on("lamp") ?? true) {
             if let custom, custom.value("lamp") > 0 { layers += custom.layers("lamp", lit: d.lit) }
             else { layers.append(Layer(art(d.lit ? "LampOn" : "LampOff"), 1, 10)) }
         }
         let desk = custom?.layers("desk").first ?? Layer(art("Desk"), 0, 26)
         let scene = decor != nil ? deskScene(d, look) : []
-        let prop = decor != nil ? (custom?.layers("prop", clock: d.clock) ?? []) : []
-        if pose == .empty { return layers + [desk] + scene + prop }
+        if pose == .empty { return layers + [desk] + scene }
 
         let to = rigOf(pose, look)
         let moving = from != nil && from != .empty && from != pose
@@ -443,7 +451,7 @@ enum Sprites {
         }
         // Arms go behind the book so it stays whole and only the hands lie on it, over the props too.
         // An open lid hides the hands as well.
-        layers += shift(armsAt(2)) + shift(under) + prop
+        layers += shift(armsAt(2)) + shift(under)
         layers += shift(arms.filter { $0.layer == 2 && !(d.laptop && now.lap == nil) }.map { Layer(art("Hand"), $0.handX - 1, $0.handY - 1) })
         if now.front { layers += shift(back) + shift(armsAt(0)) + shift(faceLayers) + shift(armsAt(1)) }
 
@@ -452,6 +460,7 @@ enum Sprites {
         if decor != nil && !d.away && d.drink != .none && start.drink == nil && to.drink == nil {
             let g = art("Drink\(d.drink.rawValue)")
             layers.append(Layer(g, width - 1 - g[0].count, 29 - g.count))
+            if d.drink == .mug && d.studying { layers.append(Layer(art(Calendar.current.component(.second, from: d.clock) % 2 == 0 ? "SteamA" : "SteamB"), width - g[0].count, 25 - g.count)) }
         }
         if start.drink != nil || to.drink != nil {
             let a = drinkPlace(holding ? start.drink! : now.drink ?? "rest", kind)
@@ -722,6 +731,84 @@ enum Sprites {
         paint.setFill()
         for p in windowParticles(w, h, season: season, t: t) {
             NSRect(x: left + CGFloat(p.x) * scale, y: top + CGFloat(p.y) * scale, width: scale, height: scale).fill(using: .sourceOver)
+        }
+    }
+
+    // ---- Weather and passers-by ---------------------------------------------------------------
+    // From the date and the clock, so everyone sees the same rain and the same plane at the same moment.
+    // Opaque palette pixels only. Sprites.WeatherPixels (C#) and web/sprites.js match.
+
+    private static func hash(_ n: Int64) -> UInt32 { var h = UInt32(truncatingIfNeeded: n) &* 0x9E37_79B1; h ^= h >> 15; h = h &* 0x2C1B_3C6D; h ^= h >> 12; return h }
+    /// Days since 1970-01-01 by the local calendar.
+    static func dayIndex(_ date: Date) -> Int {
+        var utc = Calendar(identifier: .gregorian); utc.timeZone = TimeZone(identifier: "UTC")!
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return Int((utc.date(from: c)!.timeIntervalSince1970 / 86400).rounded(.down))
+    }
+    static func rainDay(_ day: Int) -> Bool { hash(Int64(day)) % 5 == 0 }
+    /// 0 clear, 1 rain (spring to autumn, a day in five), 2 fogged glass (winter night and dawn), 3 fireflies.
+    static func weather(_ day: Int, season: Int, sky: Int) -> Int { season == 3 ? (sky <= 1 ? 2 : 0) : rainDay(day) ? 1 : season == 1 && sky == 0 ? 3 : 0 }
+    /// What crosses the sky now, about once in two hours: 1 plane, 2 birds, 3 balloon, 4 rainbow after rain, 5 shooting star.
+    static func skyEvent(_ unixSeconds: Double, sky: Int, rainDay: Bool) -> (kind: Int, phase: Double) {
+        let slot = Int64((unixSeconds / 7200).rounded(.down)), h = hash(slot + 977)
+        let kind = sky == 0 ? 5 : rainDay ? 4 : 1 + Int(h >> 8) % 3
+        let phase = (unixSeconds - Double(slot * 7200 + Int64(h % 7100))) / (kind == 5 ? 4 : 24)
+        return phase >= 0 && phase < 1 ? (kind, phase) : (0, 0)
+    }
+    static func weatherPixels(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double) -> [(x: Int, y: Int, c: Character)] {
+        var dots: [(x: Int, y: Int, c: Character)] = []
+        func dot(_ x: Int, _ y: Int, _ c: Character) { if x >= 1 && x < w - 1 && y >= 1 && y < h - 1 { dots.append((x, y, c)) } }
+        func fl(_ v: Double) -> Int { Int(v.rounded(.down)) }
+        if weather == 1 { for i in 0..<(w * h / 70) { let x = i * 37 % (w - 4) + 2, y = fl(Double(i * 53) + t * Double(9 + i % 3 * 2)) % (h - 4) + 1; dot(x, y, "S"); dot(x, y + 1, "S") } }
+        if weather == 2 { for y in 1..<(h - 1) { for x in 1..<(w - 1) where (x * 3 + y * 5) % 11 == 0 && (x + y * 7) % 13 != 0 { dot(x, y, "w") } } }
+        if weather == 3 {
+            for i in 0..<max(3, w * h / 300) where fl(t * 1.5 + Double(i * 7)) % 4 != 0 {
+                dot(i * 41 % (w - 6) + 3 + fl(sin(t * 0.6 + Double(i)) * 3 + 0.5), h / 2 + i * 17 % max(1, h / 2 - 3) + fl(cos(t * 0.8 + Double(i * 2)) * 2 + 0.5), "Y")
+            }
+        }
+        if kind == 1 {
+            let x = fl(-8 + phase * Double(w + 16)), y = h / 4
+            for i in 0..<6 { dot(x + i, y, "w") }
+            dot(x + 1, y - 1, "w"); dot(x + 3, y + 1, "x"); dot(x + 2, y + 1, "x"); dot(x + 5, y, "x")
+            for i in stride(from: 1, to: 14, by: 2) { dot(x - i, y, "w") }
+        }
+        if kind == 2 {
+            for b in 0..<4 {
+                let x = fl(Double(w + 6) - phase * Double(w + 24)) + b * 4, y = h / 5 + (b % 2) * 2 + b / 2, up = (fl(t * 4) + b) % 2 == 0
+                dot(x, y, "k"); dot(x - 1, y + (up ? -1 : 1), "k"); dot(x + 1, y + (up ? -1 : 1), "k")
+            }
+        }
+        if kind == 3 {
+            let x = fl(Double(w) * 0.75 - phase * Double(w) * 0.35), y = fl(Double(h) * 0.75 - phase * Double(h) * 0.5)
+            for dy in -3...3 { for dx in -3...3 where dx * dx + dy * dy <= 10 { dot(x + dx, y + dy, dy == 3 || dx * dx + dy * dy > 7 ? "k" : (dx + 3) / 2 % 2 == 0 ? "t" : "Y") } }
+            dot(x - 1, y + 4, "k"); dot(x + 1, y + 4, "k"); dot(x - 1, y + 5, "o"); dot(x, y + 5, "o"); dot(x + 1, y + 5, "o")
+        }
+        if kind == 4 {
+            let bands: [Character] = ["t", "p", "Y", "g", "z"], r0 = min(w * 2 / 5, h - 4)
+            for x in 1..<(w - 1) { for (b, band) in bands.enumerated() { let r = r0 - b, dx = x - w / 2; if abs(dx) > r { continue }; dot(x, h - 1 - fl(Double(r * r - dx * dx).squareRoot() + 0.5), band) } }
+        }
+        if kind == 5 {
+            let x = fl(Double(w) * 0.85 - phase * Double(w) * 0.6), y = fl(2 + phase * Double(h) * 0.45)
+            dot(x, y, "w"); dot(x + 1, y - 1, "Y"); dot(x + 2, y - 1, "Y"); dot(x + 3, y - 2, "p"); dot(x + 4, y - 2, "p")
+        }
+        return dots
+    }
+    /// When the cat's walk in the slot of seven minutes starts (Unix seconds).
+    static func catStart(_ slot: Int64) -> Int64 { slot * 420 + Int64(hash(slot + 31) % 380) }
+    /// The cat crossing the floor now: its frame ("" when it isn't there) and how far across, 0..1.
+    static func catAt(_ unixSeconds: Double) -> (frame: String, across: Double) {
+        let slot = Int64((unixSeconds / 420).rounded(.down)), s = unixSeconds - Double(catStart(slot))
+        if s < 0 || s >= 22 { return ("", 0) }
+        let spot = 0.3 + Double(hash(slot + 31) / 256 % 40) / 100 // where it sits
+        let walk = Int((s * 4).rounded(.down)) % 2 == 0 ? "CatWalkA" : "CatWalkB"
+        if s < 8 { return (walk, spot * s / 8) }
+        if s < 14 { return (Int((s * 2).rounded(.down)) % 2 == 0 ? "CatSitA" : "CatSitB", spot) }
+        return (walk, spot + (1 - spot) * (s - 14) / 8)
+    }
+    static func drawWeather(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double, left: CGFloat, top: CGFloat, scale: CGFloat) {
+        for p in weatherPixels(w, h, weather: weather, kind: kind, phase: phase, t: t) {
+            palette[p.c]?.setFill()
+            NSRect(x: left + CGFloat(p.x) * scale, y: top + CGFloat(p.y) * scale, width: scale, height: scale).fill()
         }
     }
 

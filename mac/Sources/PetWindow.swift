@@ -35,9 +35,15 @@ final class PetWindow: NSPanel {
         var text: String
         var drink: Sprites.Drink = .none
         var laptop = false
+    /// My desk prop's life: minutes on the timer, a plant's growth (0..2), today's book stack (1..5); -1 its usual look.
+    var studyMinutes = -1
+    var propGrowth = -1
+    var propBooks = -1
         var id = ""
         /// A note from a friend waits on this empty desk (anyone in the room can see it there).
         var note = false
+        /// Their minutes of study as the room shows them, for the timer on their desk; -1 unknown.
+        var minutes = -1
     }
 
     static let ink = Sprites.color(0x3A2E39)
@@ -146,6 +152,10 @@ final class PetWindow: NSPanel {
     var drink: Sprites.Drink = .none
     /// A laptop on my desk instead of a book (menu).
     var laptop = false
+    /// My desk prop's life: minutes on the timer, a plant's growth (0..2), today's book stack (1..5); -1 its usual look.
+    var studyMinutes = -1
+    var propGrowth = -1
+    var propBooks = -1
     /// The time of day for the window's sky and the lamps; the self-test sets it.
     var clock: () -> Date = { Date() }
     /// Only quiet work and no bubbles, for when the pets would distract. A friend's visit still comes through.
@@ -470,6 +480,46 @@ final class PetWindow: NSPanel {
 
     func redraw() { fitDesks(); contentView?.needsDisplay = true }
 
+    /// Today's weather in the window (by the season it shows; none over the Christmas view) and what is
+    /// passing by right now, the same on every screen.
+    private func skyNow(_ now: Date) -> (weather: Int, kind: Int, phase: Double) {
+        let sky = Self.skyAt(now), day = Sprites.dayIndex(now)
+        let weather = windowScene == Sprites.christmasScene ? 0 : Sprites.weather(day, season: seasonNow(now), sky: sky)
+        let event = Sprites.skyEvent(now.timeIntervalSince1970, sky: sky, rainDay: weather == 1)
+        return (weather, event.kind, event.phase)
+    }
+    static let wishes = ["합격하게 해 주세요 !", "오늘 목표 다 하게 해 주세요 !", "시험 잘 보게 해 주세요 !", "내일도 같이 공부하게 해 주세요 !"]
+
+    /// "11/10 화" and, when one is set, "기말 D-12" (D-day on the day, D+3 after).
+    static func boardCorner(_ now: Date, _ dday: String) -> [String] {
+        let calendar = Calendar.current
+        let parts = calendar.dateComponents([.month, .day, .weekday], from: now)
+        let date = "\(parts.month!)/\(parts.day!) " + String(Array("일월화수목금토")[parts.weekday! - 1])
+        let fields = dday.components(separatedBy: "|")
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        guard fields.count == 2, let target = f.date(from: fields[1]) else { return [date] }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: target)).day ?? 0
+        return [date, fields[0] + " " + (days == 0 ? "D-day" : days > 0 ? "D-\(days)" : "D+\(-days)")]
+    }
+
+    /// "기말 12/23", "수능 2026-11-19" or a bare date into "name|yyyy-MM-dd"; "" clears it, nil if unreadable.
+    /// A month and day without a year mean the next time it comes round.
+    static func parseDday(_ raw: String, today: Date) -> String? {
+        let text = raw.trimmingCharacters(in: .whitespaces)
+        if text.isEmpty { return "" }
+        guard let m = try? NSRegularExpression(pattern: "^(.*?)\\s*(?:(\\d{4})[-./])?(\\d{1,2})[-./](\\d{1,2})\\s*$").firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        func group(_ i: Int) -> String? { Range(m.range(at: i), in: text).map { String(text[$0]) } }
+        let calendar = Calendar.current
+        let thisYear = calendar.component(.year, from: today)
+        guard let month = Int(group(3) ?? ""), let day = Int(group(4) ?? ""), (1...12).contains(month) else { return nil }
+        var year = group(2).flatMap(Int.init) ?? thisYear
+        guard let days = calendar.range(of: .day, in: .month, for: calendar.date(from: DateComponents(year: year, month: month))!), days.contains(day) else { return nil }
+        if group(2) == nil, calendar.date(from: DateComponents(year: year, month: month, day: day))! < calendar.startOfDay(for: today) { year += 1 }
+        var name = (group(1) ?? "").trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "|", with: " ")
+        if name.isEmpty { name = "D-day" } else if name.count > 8 { name = String(name.prefix(8)) }
+        return name + "|" + String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
     /// Whose eyes light up as my pet cheers them on: -1 the left seat, 1 the right, 0 nobody.
     static func cheeredSide(_ tick: Double, _ side: Int, _ text: String) -> Int { tick >= 6 && tick <= 16 && !text.contains("일어나") && !text.contains("같이 공부") && !text.contains("업데이트") ? side : 0 }
 
@@ -603,7 +653,7 @@ final class PetWindow: NSPanel {
             let seed = Self.seatSeed(seat)
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
             Sprites.draw(pose, seat.look, left: x, top: floorY, scale: scale,
-                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here || arriving >= 0, packed: leavingTicks[i] >= 4 || arriving >= 4), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
+                         decor: Sprites.Decor(drink: seat.drink, laptop: seat.laptop, seed: seed, lit: lit, away: !seat.here || arriving >= 0, packed: leavingTicks[i] >= 4 || arriving >= 4, minutes: seat.here ? seat.minutes : -1, studying: seat.here && !seat.dozing), from: seatBlend.from, blend: seatBlend.blend, breath: Routine.breathing(frameCount, seed: seed), blink: Routine.blinking(frameCount, seed: seed))
             if cheered && outgoingRetort.isEmpty && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
             if !gone && leavingTicks[i] < 0 && arriving < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
@@ -618,7 +668,7 @@ final class PetWindow: NSPanel {
         let shownPose: Sprites.Pose = outgoing && !passingOut ? .empty : passingOut && outgoingTick < Travel.leave ? (outgoingSide < 0 ? .lookLeft : .lookRight) : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping && !pat, lift: tap && !pat ? 1 : 0,
-                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving || arrivalTick >= 0, packed: (mood == .leaving && moodSeconds >= 1) || (arrivalTick >= 0 && Departure.arrival(arrivalTick) >= 4)), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
+                     decor: Sprites.Decor(drink: drink, laptop: mood == .leaving && departureLook != nil ? departureLaptop : laptop, seed: Self.nameSeed(myName()), lit: myLamp, away: mood == .away || mood == .leaving || arrivalTick >= 0, packed: (mood == .leaving && moodSeconds >= 1) || (arrivalTick >= 0 && Departure.arrival(arrivalTick) >= 4), minutes: mood == .studying || mood == .dozing ? studyMinutes : -1, growth: propGrowth, books: propBooks, studying: mood == .studying && arrivalTick < 0), from: myBlend.from, blend: myBlend.blend, breath: Routine.breathing(tick), blink: Routine.blinking(tick))
         if cheering && visitTick >= 6 && visitTick <= 16 && mood == .studying && !outgoing && !visitText.contains("업데이트") && visitRetort.isEmpty && !FriendInteractions.noFlames(visitText) { Sprites.drawFlameEyes(left: myX, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
         // The tapping arm goes over my pet, or only a stub of it would show.
         if tapping {
@@ -640,6 +690,8 @@ final class PetWindow: NSPanel {
         else if mood == .away && !outgoing { drawAwaySign(myX) }
         if passingIn { drawPassedNote(visitorX, myX, visitTick) }
         if passingOut { drawPassedNote(myX, outgoingSide < 0 ? seatX : rightX, outgoingTick) }
+        // Now and then a cat crosses the floor in front of the desks; not with the background hidden, nor in focus mode.
+        if board() != nil && !focus { let cat = Sprites.catAt(clock().timeIntervalSince1970); if !cat.frame.isEmpty { Sprites.drawArt(cat.frame, left: (-17 * scale + CGFloat(cat.across) * (canvasSize.width + 17 * scale)).rounded(), top: floorY + 29 * scale, scale: scale) } }
         // The lamps' light over everything at their desks (but under the speech bubbles).
         for x in lamps { Sprites.drawLampPool(left: x, top: floorY, scale: scale, night: night) }
         effects.append((myX, moment, Routine.momentPhase(moodSeconds * 4, seed: routineSeed)))
@@ -834,7 +886,7 @@ final class PetWindow: NSPanel {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: now)
         let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
         let season = seasonNow(now), sky = Self.skyAt(now), scene = windowScene
-        let key = "\(canvasSize)|\(title)|\(lines)|\(sky)|\(season)|\(scene)|\(drift)|\(swing ? 0 : minute)|\(boardFactor)"
+        let key = "\(canvasSize)|\(title)|\(lines)|\(sky)|\(season)|\(scene)|\(drift)|\(swing ? 0 : minute)|\(boardFactor)|\(Calendar.current.startOfDay(for: now))|\(Settings.get("dday"))"
         if roomImage == nil || key != roomKey {
             roomKey = key
             windowGlass = windowRect() ?? .zero
@@ -851,6 +903,8 @@ final class PetWindow: NSPanel {
         if windowFrame == 1 { let arch = windowGlass.height * 0.42; open.origin.y += arch; open.size.height -= arch } // no petals in the arch's corners
         open.clip()
         Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: scene == Sprites.christmasScene ? 3 : season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
+        let now = skyNow(clock())
+        Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: now.weather, kind: now.kind, phase: now.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -871,22 +925,22 @@ final class PetWindow: NSPanel {
         let card = NSRect(x: 2, y: boardTop - 14, width: canvasSize.width - 4, height: canvasSize.height - 2 - (boardTop - 14))
 
         let cardPath = NSBezierPath(roundedRect: card, xRadius: 14, yRadius: 14)
-        PetWindow.wall.setFill()
+        (themed("wall") ?? PetWindow.wall).setFill()
         cardPath.fill()
         NSGraphicsContext.saveGraphicsState()
         cardPath.addClip()
         // Wainscoting under a lit rail, its panels marked off every twelve pixels.
         let railTop = floorY + 20 * scale
-        PetWindow.wainscot.setFill()
+        (themed("wainscot") ?? PetWindow.wainscot).setFill()
         NSRect(x: card.minX, y: railTop, width: card.width, height: card.height).fill()
-        PetWindow.wainscotRail.setFill()
+        (themed("rail") ?? PetWindow.wainscotRail).setFill()
         NSRect(x: card.minX, y: railTop, width: card.width, height: scale).fill()
-        PetWindow.wainscotShade.setFill()
+        (themed("shade") ?? PetWindow.wainscotShade).setFill()
         NSRect(x: card.minX, y: railTop + scale, width: card.width, height: scale).fill()
         var panel = card.minX + 6 * scale
         while panel < card.maxX { NSRect(x: panel, y: railTop + 2 * scale, width: max(1, scale / 2), height: 13 * scale).fill(); panel += 12 * scale }
         let floorTop = floorY + 35 * scale
-        Customization.drawFloor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true)
+        Customization.drawFloor(NSRect(x:card.minX,y:floorTop,width:card.width,height:card.maxY-floorTop),scale,look.customization?.on("floor") == true,fill:themed("floor"),seam:themed("seam"))
         // The room's lights go down at night so the desk lamps show; the window and garland stay bright.
         if sky == 0 { NSColor(srgbRed: 24.0 / 255, green: 28.0 / 255, blue: 58.0 / 255, alpha: 96.0 / 255).setFill(); card.fill(using: .sourceOver) }
         drawWindow(sky: sky, season: season, scene: scene, drift: drift)
@@ -901,13 +955,13 @@ final class PetWindow: NSPanel {
         // Square wooden corners, lit along the top like everything else in the room.
         PetWindow.ink.setFill()
         frame.insetBy(dx: -max(1, scale / 3), dy: -max(1, scale / 3)).fill()
-        PetWindow.wood.setFill()
+        (themed("wood") ?? PetWindow.wood).setFill()
         frame.fill()
-        PetWindow.woodLit.setFill()
+        (themed("woodLit") ?? PetWindow.woodLit).setFill()
         NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: max(1, scale / 2)).fill()
-        PetWindow.slate.setFill()
+        (themed("slate") ?? PetWindow.slate).setFill()
         slate.fill()
-        PetWindow.woodDark.setFill()
+        (themed("woodDark") ?? PetWindow.woodDark).setFill()
         NSRect(x: frame.minX + 20, y: frame.maxY - 2, width: frame.width - 40, height: 5).fill()
         let trayTop = frame.maxY - 2
         PetWindow.chalk.setFill()
@@ -925,6 +979,10 @@ final class PetWindow: NSPanel {
         for (n, header) in titleLines.enumerated() {
             drawLine(header, font: .boldSystemFont(ofSize: (n == 0 && titleLines.count > 1 ? 19 : 14) * boardFactor), color: n == 0 ? PetWindow.chalk : faint,
                      in: NSRect(x: textX, y: slate.minY + 6 + CGFloat(n) * boardLine, width: textW, height: boardLine), align: .center)
+        }
+        // The corner: today's date, and under it the D-day kept on this device. Clicks still switch rooms.
+        for (n, text) in Self.boardCorner(clock(), Settings.get("dday")).enumerated() {
+            drawLine(text, font: .boldSystemFont(ofSize: 11 * boardFactor), color: n == 0 ? faint : Sprites.color(0xF7D774), in: NSRect(x: slate.minX, y: slate.minY + 4 + CGFloat(n) * 14 * boardFactor, width: slate.width - 8, height: 14 * boardFactor), align: .right)
         }
         let cellWidth = textW / CGFloat(columns)
         for (i, line) in lines.enumerated() {
@@ -967,6 +1025,8 @@ final class PetWindow: NSPanel {
     private var sceneIndex = Int.random(in: 0..<Sprites.windowScenes)
     private var nextScene: Int { (sceneIndex + Int.random(in: 1..<Sprites.windowScenes)) % Sprites.windowScenes }
     private var sceneBucket = -1
+    /// The classroom theme's colour for `part`, nil in the usual classroom.
+    private func themed(_ part: String) -> NSColor? { look.customization?.themeColor(part) }
     private var windowScene: Int {
         let bucket = Int(clock().timeIntervalSince1970 / 1800)
         if sceneBucket != bucket { sceneBucket = bucket; sceneIndex = nextScene }
@@ -1013,7 +1073,8 @@ final class PetWindow: NSPanel {
             if side > 0 { rightSeatmateClicked(); return }
             if hitSeat(p, x: myX, actor: look, pose: myPose, drink: drink, laptop: laptop) { if mood == .away { awayClicked() } else { petClicked() }; return }
         }
-        if windowGlass.contains(p) { nextSeason() }
+        // A shooting star gets a wish instead of the next season.
+        if windowGlass.contains(p) { if skyNow(clock()).kind == 5 { showFeedback("별똥별에 소원 빌었다 ✨\n" + Self.wishes[Int(clock().timeIntervalSince1970 / 3600) % Self.wishes.count]) } else { nextSeason() } }
     }
 
     /// Which seatmate's desk is at p: -1 left, 1 right, 0 neither.
