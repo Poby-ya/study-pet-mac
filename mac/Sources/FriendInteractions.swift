@@ -9,16 +9,40 @@ final class FriendInteractions {
     private static let pats = ["머리 쓰담쓰담", "잘했어 쓰담쓰담", "토닥토닥 고생했어", "어깨 주물주물", "폭 안겼다 !", "꼭 안아줄게 !", "폭 안아줘 !"]
     // What each treat puts on the desk.
     private static let treats: [(line: String, drink: Sprites.Drink)] = [("커피 사 왔어 !", .icedCoffee), ("아이스커피 대령이요 !", .icedCoffee), ("따뜻한 차 한 잔 !", .mug), ("코코아 타 왔어 !", .mug), ("시원한 거 마셔 !", .can)]
+    // A snack is carried over and eaten; the desk's drink stays as it is.
+    static let snacks = ["쿠키 먹고 해 !", "귤 까 왔어 !", "초콜릿 하나 줄게 !", "사탕 받아 !"]
+    private static let snackArts = ["Cookie", "Tangerine", "Chocolate", "Candy"]
+    /// Left on an empty desk; read when its owner comes back.
+    static let notes = ["오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !", "내일 봐 !"]
+    static let whatStudy = "뭐 공부해 ?"
+    static let thanks = "고마워 !"
+    static func celebration(_ hours: Int) -> String { "\(hours)시간 달성 축하해 !" }
+    static func snackArt(_ text: String) -> String { snacks.firstIndex { text.contains($0) }.map { snackArts[$0] } ?? "" }
+    static func isSnack(_ text: String) -> Bool { !snackArt(text).isEmpty }
+    static func isNote(_ text: String) -> Bool { notes.contains { text.contains($0) } }
+    static func isWhatStudy(_ text: String) -> Bool { text.contains(whatStudy) }
+    /// Only a plain thank-you, as sent or with "name : " or "name에게\n" in front.
+    static func isThanks(_ text: String) -> Bool { text == thanks || text.hasSuffix(" : " + thanks) || text.hasSuffix("\n" + thanks) }
+    /// What earns a thank-you: cheers, drinks, snacks, celebrations. Not a wake-up, an invitation, a
+    /// note, a question or another thank-you, so the two can't go on thanking each other.
+    static func thankable(_ text: String) -> Bool { !text.contains("일어나") && !text.contains("같이 공부") && text != updateNotice && !isThanks(text) && !isNote(text) && !isWhatStudy(text) }
+    /// What a visitor holds on the way over: a drink or a snack.
+    static func carriedArt(_ text: String) -> String { treatDrink(text) != .none ? "Drink\(treatDrink(text).rawValue)" : snackArt(text) }
+    /// The answer to 뭐 공부해 ?, e.g. "수학 32분째 !": the one asked uses their own subject and minutes,
+    /// the one asking the friend's from the room, so both screens say the same.
+    static func answer(_ subject: String, _ minutes: Int) -> String {
+        (subject.isEmpty ? "공부" : subject) + " " + (minutes < 60 ? "\(minutes)분" : minutes % 60 == 0 ? "\(minutes / 60)시간" : "\(minutes / 60)시간 \(minutes % 60)분") + "째 !"
+    }
     private static let sweet = love + pats
-    private static let coupleLines = sweet + treats.map(\.line)
-    // Anyone can bring a friend a drink.
-    private static let friendLines = cheers + treats.map(\.line)
+    private static let coupleLines = sweet + treats.map(\.line) + snacks
+    // Anyone can bring a friend a drink, or now and then a snack.
+    private static let friendLines = cheers + treats.map(\.line) + snacks
     /// Hearts instead of flames; the text is all that reaches the other screen.
     static func isLove(_ text: String) -> Bool { text.contains("자기야") || sweet.contains { text.contains($0) } }
     /// A pat on the shoulder rather than a cheer.
     static func isPat(_ text: String) -> Bool { pats.contains { text.contains($0) } }
     /// A cheer gets flames in the eyes; these are gentler.
-    static func noFlames(_ text: String) -> Bool { isLove(text) || isTreat(text) }
+    static func noFlames(_ text: String) -> Bool { isLove(text) || isTreat(text) || isSnack(text) || isNote(text) || isWhatStudy(text) || isThanks(text) }
     /// Where the hand goes: 0 the shoulder, 1 the head, 2 round them in a hug.
     static func touch(_ text: String) -> Int { text.contains("쓰담") ? 1 : text.contains("안겼") || text.contains("안아") ? 2 : 0 }
     static func treatDrink(_ text: String) -> Sprites.Drink { treats.first { text.contains($0.line) }?.drink ?? Sprites.Drink.none }
@@ -28,14 +52,17 @@ final class FriendInteractions {
     /// What a studying friend says back to someone who cheers them on without studying. Chosen from
     /// the message alone, so both screens show the same words. Wake-ups and invitations get none.
     static func retort(_ message: String, couple: Bool) -> String {
-        if message.contains("일어나") || message.contains("같이 공부") || message == updateNotice { return "" }
-        if isTreat(message) { return "고마워 ! 너도 공부해 !" }
+        if message.contains("일어나") || message.contains("같이 공부") || message == updateNotice || isNote(message) || isWhatStudy(message) || isThanks(message) { return "" }
+        if isTreat(message) || isSnack(message) { return "고마워 ! 너도 공부해 !" }
         let lines = couple ? coupleRetorts : retorts
         return lines[message.utf16.reduce(0) { $0 + Int($1) } % lines.count]
     }
     private var states: [String: String] = [:], greetings: [String: String] = [:]
-    private var last: [String: Int] = [:]
-    func observe(_ members: [Member]) {
+    private var last: [String: Int] = [:], minutes: [String: Int] = [:]
+    /// Returns the friends who just passed another hour of study: their next cheer from me congratulates them.
+    /// Nobody does on the first look at the room, which only sets where everyone is.
+    @discardableResult func observe(_ members: [Member]) -> [String] {
+        var crossed: [String] = []
         let latest = Room.latest(members)
         for id in Array(states.keys) where !members.contains(where: { $0.id == id }) { states[id] = "off"; greetings.removeValue(forKey: id) }
         for m in members {
@@ -43,9 +70,12 @@ final class FriendInteractions {
             if let before = states[m.id] {
                 if before == "off" && state != "off" { greetings[m.id] = "드디어 왔구나 !" }
                 else if before == "paused" && state == "studying" { greetings[m.id] = "드디어 깼구나 !" }
+                if state == "studying", let was = minutes[m.id], m.minutes >= 60, m.minutes / 60 > was / 60 { greetings[m.id] = Self.celebration(m.minutes / 60); crossed.append(m.id) }
             }
+            minutes[m.id] = state == "off" ? 0 : m.minutes
             if state == "off" { greetings.removeValue(forKey: m.id) }; states[m.id] = state
         }
+        return crossed
     }
     func message(_ m: Member, here: Bool, current: String, me: String = "") -> String {
         if let own = UpdateRelease.version(current) {

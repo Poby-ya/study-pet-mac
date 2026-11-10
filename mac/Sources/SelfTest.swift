@@ -341,6 +341,34 @@ enum SelfTest {
         pet.preview(.studying, frame: 40); _ = render(pet.canvasSize) { pet.paint() }
         pet.advanceAnimation(4.25)
         pet.preview(.studying, frame: 40); save(render(pet.canvasSize) { pet.paint() }, out, "send-off.png")
+
+        // Stage 2 words, the same as Windows: within 20 characters, recognised for what they are.
+        let lines = FriendInteractions.snacks + FriendInteractions.notes + [FriendInteractions.whatStudy, FriendInteractions.thanks, FriendInteractions.celebration(12)]
+        check(lines.allSatisfy { $0.count <= 20 }, "words: every new message fits the room's 20 characters")
+        check(FriendInteractions.snacks.allSatisfy { !FriendInteractions.carriedArt("민지 : " + $0).isEmpty } && FriendInteractions.carriedArt("커피 사 왔어 !") == "Drink1" && FriendInteractions.carriedArt("파이팅 !").isEmpty, "snack: carried to the desk, as drinks are")
+        check(FriendInteractions.isThanks("민지 : 고마워 !") && !FriendInteractions.isThanks("민지 : 오늘도 고마워 !") && FriendInteractions.thankable("귤 까 왔어 !") && !FriendInteractions.thankable("고마워 !") && !FriendInteractions.thankable("내일 봐 !"), "thanks: never for a thank-you")
+        check(FriendInteractions.answer("수학", 32) == "수학 32분째 !" && FriendInteractions.answer("HCS", 95) == "HCS 1시간 35분째 !" && FriendInteractions.retort("사탕 받아 !", couple: false) == "고마워 ! 너도 공부해 !" && FriendInteractions.retort("뭐 공부해 ?", couple: false).isEmpty, "what-study: the answer reads naturally")
+        let watch = FriendInteractions()
+        func friend(_ minutes: Int) -> Member { Member(id: "f1", name: "민지", state: "studying", minutes: minutes, updated: Int64(Date().timeIntervalSince1970 * 1000)) }
+        let first = watch.observe([friend(130)]), crossed = watch.observe([friend(181)])
+        check(first.isEmpty && crossed == ["f1"] && watch.message(friend(182), here: true, current: "", me: "지우") == "3시간 달성 축하해 !", "celebrate: an hour passed after the first look, congratulated on the next cheer")
+        check(Routine.momentId(Routine.momentIndex("yawn")) == "yawn" && Routine.momentIndex("munch") > 0, "moments: named moments can be asked for")
+        func forcedMoment() -> Int { Mirror(reflecting: pet).children.first { $0.label == "forcedMoment" }?.value as? Int ?? -1 }
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: minji, here: true, dozing: false, text: "수학\n32분째 공부 중") }
+        pet.preview(.studying, frame: 0); _ = render(pet.canvasSize) { pet.paint() }
+        let mimickedBefore = Mirror(reflecting: pet).children.first { $0.label == "mimicked" }?.value as? Int ?? 0
+        if mimickedBefore % 2 == 1 { pet.mimic(0, "yawn") } // line up on an odd count, as Windows starts
+        pet.mimic(0, "yawn")
+        let caught = forcedMoment() == Routine.momentIndex("yawn")
+        pet.preview(.studying, frame: 40); pet.setMood(.dozing); pet.setMood(.studying)
+        pet.mimic(0, "yawn")
+        check(caught && forcedMoment() == 0, "mimic: a yawn is caught every other time")
+        pet.celebrate(-1)
+        pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "celebrate.png")
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: Look.parse("b120310", girl: false), here: false, dozing: false, text: "자리 비움", note: true) }
+        pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note.png")
+        pet.preview(.studying, frame: 30, visitTick: 14, friend: minji, friendText: "민지 : 뭐 공부해 ?")
+        save(render(pet.canvasSize) { pet.paint() }, out, "what-study.png")
         pet.close()
     }
 

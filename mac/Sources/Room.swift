@@ -15,6 +15,7 @@ struct Member {
     var updated: Int64 = 0 // server clock, ms
     var drink: Sprites.Drink = .none // from desks/{uid}; none from older versions or rules
     var laptop = false
+    var waiting = "" // a poke left for them and not yet picked up (their app is off)
     var look: Look {let value=Look.parse(style,girl:girl).withExtras(extra);return customization == nil ? value : value.withCustomization(Customization.parse(customization,value))}
 }
 
@@ -511,13 +512,14 @@ final class Room: @unchecked Sendable {
         let wardrobe = tree["wardrobe"] as? [String: String] ?? [:]
         let versions = tree["versions"] as? [String: String] ?? [:]
         let desks = tree["desks"] as? [String: Any] ?? [:]
+        let pokes = tree["pokes"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             let desk = Int(num(desks, id))
             let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
                           customization:customizations[id],extra: wardrobe[id] ?? "", version: versions[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
-                          drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1)
+                          drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1, waiting: (pokes[id] as? [String: Any]).map { str($0, "message") } ?? "")
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
             if let name = value as? String, !result.contains(where: { $0.id == id }) { result.append(Member(id: id, name: name)) }

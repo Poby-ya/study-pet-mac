@@ -41,6 +41,9 @@ enum Routine {
     static func momentFrame(_ ticks: Int, seed: Int = 0) -> Int { (ticks + seed * 97) % 120 - 96 }
     static func momentPhase(_ ticks: Double, seed: Int = 0) -> Double { (ticks + Double(seed * 97)).truncatingRemainder(dividingBy: 120) - 96 }
     static func effect(_ moment: Int) -> String { momentData[moment - 1]["effect"] as? String ?? "" }
+    /// The name a moment goes by when something else asks for it (a snack is "munch"), and back.
+    static func momentId(_ moment: Int) -> String { moment > 0 ? momentData[moment - 1]["id"] as? String ?? "" : "" }
+    static func momentIndex(_ id: String) -> Int { (momentData.firstIndex { $0["id"] as? String == id } ?? -1) + 1 }
 
     static func workPose(_ ticks: Int, seed: Int = 0) -> Sprites.Pose { work[(ticks / 48 + seed) % work.count][ticks % 48] }
     /// Focus mode: nothing but writing, reading and turning a page.
