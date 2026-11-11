@@ -117,9 +117,13 @@ final class PetWindow: NSPanel {
     private var lookUntil = -1.0
     private var celebratedAt = [-100.0, -100.0]
     private var worried = [false, false]
-    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero
-    // A friend's note stuck up above my desk until it's clicked off.
+    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero, bellHit = NSRect.zero
+    // A friend's note opened above my desk until it's clicked off.
     private var note: (to: String, body: String, from: String)?
+    /// Received notes not yet opened: 쪽지가 왔어요 ! waits over my desk (and keeps an empty desk up) until clicked.
+    var unreadNotes = 0
+    var noteBellClicked: () -> Void = {}
+    private var keptUp: Bool { note != nil || unreadNotes > 0 }
     // The handwriting on it (나눔손글씨 연지체, in Resources as note-font.ttf), registered for this app only.
     private static let noteFontName: String? = {
         guard let url = Bundle.main.url(forResource: "note-font", withExtension: "ttf"),
@@ -349,10 +353,10 @@ final class PetWindow: NSPanel {
         if !isVisible || fading || mood == .leaving { appear(.away) }
     }
 
-    /// A note from `from` to `to`, stuck up over my desk until clicked; it keeps an empty desk's window open.
+    /// A note from `from` to `to`, opened over my desk until clicked; it keeps an empty desk's window open.
     func showNote(to: String, body: String, from: String) {
         note = (to.isEmpty ? "나" : to, body, from)
-        if minimized { return }
+        if minimized { restoreScene() } // asked for: opened from the bubble or the menu
         if !isVisible || fading { appear(.away) }
         wake(); redraw()
     }
@@ -457,13 +461,13 @@ final class PetWindow: NSPanel {
         for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
         for i in 0..<2 where arrivingTicks[i] >= 0 { arrivingTicks[i] += seconds * 4; if arrivingTicks[i] >= Departure.arrivalTicks { arrivingTicks[i] = -1 } }
         if arrivalTick >= 0 { arrivalTick += seconds * 4; if arrivalTick >= Departure.arrivalTicks { arrivalTick = -1 } }
-        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away && note == nil { fading = true } } }
+        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away && !keptUp { fading = true } } }
         if visitTick >= Travel.arrive, let arrive = onArrival { onArrival = nil; arrive() }
         if visitTick >= 0 {
             visitTick += seconds * 4
             if visitTick > Travel.total {
                 visitTick = -1
-                if mood == .away && note == nil { fading = true }
+                if mood == .away && !keptUp { fading = true }
             }
         }
         if visitWas >= 0 && visitWas < Travel.arrive && visitTick >= Travel.arrive { visitorArrived() }
@@ -739,6 +743,12 @@ final class PetWindow: NSPanel {
             if !news.isEmpty { top = drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint); newsHit = lastBubble }
         }
         noteHit = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? .zero
+        bellHit = .zero
+        // Not while the friend is still at my desk saying it, nor over an open note.
+        if note == nil && unreadNotes > 0 && visitTick < 0 {
+            drawBubble((unreadNotes == 1 ? FriendInteractions.noteArrived : "쪽지 \(unreadNotes)장이 왔어요 !") + "\n눌러서 확인", cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
+            bellHit = lastBubble
+        }
         // 구미 and 포비: hearts while one visits the other, and now and then from each other's desk.
         if visitTick >= Travel.arrive && visitTick <= Travel.leave && FriendInteractions.isLove(visitText) { drawHearts(myX, visitTick - Travel.arrive, column: visitSide == 1 ? 44 : 16) }
         if outgoingTick >= Travel.arrive && outgoingTick <= Travel.leave && FriendInteractions.isLove(outgoingText) && outgoingSide != 0 { drawHearts(outgoingSide < 0 ? seatX : rightX, outgoingTick - Travel.arrive, column: outgoingSide < 0 ? 44 : 16) }
@@ -1122,10 +1132,11 @@ final class PetWindow: NSPanel {
         }
         if noteHit.contains(p) {
             note = nil
-            if mood == .away && visitTick < 0 && outgoingTick < 0 { fading = true } // nothing else kept the empty desk up
+            if mood == .away && visitTick < 0 && outgoingTick < 0 && !keptUp { fading = true } // nothing else kept the empty desk up
             wake(); redraw()
             return
         }
+        if bellHit.contains(p) { noteBellClicked(); return }
         if visitTick >= 0 && visitorHit.contains(p) { visitorClicked(); return }
         if newsHit.contains(p) { newsClicked(); return }
         if hitBoard(p) { boardClicked(); return }

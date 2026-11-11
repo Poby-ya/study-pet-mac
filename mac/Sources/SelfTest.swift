@@ -412,9 +412,17 @@ enum SelfTest {
         check(written.utf16.count <= 20 && FriendInteractions.noteLength + FriendInteractions.noteMark.utf16.count == 20 && FriendInteractions.isNote(written) && FriendInteractions.isNote("민지 : " + written) && FriendInteractions.isNote("민지에게\n" + written) && FriendInteractions.isNote("내일 봐 !")
               && !FriendInteractions.isNote("파이팅 !") && !FriendInteractions.isNote(FriendInteractions.noteArrived) && FriendInteractions.noteText(written) == "내일은 꼭 같이 공부하자 !" && FriendInteractions.retort(written, couple: false).isEmpty, "note: written by hand after its mark within 20 characters; v0.7.0's fixed notes still count")
         check(PetWindow.noteFont(20).fontName != NSFont.systemFont(ofSize: 20).fontName, "note: the handwriting font is bundled and loads")
+        var inbox = FriendInteractions.inbox("")
+        for i in 0..<22 { inbox.append((1000 + Int64(i), "민지", "a=b 내일 봐 \(i)", i % 2 == 0)) }
+        let kept = FriendInteractions.inbox(FriendInteractions.inbox(inbox))
+        check(kept.count == 20 && kept[0].at == 1002 && kept[0].text == "a=b 내일 봐 2" && kept[0].read && kept[19].at == 1021 && !kept[19].read && FriendInteractions.inbox("").isEmpty && FriendInteractions.inbox("x\ty").isEmpty, "note: the inbox keeps the last 20 received, read or not")
+        // Two notes in: the friend says it, then 쪽지 2장이 왔어요 ! waits over the empty desk until clicked open.
+        pet.unreadNotes = 2
+        pet.preview(.away, frame: 0, visitTick: 10, friend: minji, friendText: FriendInteractions.noteArrived); save(render(pet.canvasSize) { pet.paint() }, out, "note-arrive.png")
+        pet.preview(.away, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note-bell.png")
+        pet.unreadNotes = 0
         pet.showNote(to: "지우", body: "내일은 꼭 같이 공부하자 !", from: "민지")
         pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note-card.png")
-        pet.preview(.away, frame: 0, visitTick: 10, friend: minji, friendText: FriendInteractions.noteArrived); save(render(pet.canvasSize) { pet.paint() }, out, "note-card-arrive.png")
         pet.close()
     }
 

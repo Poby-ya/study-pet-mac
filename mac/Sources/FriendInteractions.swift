@@ -19,6 +19,17 @@ final class FriendInteractions {
     static let noteLength = 20 - 4 // the room's 20 characters less noteMark
     /// What the friend wrote, without noteMark.
     static func noteText(_ message: String) -> String { message.hasPrefix(noteMark) ? String(message.dropFirst(noteMark.count)) : message }
+    /// The notes I've received, kept in settings ("notes") so all can be read again: oldest first, the
+    /// last 20, each "ms\tfrom\ttext\tread" joined by U+001E (names and texts are cleaned of control characters).
+    typealias Received = (at: Int64, from: String, text: String, read: Bool)
+    static func inbox(_ stored: String) -> [Received] {
+        stored.components(separatedBy: "\u{1E}").compactMap { entry -> Received? in
+            let f = entry.components(separatedBy: "\t")
+            guard f.count == 4, let at = Int64(f[0]) else { return nil }
+            return (at, f[1], f[2], f[3] == "1")
+        }
+    }
+    static func inbox(_ notes: [Received]) -> String { notes.suffix(20).map { "\($0.at)\t\($0.from)\t\($0.text)\t\($0.read ? 1 : 0)" }.joined(separator: "\u{1E}") }
     static let whatStudy = "뭐 공부해 ?"
     static let thanks = "고마워 !"
     static func celebration(_ hours: Int) -> String { "\(hours)시간 달성 축하해 !" }

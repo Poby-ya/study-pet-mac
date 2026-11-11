@@ -154,6 +154,8 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.rightSeatmateClicked = { [unowned self] in self.pokeSeatmate("seatmateRight") }
         pet.visitorClicked = { [unowned self] in self.sendThanks() }
         pet.newsClicked = { [unowned self] in self.sendThanks() }
+        pet.noteBellClicked = { [unowned self] in self.openNote(self.inbox.firstIndex { !$0.read } ?? -1) }
+        pet.unreadNotes = inbox.filter { !$0.read }.count
         pet.worriedAbout = { [unowned self] name, minutes in
             if self.state == .off { return }
             self.news = Room.withSubjectMarker(name) + " \(minutes)분째 졸고 있어요"; self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
@@ -749,6 +751,23 @@ final class AppController: NSObject, NSMenuDelegate {
         return seats
     }
 
+    private var inbox: [FriendInteractions.Received] { FriendInteractions.inbox(Settings.get("notes")) }
+    private func keep(_ notes: [FriendInteractions.Received]) {
+        safely("쪽지 저장") { try Settings.set("notes", FriendInteractions.inbox(notes)) }
+        pet.unreadNotes = inbox.filter { !$0.read }.count
+        pet.redraw()
+    }
+
+    /// Opens a received note as the handwritten post-it, and marks it read.
+    private func openNote(_ index: Int) {
+        var notes = inbox
+        guard notes.indices.contains(index) else { return }
+        notes[index].read = true
+        keep(notes)
+        pet.showNote(to: nickname, body: notes[index].text, from: notes[index].from)
+    }
+    @objc private func openNoteItem(_ sender: NSMenuItem) { if let index = sender.representedObject as? Int { openNote(index) } }
+
     /// 쪽지 남기기: written by hand, up to the room's 20 characters with noteMark.
     @objc private func leaveNote(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) else { return }
@@ -817,10 +836,13 @@ final class AppController: NSObject, NSMenuDelegate {
         if poke.message == FriendInteractions.updateNotice { updater.check() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let friendLook = members.first(where: { $0.id == poke.from })?.look ?? poke.look
-        // A note is brought over and stuck up above my desk until I click it off; it isn't a call to study.
+        // A note goes in the inbox and waits over my desk as 쪽지가 왔어요 ! until clicked open; it isn't a call to study.
         if FriendInteractions.isNote(poke.message) {
-            let to = nickname
-            pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side, arrived: { [weak self] in self?.pet.showNote(to: to, body: FriendInteractions.noteText(poke.message), from: poke.name) })
+            var notes = inbox
+            let received: FriendInteractions.Received = (poke.at, Room.cleanName(poke.name), Room.cleanName(FriendInteractions.noteText(poke.message), max: 20), false)
+            // The same poke can come twice on a reconnect.
+            if !notes.contains(where: { $0.at == received.at && $0.from == received.from && $0.text == received.text }) { notes.append(received); keep(notes) }
+            pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side)
             return
         }
         let text = "\(poke.name) : \(poke.message)"
@@ -930,6 +952,17 @@ final class AppController: NSObject, NSMenuDelegate {
                 let call = NSMenuItem(title: friend.name, action: nil, keyEquivalent: ""); call.submenu = actions; calls.addItem(call)
             }
             let callItem = NSMenuItem(title: "친구 부르기", action: nil, keyEquivalent: ""); callItem.submenu = calls; share.addItem(callItem)
+            let received = inbox
+            if !received.isEmpty {
+                let notes = NSMenu()
+                let day = DateFormatter(); day.dateFormat = "M/d"
+                for (index, n) in received.enumerated().reversed() {
+                    let entry = item("\(n.read ? "" : "● ")\(n.from) · \(n.text) (\(day.string(from: Date(timeIntervalSince1970: Double(n.at) / 1000))))", #selector(openNoteItem(_:)))
+                    entry.representedObject = index; notes.addItem(entry)
+                }
+                let unread = received.filter { !$0.read }.count
+                let notesItem = NSMenuItem(title: unread > 0 ? "받은 쪽지 (\(unread)장 안 읽음)" : "받은 쪽지", action: nil, keyEquivalent: ""); notesItem.submenu = notes; share.addItem(notesItem)
+            }
             share.addItem(item("초대 코드 복사", #selector(copyInvite)))
             share.addItem(item("방 나가기", #selector(leaveRoom)))
         } else {
