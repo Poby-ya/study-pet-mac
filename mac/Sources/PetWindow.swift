@@ -904,7 +904,7 @@ final class PetWindow: NSPanel {
         open.clip()
         Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: scene == Sprites.christmasScene ? 3 : season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         let passing = skyNow(clock())
-        Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: passing.weather, kind: passing.kind, phase: passing.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
+        Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: passing.weather, kind: passing.kind, phase: passing.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale, frame: windowFrame)
         NSGraphicsContext.restoreGraphicsState()
     }
 

@@ -114,8 +114,8 @@ enum SelfTest {
         save(render(NSSize(width: 4 * 196, height: 2 * 110)) {
             let cases: [(Int, Int, Int, Int, Double, Double)] = [(2, 0, 1, 0, 0, 3.3), (0, 3, 2, 0, 0, 0), (0, 1, 3, 0, 0, 5.1), (2, 2, 0, 1, 0.45, 1), (2, 0, 0, 2, 0.5, 2), (3, 2, 0, 3, 0.4, 1), (2, 1, 1, 4, 0.3, 4), (0, 2, 0, 5, 0.5, 1)]
             for (i, c) in cases.enumerated() {
-                Sprites.drawWindow(98, 55, sky: c.0, season: c.1, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2)
-                Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2)
+                Sprites.drawWindow(98, 55, sky: c.0, season: c.1, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 5)
+                Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 5)
             }
         }, out, "weather.png")
         save(render(NSSize(width: 624,height: 630)) {

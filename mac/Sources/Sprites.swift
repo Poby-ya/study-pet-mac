@@ -674,6 +674,12 @@ enum Sprites {
                 if let glow { put(x, y, at(glow, x + ox, y + oy)) }
             }
         }
+        applyFrame(&grid, w, h, frame)
+        return grid.map { String($0) }
+    }
+
+    /// The bars, shutters, arch and sashes of a frame over `grid`; the view shows through everything else.
+    private static func applyFrame(_ grid: inout [[Character]], _ w: Int, _ h: Int, _ frame: Int) {
         let style = frames[frame], L = style.shutter, R = w - 1 - style.shutter
         if style.pane > 0 {
             let panes = max(1, round(Double(R - L - 1) / Double(style.pane)))
@@ -708,7 +714,13 @@ enum Sprites {
                 if i == 0 || i == s || i == mid { for y in top...bottom { grid[y][x] = i == mid ? "|" : "\"" } }
             } }
         }
-        return grid.map { String($0) }
+    }
+
+    /// Where the glass is (true) under a frame, so weather and passers-by stay behind the bars.
+    static func glass(_ w: Int, _ h: Int, frame: Int) -> [[Bool]] {
+        var grid = Array(repeating: Array(repeating: Character(" "), count: w), count: h)
+        applyFrame(&grid, w, h, frame)
+        return grid.map { $0.map { $0 == " " } }
     }
 
     static func isWindowColor(_ c: Character, sky: Int, season: Int) -> Bool { windowPalettes[sky][season][c] != nil }
@@ -755,12 +767,14 @@ enum Sprites {
         let phase = (unixSeconds - Double(slot * 7200 + Int64(h % 7100))) / (kind == 5 ? 4 : 24)
         return phase >= 0 && phase < 1 ? (kind, phase) : (0, 0)
     }
-    static func weatherPixels(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double) -> [(x: Int, y: Int, c: Character)] {
+    static func weatherPixels(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double, frame: Int = -1) -> [(x: Int, y: Int, c: Character)] {
         var dots: [(x: Int, y: Int, c: Character)] = []
-        func dot(_ x: Int, _ y: Int, _ c: Character) { if x >= 1 && x < w - 1 && y >= 1 && y < h - 1 { dots.append((x, y, c)) } }
+        let glass = frame >= 0 ? Self.glass(w, h, frame: frame) : nil
+        func dot(_ x: Int, _ y: Int, _ c: Character) { if x >= 1 && x < w - 1 && y >= 1 && y < h - 1 && (glass?[y][x] ?? true) { dots.append((x, y, c)) } }
         func fl(_ v: Double) -> Int { Int(v.rounded(.down)) }
         if weather == 1 { for i in 0..<(w * h / 70) { let x = i * 37 % (w - 4) + 2, y = fl(Double(i * 53) + t * Double(9 + i % 3 * 2)) % (h - 4) + 1; dot(x, y, "S"); dot(x, y + 1, "S") } }
-        if weather == 2 { for y in 1..<(h - 1) { for x in 1..<(w - 1) where (x * 3 + y * 5) % 11 == 0 && (x + y * 7) % 13 != 0 { dot(x, y, "w") } } }
+        // Condensation gathers at the edges and leaves the middle of the view clear.
+        if weather == 2 { for y in 1..<(h - 1) { for x in 1..<(w - 1) { let edge = min(x, y, w - 1 - x, h - 1 - y); if hash(Int64(x * 73 + y * 151 + 7)) % UInt32(edge < 3 ? 3 : edge < 7 ? 10 : 36) == 0 { dot(x, y, "w") } } } }
         if weather == 3 {
             for i in 0..<max(3, w * h / 300) where fl(t * 1.5 + Double(i * 7)) % 4 != 0 {
                 dot(i * 41 % (w - 6) + 3 + fl(sin(t * 0.6 + Double(i)) * 3 + 0.5), h / 2 + i * 17 % max(1, h / 2 - 3) + fl(cos(t * 0.8 + Double(i * 2)) * 2 + 0.5), "Y")
@@ -805,8 +819,8 @@ enum Sprites {
         if s < 14 { return (Int((s * 2).rounded(.down)) % 2 == 0 ? "CatSitA" : "CatSitB", spot) }
         return (walk, spot + (1 - spot) * (s - 14) / 8)
     }
-    static func drawWeather(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double, left: CGFloat, top: CGFloat, scale: CGFloat) {
-        for p in weatherPixels(w, h, weather: weather, kind: kind, phase: phase, t: t) {
+    static func drawWeather(_ w: Int, _ h: Int, weather: Int, kind: Int, phase: Double, t: Double, left: CGFloat, top: CGFloat, scale: CGFloat, frame: Int = -1) {
+        for p in weatherPixels(w, h, weather: weather, kind: kind, phase: phase, t: t, frame: frame) {
             palette[p.c]?.setFill()
             NSRect(x: left + CGFloat(p.x) * scale, y: top + CGFloat(p.y) * scale, width: scale, height: scale).fill()
         }

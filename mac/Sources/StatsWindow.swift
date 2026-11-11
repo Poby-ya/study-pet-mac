@@ -57,6 +57,7 @@ final class StatsWindow: NSWindow {
 
         tabs.frame = NSRect(x: 8, y: 84, width: 764, height: 448)
         tabs.autoresizingMask = [.width, .height]
+        tabs.tabViewBorderType = .none // the cream window shows through instead of the grey bezel
 
         periodStarts = [today, week, month, .distantPast]
         let subjects = FlippedView(frame: NSRect(x: 0, y: 0, width: 740, height: 400))
