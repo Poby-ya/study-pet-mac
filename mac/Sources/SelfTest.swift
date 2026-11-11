@@ -136,7 +136,7 @@ enum SelfTest {
         Records.folder = out.appendingPathComponent("data")
         try? FileManager.default.removeItem(at: Records.folder)
 
-        check(HelpWindow.sections().count == 5, "help: five offline sections are bundled")
+        check(HelpWindow.sections().count == 8, "help: eight offline sections are bundled (three added in v0.7)")
         checkCustomization(out)
         checkRevision(out)
         checkRecords()
@@ -533,7 +533,7 @@ enum SelfTest {
         for id in [invite.roomId, second] {
             try? b.select(id)
             check(waitFor { b.boardMembers.contains { $0.id == friend && $0.minutes == 17 } }, "multi-room: one elapsed time is mirrored to every allowed room")
-            check(b.boardMembers.contains { $0.id == owner }, "multi-room: the owner appears in all rooms")
+            check(waitFor { b.boardMembers.contains { $0.id == owner } }, "multi-room: the owner appears in all rooms") // waits: the owner's presence can arrive after the friend's
         }
         check(Set(seen.map(\.id)).count == seen.count, "multi-room: shared members are deduplicated")
         // The first optional desk write fails; an identical heartbeat must repair it.
