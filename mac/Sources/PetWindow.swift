@@ -181,6 +181,9 @@ final class PetWindow: NSPanel {
     var rightSeatmate: () -> Seat? = { nil }
     /// The chalkboard; nil hides the whole classroom background.
     var board: () -> (title: String, lines: [String])? = { nil }
+    /// The D-day the owner set for the room on the board; it comes before the one kept on this device.
+    var roomDday: () -> String = { "" }
+    var boardDday: String { let dday = roomDday(); return dday.isEmpty ? Settings.get("dday") : dday }
 
     var seatmateClicked: () -> Void = {}
     var rightSeatmateClicked: () -> Void = {}
@@ -952,7 +955,7 @@ final class PetWindow: NSPanel {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: now)
         let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
         let season = seasonNow(now), sky = Self.skyAt(now), scene = windowScene
-        let key = "\(canvasSize)|\(title)|\(lines)|\(sky)|\(season)|\(scene)|\(drift)|\(swing ? 0 : minute)|\(boardFactor)|\(Calendar.current.startOfDay(for: now))|\(Settings.get("dday"))"
+        let key = "\(canvasSize)|\(title)|\(lines)|\(sky)|\(season)|\(scene)|\(drift)|\(swing ? 0 : minute)|\(boardFactor)|\(Calendar.current.startOfDay(for: now))|\(boardDday)"
         if roomImage == nil || key != roomKey {
             roomKey = key
             windowGlass = windowRect() ?? .zero
@@ -1047,7 +1050,7 @@ final class PetWindow: NSPanel {
                      in: NSRect(x: textX, y: slate.minY + 6 + CGFloat(n) * boardLine, width: textW, height: boardLine), align: .center)
         }
         // The corner: today's date, and under it the D-day kept on this device. Clicks still switch rooms.
-        for (n, text) in Self.boardCorner(clock(), Settings.get("dday")).enumerated() {
+        for (n, text) in Self.boardCorner(clock(), boardDday).enumerated() {
             drawLine(text, font: .boldSystemFont(ofSize: 11 * boardFactor), color: n == 0 ? faint : Sprites.color(0xF7D774), in: NSRect(x: slate.minX, y: slate.minY + 4 + CGFloat(n) * 14 * boardFactor, width: slate.width - 8, height: 14 * boardFactor), align: .right)
         }
         let cellWidth = textW / CGFloat(columns)

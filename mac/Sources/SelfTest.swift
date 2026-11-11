@@ -897,6 +897,14 @@ enum SelfTest {
         b.poke(owner, ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": "일어나 !", "at": Room.serverTime])
         check(waitFor { pokeAtA != nil }, "network: A should be poked (B: \(b.error))")
         check(pokeAtA?.from == friend && pokeAtA?.message == "일어나 !" && pokeAtA?.look.code == "b120310", "network: the poke arrives intact")
+        // Notes each get their own entry: two in a row both reach A, once each. The owner's D-day for the room arrives too.
+        var notesAtA: [Poke] = []
+        a.poked = { poke in if FriendInteractions.isNote(poke.message) { notesAtA.append(poke) } else { pokeAtA = poke } }
+        for line in ["첫 쪽지", "둘째 쪽지"] { b.leaveNote(owner, ["from": friend, "name": "다라", "look": "boy", "style": "b120310", "message": FriendInteractions.noteMark + line, "at": Room.serverTime]) }
+        b.flush()
+        check(waitFor { notesAtA.count >= 2 } && Set(notesAtA.map { FriendInteractions.noteText($0.message) }) == ["첫 쪽지", "둘째 쪽지"] && notesAtA.count == 2, "notes: two notes in a row both arrive, once each (\(notesAtA.map { $0.message }))")
+        ownerWrites("PUT", "rooms/\(invite.roomId)/dday", "기말|2026-12-23")
+        check(waitFor { b.dday == "기말|2026-12-23" }, "dday: the room's D-day reaches its members (\(b.dday))")
 
         // What the Windows owner does on naming the room and moving the friend to another one.
         ownerWrites("PUT", "rooms/\(invite.roomId)/name", "1반")

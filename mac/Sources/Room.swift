@@ -227,6 +227,8 @@ actor Auth {
 /// rooms/{room}/approved/{uid}  = true (written by the owner)
 /// rooms/{room}/members/{uid}   = { name, look, style, state, subject, minutes, updated }
 /// rooms/{room}/pokes/{to}      = { from, name, look, style, message, at }
+/// rooms/{room}/notes/{to}/{id} = the same, one per note (v0.7.1): none is overwritten while the app is off
+/// rooms/{room}/dday            = "name|yyyy-MM-dd", the owner's D-day for this room's board (v0.7.1)
 /// requests/{room}/{uid}        = { name, realName, referrer, look, style, at }
 private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
@@ -269,6 +271,9 @@ final class Room: @unchecked Sendable {
 
     /// The room's name as the owner set it; "" until known. Main thread.
     private(set) var name = ""
+    /// The owner's D-day for this room's board ("name|yyyy-MM-dd"), or "". Main thread.
+    private(set) var dday = ""
+    private var notesSeen = Set<String>() // each note is shown once, even before its delete lands; room listener only
 
     /// Why the last request failed, or "" while things work. Main thread.
     private var readErrors: [String:String] = [:]
@@ -305,6 +310,8 @@ final class Room: @unchecked Sendable {
 
 
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
+    /// A note in its own entry, so notes left while the friend's app is off all wait for them.
+    func leaveNote(_ to: String, _ note: [String: Any]) { write("PUT", "\(roomPath)/notes/\(to)/\(Room.randomId(20))", note) }
 
     func leave() { write("DELETE", "\(roomPath)/members/\(me)", nil) }
 
@@ -463,8 +470,14 @@ final class Room: @unchecked Sendable {
     private func applyRoom(_ type: String, _ json: String) {
         guard let e = Room.event(json) else { return }
         tree = Room.applyEvent(tree, type, e.path, e.data)
-        let roomName = Room.str(tree, "name")
+        let roomName = Room.str(tree, "name"), roomDday = Room.str(tree, "dday")
         let members = Room.members(tree)
+        // Every note waiting for me, oldest first; each taken off the room once read.
+        var notes: [Poke] = []
+        for (id, note) in Room.notesFor(tree, me) where notesSeen.insert(id).inserted {
+            notes.append(note)
+            write("DELETE", "\(roomPath)/notes/\(me)/\(id)", nil, quiet: true)
+        }
         var waiting = Room.pokeFor(tree, me)
         let fresh = waiting != nil && Room.deliverPoke(&waiting!, lastPokeAt: lastPokeAt, now: Int64(Date().timeIntervalSince1970 * 1000))
         let poke = waiting
@@ -477,9 +490,16 @@ final class Room: @unchecked Sendable {
         DispatchQueue.main.async {
             if self.disposed { return }
             self.name = roomName
+            self.dday = roomDday
             self.changed?(members)
+            for note in notes { self.poked?(note) }
             if fresh, let poke { self.poked?(poke) }
         }
+    }
+
+    static func notesFor(_ tree: [String: Any], _ me: String) -> [(id: String, note: Poke)] {
+        let waiting = (tree["notes"] as? [String: Any])?[me] as? [String: Any] ?? [:]
+        return waiting.compactMap { entry -> (id: String, note: Poke)? in (entry.value as? [String: Any]).map { (id: entry.key, note: toPoke($0)) } }.sorted { $0.note.at < $1.note.at }
     }
 
     static func nonNull(_ value: Any?) -> Any? { value is NSNull ? nil : value }
@@ -513,13 +533,16 @@ final class Room: @unchecked Sendable {
         let versions = tree["versions"] as? [String: String] ?? [:]
         let desks = tree["desks"] as? [String: Any] ?? [:]
         let pokes = tree["pokes"] as? [String: Any] ?? [:]
+        let notes = tree["notes"] as? [String: Any] ?? [:]
         var result = all.compactMap { (id, value) -> Member? in
             guard let m = value as? [String: Any] else { return nil }
             let desk = Int(num(desks, id))
             let ok = desk >= 0 && desk < 100
             return Member(id: id, name: str(m, "name"), subject: str(m, "subject"), state: str(m, "state"), girl: str(m, "look") == "girl",
                           customization:customizations[id],extra: wardrobe[id] ?? "", version: versions[id] ?? "", style: str(m, "style"), minutes: Int(num(m, "minutes")), updated: num(m, "updated"),
-                          drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1, waiting: (pokes[id] as? [String: Any]).map { str($0, "message") } ?? "")
+                          drink: ok ? Sprites.Drink(rawValue: desk % 10) ?? .none : .none, laptop: ok && desk / 10 == 1,
+                          // A waiting note first: it's what the desk shows (a post-it).
+                          waiting: ((notes[id] as? [String: Any])?.values.compactMap { $0 as? [String: Any] }.first ?? pokes[id] as? [String: Any]).map { str($0, "message") } ?? "")
         }
         for (id, value) in tree["names"] as? [String: Any] ?? [:] {
             if let name = value as? String, !result.contains(where: { $0.id == id }) { result.append(Member(id: id, name: name)) }
@@ -543,8 +566,10 @@ final class Room: @unchecked Sendable {
 
     static func pokeFor(_ tree: [String: Any], _ me: String) -> Poke? {
         guard let p = (tree["pokes"] as? [String: Any])?[me] as? [String: Any] else { return nil }
-        return Poke(from: str(p, "from"), name: str(p, "name"), message: str(p, "message"), girl: str(p, "look") == "girl",
-                    style: str(p, "style"), at: num(p, "at"))
+        return toPoke(p)
+    }
+    private static func toPoke(_ p: [String: Any]) -> Poke {
+        Poke(from: str(p, "from"), name: str(p, "name"), message: str(p, "message"), girl: str(p, "look") == "girl", style: str(p, "style"), at: num(p, "at"))
     }
 
     // Other people's data: nothing read back is trusted to have the right type or size.

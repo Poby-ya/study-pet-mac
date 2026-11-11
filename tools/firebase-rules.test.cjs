@@ -98,6 +98,29 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertFails(set(ref(guest, `rooms/${second}/pokes/outsider`), poke));
     await assertFails(set(ref(guest, `rooms/${second}/pokes/host`), null));
     await assertSucceeds(set(ref(host, `rooms/${second}/pokes/host`), null));
+    // Notes: each its own entry from me to someone in the room, never overwritten; the receiver or the sender takes it away.
+    const note = { from: 'guest', name: '친구', look: 'girl', style: 'g213402', message: '쪽지: 내일 봐 !', at: serverTimestamp() };
+    const notes = `rooms/${first}/notes/host/`;
+    await assertSucceeds(set(ref(guest, notes + 'note000000000000001'), note));
+    await assertSucceeds(set(ref(guest, notes + 'note000000000000002'), note));
+    await assertFails(set(ref(guest, notes + 'note000000000000001'), note));
+    await assertFails(set(ref(guest, notes + 'note000000000000003'), { ...note, from: 'host' }));
+    await assertFails(set(ref(guest, `rooms/${first}/notes/outsider/note000000000000003`), note));
+    await assertFails(set(ref(outsider, notes + 'note000000000000003'), { ...note, from: 'outsider' }));
+    await assertFails(set(ref(guest, notes + 'note000000000000003'), { ...note, message: '가'.repeat(21) }));
+    await assertFails(set(ref(guest, notes + 'NOTE!'), note));
+    await assertFails(set(ref(guest, notes + 'note000000000000003'), { ...note, extra: 1 }));
+    assert.equal(Object.keys((await get(ref(host, `rooms/${first}/notes/host`))).val()).length, 2);
+    await assertFails(set(ref(other, notes + 'note000000000000001'), null));
+    await assertSucceeds(set(ref(host, notes + 'note000000000000001'), null));
+    await assertSucceeds(set(ref(guest, notes + 'note000000000000002'), null));
+    // The room's D-day: the owner's, in the board's own "name|yyyy-MM-dd".
+    await assertSucceeds(set(ref(host, `rooms/${first}/dday`), '기말|2026-12-23'));
+    assert.equal((await get(ref(guest, `rooms/${first}/dday`))).val(), '기말|2026-12-23');
+    await assertFails(set(ref(guest, `rooms/${first}/dday`), '기말|2026-12-23'));
+    await assertFails(set(ref(host, `rooms/${first}/dday`), '기말 12/23'));
+    await assertFails(set(ref(host, `rooms/${first}/dday`), '아주아주긴이름입니다|2026-12-23'));
+    await assertSucceeds(set(ref(host, `rooms/${first}/dday`), null));
     await assertFails(set(ref(guest, `rooms/${first}/entry`), second));
     await assertFails(set(ref(host, `rooms/${first}/entry`), foreign));
     await assertSucceeds(set(ref(host, `rooms/${first}/entry`), second));

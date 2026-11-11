@@ -156,6 +156,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.newsClicked = { [unowned self] in self.sendThanks() }
         pet.noteBellClicked = { [unowned self] in self.openNote(self.inbox.firstIndex { !$0.read } ?? -1) }
         pet.unreadNotes = inbox.filter { !$0.read }.count
+        pet.roomDday = { [unowned self] in self.room?.dday ?? "" }
         pet.worriedAbout = { [unowned self] name, minutes in
             if self.state == .off { return }
             self.news = Room.withSubjectMarker(name) + " \(minutes)분째 졸고 있어요"; self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
@@ -538,7 +539,7 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func askDday() {
         let current = Settings.get("dday").components(separatedBy: "|")
         var text = current.count == 2 ? current[0] + " " + current[1] : ""
-        var prompt = "칠판 오른쪽 위에 보일 날을 적어 주세요. 이 기기에만 저장돼요.\n예: 기말 12/23, 수능 2026-11-19  (지우려면 비워 두세요)"
+        var prompt = "칠판 오른쪽 위에 보일 날을 적어 주세요. 이 기기에만 저장돼요.\n방장이 그 방의 D-day를 정했으면 그 방 칠판에는 그게 보여요.\n예: 기말 12/23, 수능 2026-11-19  (지우려면 비워 두세요)"
         while true {
             let alert = NSAlert(); alert.messageText = "칠판 D-day"; alert.informativeText = prompt
             alert.addButton(withTitle: "확인"); alert.addButton(withTitle: "취소")
@@ -812,7 +813,8 @@ final class AppController: NSObject, NSMenuDelegate {
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
         let message = chosen ?? interactions.message(mate, here: here, current: Updater.current, me: nickname)
-        room.poke(mate.id, ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime])
+        let sent: [String: Any] = ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime]
+        if FriendInteractions.isNote(message) && FriendInteractions.keepsNotes(mate.version) { room.leaveNote(mate.id, sent) } else { room.poke(mate.id, sent) }
         pet.goVisit(mate.name, message: !here ? message + "\n" + Room.offPokeHint : FriendInteractions.isSeatInvite(message) ? message + "\n받아 줬는지는 알 수 없어요" : message,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0,
                     retort: !here || mate.state != "studying" ? "" : FriendInteractions.isWhatStudy(message) ? FriendInteractions.answer(mate.subject, mate.minutes) : FriendInteractions.isBorrow(message) ? FriendInteractions.handOver

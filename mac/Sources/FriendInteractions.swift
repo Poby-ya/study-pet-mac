@@ -17,6 +17,13 @@ final class FriendInteractions {
     static let notes = ["오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !", "내일 봐 !"]
     static let noteMark = "쪽지: ", noteArrived = "쪽지가 왔어요 !"
     static let noteLength = 20 - 4 // the room's 20 characters less noteMark
+    /// From v0.7.1 (and the web app at that protocol) notes go in their own entries and none is lost; older apps
+    /// only read the one poke slot.
+    static func keepsNotes(_ version: String) -> Bool {
+        let parts = version.split(separator: ".").map { Int($0) }
+        guard parts.count == 3, !parts.contains(nil) else { return false }
+        return parts.map { $0! }.lexicographicallyPrecedes([0, 7, 1]) == false
+    }
     /// What the friend wrote, without noteMark.
     static func noteText(_ message: String) -> String { message.hasPrefix(noteMark) ? String(message.dropFirst(noteMark.count)) : message }
     /// The notes I've received, kept in settings ("notes") so all can be read again: oldest first, the

@@ -74,6 +74,39 @@
             }
           }
         },
+        "notes": {
+          "$to": {
+            "$note": {
+              ".write": "auth != null && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true && ((newData.exists() && !data.exists() && newData.child('from').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) && root.child('rooms').child($room).child('approved').child($to).val() == true) || (!newData.exists() && ((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $to || data.child('from').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid))))",
+              ".validate": "$note.matches(/^[a-z0-9]{16,40}$/) && newData.hasChildren(['from', 'name', 'look', 'message', 'at'])",
+              "from": {
+                ".validate": "newData.isString()"
+              },
+              "name": {
+                ".validate": "newData.isString() && newData.val().length <= 12"
+              },
+              "look": {
+                ".validate": "newData.val() == 'boy' || newData.val() == 'girl'"
+              },
+              "style": {
+                ".validate": "newData.isString() && newData.val().matches(/^[bg][0-9]{6}$/)"
+              },
+              "message": {
+                ".validate": "newData.isString() && newData.val().length <= 20"
+              },
+              "at": {
+                ".validate": "newData.val() == now"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
+        },
+        "dday": {
+          ".write": "auth != null && root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
+          ".validate": "newData.isString() && newData.val().length >= 12 && newData.val().length <= 19 && newData.val().matches(/^.+[|][0-9]{4}-[0-9]{2}-[0-9]{2}$/)"
+        },
         "desks": {
           "$uid": {
             ".write": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid && root.child('rooms').child($room).child('approved').child($uid).val() == true",

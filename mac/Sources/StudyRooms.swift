@@ -18,6 +18,8 @@ final class StudyRooms {
         channels.map { (id: $0.key, name: $0.value.name.isEmpty ? "방 · " + String($0.key.suffix(4)) : $0.value.name) }.sorted { $0.name == $1.name ? $0.id < $1.id : $0.name < $1.name }
     }
     var name: String { channels[selected]?.name ?? "" }
+    /// The D-day the owner set for the board on show, or "".
+    var dday: String { channels[selected]?.dday ?? "" }
     var error: String { setupError.isEmpty ? channels.values.first(where: { !$0.error.isEmpty })?.error ?? "" : setupError }
     var boardMembers: [Member] { snapshots[selected] ?? [] }
 
@@ -93,8 +95,10 @@ final class StudyRooms {
         if list.count > 1 { try select(list[((list.firstIndex { $0.id == selected } ?? -1) + 1) % list.count].id) }
     }
     func publish(_ value: [String: Any]) { status = value; channels.values.forEach { $0.publish(value) } }
-    func poke(_ to: String, _ value: [String: Any]) {
-        if let id = snapshots.first(where: { $0.value.contains(where: { $0.id == to }) })?.key { channels[id]?.poke(to, value) }
+    func poke(_ to: String, _ value: [String: Any]) { channel(of: to)?.poke(to, value) }
+    func leaveNote(_ to: String, _ value: [String: Any]) { channel(of: to)?.leaveNote(to, value) }
+    private func channel(of to: String) -> Room? {
+        snapshots.first(where: { $0.value.contains(where: { $0.id == to }) }).flatMap { channels[$0.key] }
     }
     func leave() { channels.values.forEach { $0.leave() } }
     func flush() {
