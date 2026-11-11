@@ -112,12 +112,24 @@ enum SelfTest {
         }, out, "window-variants.png")
         // Weather and passers-by, compared pixel for pixel with the Windows sheet.
         save(render(NSSize(width: 4 * 196, height: 2 * 110)) {
-            let cases: [(Int, Int, Int, Int, Double, Double)] = [(2, 0, 1, 0, 0, 3.3), (0, 3, 2, 0, 0, 0), (0, 1, 3, 0, 0, 5.1), (2, 2, 0, 1, 0.45, 1), (2, 0, 0, 2, 0.5, 2), (3, 2, 0, 3, 0.4, 1), (2, 1, 1, 4, 0.3, 4), (0, 2, 0, 5, 0.5, 1)]
+            let cases: [(Int, Int, Int, Int, Double, Double)] = [(2, 0, 1, 0, 0, 3.3), (0, 3, 0, 0, 0, 0), (0, 1, 3, 0, 0, 5.1), (2, 2, 0, 1, 0.45, 1), (2, 0, 0, 2, 0.5, 2), (3, 2, 0, 3, 0.4, 1), (2, 1, 1, 4, 0.3, 4), (0, 2, 0, 5, 0.5, 1)]
             for (i, c) in cases.enumerated() {
-                Sprites.drawWindow(98, 55, sky: c.0, season: c.1, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 5)
-                Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 5)
+                Sprites.drawWindow(98, 55, sky: c.0, season: c.1, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 4)
+                Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 4)
             }
         }, out, "weather.png")
+        // A friend who called peeks from the screen's corner: rising, looking left and right, waving, standing, ducking.
+        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.25, 1, 2, 4, 4.3, 10, 29.8]
+        save(render(NSSize(width: peekSize.width * CGFloat(peekTimes.count), height: peekSize.height)) {
+            for (i, t) in peekTimes.enumerated() {
+                NSGraphicsContext.saveGraphicsState()
+                let shift = NSAffineTransform()
+                shift.translateX(by: peekSize.width * CGFloat(i), yBy: 0)
+                shift.concat()
+                PeekWindow.paint(Look.parse("g213402", girl: true), peekLine, t: t, size: peekSize)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }, out, "peek.png")
         save(render(NSSize(width: 624,height: 630)) {
             for drink in 1...5 { for f in 0..<4 { Sprites.draw([Sprites.Pose.teaReach,.teaHold,.teaLift,.teaSip][f], Look(girl: true,1,0,2,2,0,0), left: CGFloat(f*156),top: CGFloat((drink-1)*126),scale: 3,decor: Sprites.Decor(drink: Sprites.Drink(rawValue: drink)!,laptop: true,seed: 7)) } }
         }, out, "tea.png")
@@ -282,7 +294,7 @@ enum SelfTest {
         let quietPoses: [Sprites.Pose] = [.writeA, .writeB, .writeC, .writeD, .writePause, .readA, .readB, .pageLift, .turnPage, .pageSettle]
         check((0..<1920).allSatisfy { quietPoses.contains(Routine.focusPose($0)) && quietPoses.contains(Routine.focusPose($0, seed: 7)) },"focus: only writing, reading and turning a page")
         check(PetWindow.cheeredSide(10, -1, "민지에게\n파이팅 !") == -1 && PetWindow.cheeredSide(2, -1, "민지에게\n파이팅 !") == 0 && PetWindow.cheeredSide(10, 1, "민지에게\n일어나 !") == 0 && PetWindow.cheeredSide(-1, 1, "") == 0 && PetWindow.cheeredSide(10, 1, "구미에게\n사랑해 !") == 1, "cheer: a friend's eyes light up only once my pet has arrived with a cheer")
-        check(Sprites.windowFrames == 5, "window: the dense lattice frame stays removed")
+        check(Sprites.windowFrames == 4, "window: the dense lattice and arched frames stay removed")
         let colon = Customization.digital(Array(repeating: String(repeating: "1", count: 31), count: 18), Date())
         check(Array(colon[7])[15] == "Y" && Array(colon[9])[15] == "Y" && Array(colon[8])[15] == "1", "clock: the digital face shows its colon")
         for f in 0..<Sprites.windowFrames { check(Sprites.windowGrid(98, 52, sky: 2, season: 1, scene: 0, drift: 0, frame: f).count == 52,"window: every frame style draws") }

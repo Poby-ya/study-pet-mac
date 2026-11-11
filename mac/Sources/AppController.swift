@@ -46,6 +46,11 @@ final class AppController: NSObject, NSMenuDelegate {
     private static let newsSeconds: TimeInterval = 15
 
     private let pet = PetWindow()
+    private lazy var peek: PeekWindow = {
+        let window = PeekWindow(pet: pet)
+        window.answered = { [weak self] in self?.answerPoke() }
+        return window
+    }()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let hotkeys = Hotkeys()
@@ -866,6 +871,8 @@ final class AppController: NSObject, NSMenuDelegate {
         RunLoop.main.add(timer, forMode: .common)
         blink = timer
         statusItem.button?.image = Sprites.face(pet.look, dot: true)
+        // The dot is easy to miss; the friend stays peeking from the corner until I answer.
+        if !poke.missed { peek.peek(friendLook, text: text, delay: pet.minimized ? 0 : Travel.total / 4 + 0.5) }
     }
 
     @objc private func blinkFace() {
@@ -876,6 +883,7 @@ final class AppController: NSObject, NSMenuDelegate {
     private func clearWaitingPoke() {
         guard waitingPoke != nil else { return }
         waitingPoke = nil
+        peek.dismiss()
         blink?.invalidate()
         blink = nil
         statusItem.button?.image = Sprites.face(pet.look)

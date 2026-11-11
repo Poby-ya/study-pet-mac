@@ -484,10 +484,10 @@ enum Sprites {
     }
 
     /// A friend on their feet. `leftHand` waves with the other hand, the one a seated friend won't hide.
-    static func visitor(_ look: Look, _ pose: Visiting, alt: Bool, leftHand: Bool = false) -> [Layer] {
+    static func visitor(_ look: Look, _ pose: Visiting, alt: Bool, leftHand: Bool = false, eyes: String = "Open") -> [Layer] {
         let walking = pose == .walk || pose == .carry
         let left = leftHand && (pose == .wave || pose == .cheer)
-        let (back, head) = headLayers(look, "Open", walking ? "Small" : "Smile", 7, 0)
+        let (back, head) = headLayers(look, eyes, walking ? "Small" : "Smile", 7, 0)
         var layers = [Layer(body(look), 6, 16), Layer(legs(look, lifted: walking ? (alt ? 1 : 2) : 0), 6, 27)] + back
         let shoulderL = (9, 18), shoulderR = (21, 18)
         if walking {
@@ -648,8 +648,8 @@ enum Sprites {
 
     /// The classroom's window, w×h: the middle of its panorama, anchored at the sill (a taller
     /// window just shows more sky), inside a wooden frame. `drift` is how far the clouds have moved.
-    /// Window frames: pane width (0 = none), transom, arch, shutter width, open. One changes with each view.
-    private static let frames: [(pane: Int, transom: Bool, arch: Bool, shutter: Int, open: Bool)] = [(56, true, false, 0, false), (44, false, true, 0, false), (90, false, false, 0, false), (56, false, false, 9, false), (0, false, false, 0, true)]
+    /// Window frames: pane width (0 = none), transom, shutter width, open. One changes with each view.
+    private static let frames: [(pane: Int, transom: Bool, shutter: Int, open: Bool)] = [(56, true, 0, false), (90, false, 0, false), (56, false, 9, false), (0, false, 0, true)]
     static var windowFrames: Int { frames.count }
     static var windowScenes: Int { views.count }
     /// Snow falls past this view whatever the season.
@@ -678,7 +678,7 @@ enum Sprites {
         return grid.map { String($0) }
     }
 
-    /// The bars, shutters, arch and sashes of a frame over `grid`; the view shows through everything else.
+    /// The bars, shutters and sashes of a frame over `grid`; the view shows through everything else.
     private static func applyFrame(_ grid: inout [[Character]], _ w: Int, _ h: Int, _ frame: Int) {
         let style = frames[frame], L = style.shutter, R = w - 1 - style.shutter
         if style.pane > 0 {
@@ -695,15 +695,6 @@ enum Sprites {
             for a in [0, w - style.shutter] { for y in 0..<(h - 1) { for x in a..<(a + style.shutter) {
                 grid[y][x] = x == a || x == a + style.shutter - 1 || y == 0 || y == h - 2 ? "#" : y % 3 == 0 ? "|" : y % 3 == 1 ? "_" : "\""
             } } }
-        }
-        if style.arch {
-            let archTop = Int((Double(h) * 0.42).rounded(.down))
-            let a = Double(R - L) / 2, cx = Double(L + R) / 2, m = min(a, Double(archTop))
-            for y in 0...archTop { for x in L...R {
-                let ex = (Double(x) - cx) / a, ey = Double(y - archTop) / Double(archTop), e = (ex * ex + ey * ey).squareRoot(), d = (1 - e) * m
-                if e > 1 { grid[y][x] = "." } else if d < 1.2 { grid[y][x] = "#" } else if d < 2.4 && y < archTop { grid[y][x] = "|" }
-            } }
-            for x in (L + 1)..<R { grid[archTop][x] = "_"; grid[archTop + 1][x] = "|" }
         }
         if style.open {
             let s = max(8, Int((Double(R - L) * 0.15).rounded(.down))), mid = s / 2
@@ -758,8 +749,8 @@ enum Sprites {
         return Int((utc.date(from: c)!.timeIntervalSince1970 / 86400).rounded(.down))
     }
     static func rainDay(_ day: Int) -> Bool { hash(Int64(day)) % 5 == 0 }
-    /// 0 clear, 1 rain (spring to autumn, a day in five), 2 fogged glass (winter night and dawn), 3 fireflies.
-    static func weather(_ day: Int, season: Int, sky: Int) -> Int { season == 3 ? (sky <= 1 ? 2 : 0) : rainDay(day) ? 1 : season == 1 && sky == 0 ? 3 : 0 }
+    /// 0 clear, 1 rain (spring to autumn, a day in five), 3 fireflies; 2, the fogged glass, was taken out.
+    static func weather(_ day: Int, season: Int, sky: Int) -> Int { season == 3 ? 0 : rainDay(day) ? 1 : season == 1 && sky == 0 ? 3 : 0 }
     /// What crosses the sky now, about once in two hours: 1 plane, 2 birds, 3 balloon, 4 rainbow after rain, 5 shooting star.
     static func skyEvent(_ unixSeconds: Double, sky: Int, rainDay: Bool) -> (kind: Int, phase: Double) {
         let slot = Int64((unixSeconds / 7200).rounded(.down)), h = hash(slot + 977)
@@ -773,8 +764,6 @@ enum Sprites {
         func dot(_ x: Int, _ y: Int, _ c: Character) { if x >= 1 && x < w - 1 && y >= 1 && y < h - 1 && (glass?[y][x] ?? true) { dots.append((x, y, c)) } }
         func fl(_ v: Double) -> Int { Int(v.rounded(.down)) }
         if weather == 1 { for i in 0..<(w * h / 70) { let x = i * 37 % (w - 4) + 2, y = fl(Double(i * 53) + t * Double(9 + i % 3 * 2)) % (h - 4) + 1; dot(x, y, "S"); dot(x, y + 1, "S") } }
-        // Condensation gathers at the edges and leaves the middle of the view clear.
-        if weather == 2 { for y in 1..<(h - 1) { for x in 1..<(w - 1) { let edge = min(x, y, w - 1 - x, h - 1 - y); if hash(Int64(x * 73 + y * 151 + 7)) % UInt32(edge < 3 ? 3 : edge < 7 ? 10 : 36) == 0 { dot(x, y, "w") } } } }
         if weather == 3 {
             for i in 0..<max(3, w * h / 300) where fl(t * 1.5 + Double(i * 7)) % 4 != 0 {
                 dot(i * 41 % (w - 6) + 3 + fl(sin(t * 0.6 + Double(i)) * 3 + 0.5), h / 2 + i * 17 % max(1, h / 2 - 3) + fl(cos(t * 0.8 + Double(i * 2)) * 2 + 0.5), "Y")

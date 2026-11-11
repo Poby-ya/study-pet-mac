@@ -674,7 +674,6 @@ final class PetWindow: NSPanel {
             lastSeatMoment[i] = seatMomentNow
             let x = i == 0 ? seatX : rightX
             let lit = seat.here && !seat.dozing && !gone && arriving < 0 && (seat.look.customization?.on("lamp") ?? true)
-            if !gone && leavingTicks[i]>=12 && leavingTicks[i]<18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(leavingTicks[i])))}
             if lit { Sprites.drawLampGlow(left: x, top: floorY, scale: scale, lamp: seat.look.customization?.value("lamp") ?? 0, night: night) }
             let seed = Self.seatSeed(seat)
             let seatBlend = blendOf(i).track(pose, animationSeconds * 4)
@@ -690,7 +689,6 @@ final class PetWindow: NSPanel {
         }
         let myLamp = mood == .studying && (!outgoing || passingOut) && arrivalTick < 0 && (look.customization?.on("lamp") ?? true)
         if myLamp { lamps.append(myX); Sprites.drawLampGlow(left: myX, top: floorY, scale: scale, lamp: look.customization?.value("lamp") ?? 0, night: night) }
-        if mood == .leaving && moodSeconds*4>=12 && moodSeconds*4<18 {drawAwaySign(myX,lift:CGFloat(Departure.signLift(moodSeconds*4)))}
         let shownPose: Sprites.Pose = outgoing && !passingOut ? .empty : passingOut && outgoingTick < Travel.leave ? (outgoingSide < 0 ? .lookLeft : .lookRight) : myPose
         let myBlend = blendOf(-1).track(shownPose, animationSeconds * 4)
         Sprites.draw(shownPose, mood == .leaving ? departureLook ?? look : look, left: myX, top: floorY, scale: scale, alert: tapping && !pat, lift: tap && !pat ? 1 : 0,
@@ -774,7 +772,7 @@ final class PetWindow: NSPanel {
     private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
         if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
         if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}}
-        if tick>=12 {if tick>=18 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)))};if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:34,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
+        if tick>=12 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)));if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:34,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18
@@ -968,9 +966,7 @@ final class PetWindow: NSPanel {
         if windowGlass == .zero { return }
         // Whatever the season blows past the glass, behind the desks and in front of the view.
         NSGraphicsContext.saveGraphicsState()
-        var open = windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale)
-        if windowFrame == 1 { let arch = windowGlass.height * 0.42; open.origin.y += arch; open.size.height -= arch } // no petals in the arch's corners
-        open.clip()
+        windowGlass.insetBy(dx: 2 * scale, dy: 2 * scale).clip()
         Sprites.drawParticles(Int(windowGlass.width / scale), Int(windowGlass.height / scale), sky: sky, season: scene == Sprites.christmasScene ? 3 : season, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale)
         let passing = skyNow(clock())
         Sprites.drawWeather(Int(windowGlass.width / scale), Int(windowGlass.height / scale), weather: passing.weather, kind: passing.kind, phase: passing.phase, t: animationSeconds, left: windowGlass.minX, top: windowGlass.minY, scale: scale, frame: windowFrame)
