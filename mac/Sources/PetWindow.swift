@@ -890,7 +890,8 @@ final class PetWindow: NSPanel {
         let ink = Sprites.color(0x2B3A6E) // ballpoint blue
         let attributes: [NSAttributedString.Key: Any] = [.font: hand, .foregroundColor: ink]
         let text = rows.joined(separator: "\n") as NSString
-        let body = ceil(text.boundingRect(with: NSSize(width: w - 2 * pad, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: attributes).height)
+        let wrap = w - pad - 4 // slack past the rows' own width: a row that just fits must not wrap again inside a word
+        let body = ceil(text.boundingRect(with: NSSize(width: wrap, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: attributes).height)
         let h = strip + 6 + line + body + line + 10
         let box = NSRect(x: max(6, min(cx - w / 2, canvasSize.width - 6 - w)), y: bottom - h, width: w, height: h)
         NSGraphicsContext.saveGraphicsState()
@@ -907,7 +908,7 @@ final class PetWindow: NSPanel {
         Sprites.color(0xE9D05C).setFill(); back.fill()
         let y = strip + 6
         drawLine("To. " + n.to, font: small, color: ink, in: NSRect(x: pad, y: y, width: w - 2 * pad, height: line), align: .left)
-        text.draw(in: NSRect(x: pad, y: y + line, width: w - 2 * pad, height: body + 1), withAttributes: attributes)
+        text.draw(in: NSRect(x: pad, y: y + line, width: wrap, height: body + 1), withAttributes: attributes)
         drawLine("From. " + n.from, font: small, color: ink, in: NSRect(x: pad, y: y + line + body, width: w - pad - fold, height: line), align: .right)
         NSGraphicsContext.restoreGraphicsState()
         return box
