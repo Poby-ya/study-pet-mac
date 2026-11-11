@@ -153,7 +153,7 @@ enum SelfTest {
         save(render(NSSize(width: 4 * Sprites.width * 3, height: 3 * Sprites.height * 3)) {
             for i in 0..<12 {
                 let look = Look(girl: i % 2 == 0, i % 8, 0, i % 9, i % 10, 0, 1).withExtras("\(i % 4)\(i % 4)\(i % 3)\(i % 4)\(i % 2)\(i % 4)\(i % 4)")
-                Sprites.draw(.writeA, look, left: CGFloat(i % 4 * Sprites.width * 3), top: CGFloat(i / 4 * Sprites.height * 3), scale: 3, decor: Sprites.Decor(drink: .mug, laptop: i % 2 == 0, seed: i))
+                Sprites.draw(.writeA, look, left: CGFloat(i % 4 * Sprites.width * 3), top: CGFloat(i / 4 * Sprites.height * 3), scale: 3, decor: Sprites.Decor(drink: .mug, laptop: i % 2 == 0, seed: i, clock: Sprites.sheetClock))
             }
         }, out, "wardrobe.png")
         save(render(NSSize(width: 8 * Sprites.width * 2, height: Routine.moments * Sprites.height * 2)) {

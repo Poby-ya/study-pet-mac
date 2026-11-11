@@ -861,6 +861,9 @@ enum Sprites {
     static let sheetColumns = 12
     private static let poseRows = (Pose.allCases.count + sheetColumns - 1) / sheetColumns
 
+    /// The comparison sheets' fixed moment, so anything that moves with the clock (a mug's steam) matches Windows.
+    static let sheetClock = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 20, minute: 10))!
+
     static func sheetSize(scale: CGFloat) -> NSSize {
         NSSize(width: CGFloat(sheetColumns * width) * scale, height: CGFloat((2 * poseRows + 4) * height) * scale)
     }
@@ -903,18 +906,18 @@ enum Sprites {
             draw(layers: cell.0, cell.1, left: x, top: y, scale: scale)
         }
         let desks: [(Pose, Look, Decor, Int)] = [
-            (.writeA, boy, Decor(drink: .icedCoffee, laptop: false, seed: 0, lit: false), 0),
-            (.writeA, girl, Decor(drink: .mug, laptop: false, seed: 7, lit: false), 0),
-            (.writeA, boy, Decor(drink: .can, laptop: false, seed: 14, lit: false), 0),
-            (.writeA, girl, Decor(drink: .beer, laptop: false, seed: 21, lit: false), 0),
-            (.writeA, boy, Decor(drink: .soju, laptop: false, seed: 28, lit: false), 0),
-            (.writeA, girl, Decor(drink: .mug, laptop: true, seed: 5, lit: true), 0),
-            (.writeB, boy, Decor(drink: .can, laptop: true, seed: 11, lit: false), 0),
-            (.dozeA, girl, Decor(drink: .beer, laptop: true, seed: 17, lit: false), 0),
-            (.stretchLeft, boy, Decor(drink: .icedCoffee, laptop: false, seed: 23, lit: true), 0),
-            (.teaSip, girl, Decor(drink: .soju, laptop: true, seed: 29, lit: true), 0),
-            (.writeA, boy, Decor(drink: .can, laptop: false, seed: 2, lit: false), 1),
-            (.empty, girl, Decor(drink: .beer, laptop: true, seed: 8, lit: false, away: true), 0),
+            (.writeA, boy, Decor(drink: .icedCoffee, laptop: false, seed: 0, lit: false, clock: sheetClock), 0),
+            (.writeA, girl, Decor(drink: .mug, laptop: false, seed: 7, lit: false, clock: sheetClock), 0),
+            (.writeA, boy, Decor(drink: .can, laptop: false, seed: 14, lit: false, clock: sheetClock), 0),
+            (.writeA, girl, Decor(drink: .beer, laptop: false, seed: 21, lit: false, clock: sheetClock), 0),
+            (.writeA, boy, Decor(drink: .soju, laptop: false, seed: 28, lit: false, clock: sheetClock), 0),
+            (.writeA, girl, Decor(drink: .mug, laptop: true, seed: 5, lit: true, clock: sheetClock), 0),
+            (.writeB, boy, Decor(drink: .can, laptop: true, seed: 11, lit: false, clock: sheetClock), 0),
+            (.dozeA, girl, Decor(drink: .beer, laptop: true, seed: 17, lit: false, clock: sheetClock), 0),
+            (.stretchLeft, boy, Decor(drink: .icedCoffee, laptop: false, seed: 23, lit: true, clock: sheetClock), 0),
+            (.teaSip, girl, Decor(drink: .soju, laptop: true, seed: 29, lit: true, clock: sheetClock), 0),
+            (.writeA, boy, Decor(drink: .can, laptop: false, seed: 2, lit: false, clock: sheetClock), 1),
+            (.empty, girl, Decor(drink: .beer, laptop: true, seed: 8, lit: false, away: true, clock: sheetClock), 0),
         ]
         for (i, d) in desks.enumerated() {
             let (x, y) = at(row + sheetColumns + i)
