@@ -12,8 +12,13 @@ final class FriendInteractions {
     // A snack is carried over and eaten; the desk's drink stays as it is.
     static let snacks = ["쿠키 먹고 해 !", "귤 까 왔어 !", "초콜릿 하나 줄게 !", "사탕 받아 !"]
     private static let snackArts = ["Cookie", "Tangerine", "Chocolate", "Candy"]
-    /// Left on an empty desk; read when its owner comes back.
+    /// Left on an empty desk; read when its owner comes back. Written by hand after noteMark, which old
+    /// versions show as it is ("민지 : 쪽지: 내일 봐"); the fixed lines are what v0.7.0 sent, still read as notes.
     static let notes = ["오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !", "내일 봐 !"]
+    static let noteMark = "쪽지: ", noteArrived = "쪽지가 왔어요 !"
+    static let noteLength = 20 - 4 // the room's 20 characters less noteMark
+    /// What the friend wrote, without noteMark.
+    static func noteText(_ message: String) -> String { message.hasPrefix(noteMark) ? String(message.dropFirst(noteMark.count)) : message }
     static let whatStudy = "뭐 공부해 ?"
     static let thanks = "고마워 !"
     static func celebration(_ hours: Int) -> String { "\(hours)시간 달성 축하해 !" }
@@ -37,7 +42,8 @@ final class FriendInteractions {
     }
     static func snackArt(_ text: String) -> String { snacks.firstIndex { text.contains($0) }.map { snackArts[$0] } ?? "" }
     static func isSnack(_ text: String) -> Bool { !snackArt(text).isEmpty }
-    static func isNote(_ text: String) -> Bool { notes.contains { text.contains($0) } }
+    /// As sent, or with "name : " or "name에게\n" in front.
+    static func isNote(_ text: String) -> Bool { text.hasPrefix(noteMark) || text.contains(" : " + noteMark) || text.contains("\n" + noteMark) || notes.contains { text.contains($0) } }
     static func isWhatStudy(_ text: String) -> Bool { text.contains(whatStudy) }
     /// Only a plain thank-you, as sent or with "name : " or "name에게\n" in front.
     static func isThanks(_ text: String) -> Bool { text == thanks || text.hasSuffix(" : " + thanks) || text.hasSuffix("\n" + thanks) }

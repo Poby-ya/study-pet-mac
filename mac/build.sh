@@ -17,6 +17,9 @@ cp ../Shared/사용\ 설명서.txt build/StudyPet.app/Contents/Resources/help.tx
 cp install-mac.sh build/StudyPet.app/Contents/Resources/updater.sh
 cp ../web/config.json build/StudyPet.app/Contents/Resources/web-config.json
 cp ../Shared/AppIcon.icns build/StudyPet.app/Contents/Resources/AppIcon.icns
+# The handwriting on received notes, with its notice (the font's license asks for it alongside).
+cp ../Shared/NanumYeonJiCe.ttf build/StudyPet.app/Contents/Resources/note-font.ttf
+cp ../Shared/NanumYeonJiCe-라이선스.txt build/StudyPet.app/Contents/Resources/note-font-license.txt
 # Finder shows this name; the folder stays StudyPet.app because the updater looks for it.
 for lang in ko en; do
   mkdir -p "build/StudyPet.app/Contents/Resources/$lang.lproj"

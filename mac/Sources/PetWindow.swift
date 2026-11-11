@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 
 // Sizes in points: the Windows app's layout at 100 %.
 private let scale: CGFloat = 4
@@ -116,7 +117,17 @@ final class PetWindow: NSPanel {
     private var lookUntil = -1.0
     private var celebratedAt = [-100.0, -100.0]
     private var worried = [false, false]
-    private var visitorHit = NSRect.zero, newsHit = NSRect.zero
+    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero
+    // A friend's note stuck up above my desk until it's clicked off.
+    private var note: (to: String, body: String, from: String)?
+    // The handwriting on it (나눔손글씨 연지체, in Resources as note-font.ttf), registered for this app only.
+    private static let noteFontName: String? = {
+        guard let url = Bundle.main.url(forResource: "note-font", withExtension: "ttf"),
+              let first = (CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor])?.first else { return nil }
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        return CTFontDescriptorCopyAttribute(first, kCTFontNameAttribute) as? String
+    }()
+    static func noteFont(_ size: CGFloat) -> NSFont { noteFontName.flatMap { NSFont(name: $0, size: size) } ?? .systemFont(ofSize: size) }
     private var lastBubble = NSRect.zero
     // A borrowed eraser comes back twenty seconds after the visit: when, and who brings it (my pet, or them).
     private var returnAt = -1.0
@@ -338,6 +349,14 @@ final class PetWindow: NSPanel {
         if !isVisible || fading || mood == .leaving { appear(.away) }
     }
 
+    /// A note from `from` to `to`, stuck up over my desk until clicked; it keeps an empty desk's window open.
+    func showNote(to: String, body: String, from: String) {
+        note = (to.isEmpty ? "나" : to, body, from)
+        if minimized { return }
+        if !isVisible || fading { appear(.away) }
+        wake(); redraw()
+    }
+
     /// Play moment `id` (a name from the routines, e.g. "munch") after `delay` ticks, saying `line`
     /// instead of its own caption. Only while studying; a new mood ends it.
     func play(_ id: String, delay: Double = 0, line: String = "") {
@@ -438,13 +457,13 @@ final class PetWindow: NSPanel {
         for i in 0..<2 { if leavingTicks[i] >= 0 && leavingTicks[i] < 26 { leavingTicks[i] += seconds * 4 } }
         for i in 0..<2 where arrivingTicks[i] >= 0 { arrivingTicks[i] += seconds * 4; if arrivingTicks[i] >= Departure.arrivalTicks { arrivingTicks[i] = -1 } }
         if arrivalTick >= 0 { arrivalTick += seconds * 4; if arrivalTick >= Departure.arrivalTicks { arrivalTick = -1 } }
-        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away { fading = true } } }
+        if outgoingTick >= 0 { outgoingTick += seconds * 4; if outgoingTick > Travel.total { outgoingTick = -1; if mood == .away && note == nil { fading = true } } }
         if visitTick >= Travel.arrive, let arrive = onArrival { onArrival = nil; arrive() }
         if visitTick >= 0 {
             visitTick += seconds * 4
             if visitTick > Travel.total {
                 visitTick = -1
-                if mood == .away { fading = true }
+                if mood == .away && note == nil { fading = true }
             }
         }
         if visitWas >= 0 && visitWas < Travel.arrive && visitTick >= Travel.arrive { visitorArrived() }
@@ -698,16 +717,15 @@ final class PetWindow: NSPanel {
         let tip = floorY - 2
         let mid = CGFloat(Sprites.dx + 16) * scale
         let narrow = min(canvasSize.width-2,max(deskWidth+16,deskWidth+deskGap-6))
+        var top = tip // the top of the bubbles over my desk, where a note goes
         if visiting || outgoing {
-            let top: CGFloat
             if retorting { top = drawBubble(visitRetort, cx: myX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
             else if sentRetort { top = drawBubble(outgoingRetort, cx: (outgoingSide == 0 ? myX : outgoingSide < 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
             else { top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
             if visiting { visitorHit = lastBubble.union(NSRect(x: visitorX + CGFloat(Sprites.dx + 4) * scale, y: floorY, width: 24 * scale, height: 36 * scale)) }
-            if !updateText.isEmpty { drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
+            if !updateText.isEmpty { top = drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
         else if !focus {
-            var top = tip
             let talk = mood == .dozing ? Routine.sleepTalk(tick, seed: Self.nameSeed(myName()), restSeconds: moodSeconds) : ""
             if mood != .away && (arrivalTick < 0 || !updateText.isEmpty) { top = drawBubble(!updateText.isEmpty ? updateText : sendOffSide != 0 ? "잘 가 !" : forced >= 0 ? (forcedLine.isEmpty ? Routine.line(forcedMoment, forced, laptop: laptop) : forcedLine) : !talk.isEmpty ? talk : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {
@@ -718,9 +736,9 @@ final class PetWindow: NSPanel {
             if news != shownNews { shownNews = news; newsShownAt = animationSeconds }
             // Flashes yellow for its first three seconds, so a glance away doesn't miss it.
             let flash = animationSeconds - newsShownAt < 3 && frameCount / 2 % 2 == 0
-            drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint)
-            if !news.isEmpty { newsHit = lastBubble }
+            if !news.isEmpty { top = drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint); newsHit = lastBubble }
         }
+        noteHit = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? .zero
         // 구미 and 포비: hearts while one visits the other, and now and then from each other's desk.
         if visitTick >= Travel.arrive && visitTick <= Travel.leave && FriendInteractions.isLove(visitText) { drawHearts(myX, visitTick - Travel.arrive, column: visitSide == 1 ? 44 : 16) }
         if outgoingTick >= Travel.arrive && outgoingTick <= Travel.leave && FriendInteractions.isLove(outgoingText) && outgoingSide != 0 { drawHearts(outgoingSide < 0 ? seatX : rightX, outgoingTick - Travel.arrive, column: outgoingSide < 0 ? 44 : 16) }
@@ -856,6 +874,43 @@ final class PetWindow: NSPanel {
                      in: NSRect(x: box.minX + 2, y: box.minY + 5 + CGFloat(i) * lineHeight, width: box.width - 4, height: lineHeight))
         }
         return box.minY
+    }
+
+    /// A friend's note, bottom at `bottom`: a yellow post-it written in pen, tilted a little, its
+    /// corner folded over. Returns where clicking takes it down.
+    private func drawNote(_ n: (to: String, body: String, from: String), cx: CGFloat, bottom: CGFloat) -> NSRect {
+        let hand = Self.noteFont(24 * textFactor), small = Self.noteFont(20 * textFactor)
+        let w = min(canvasSize.width - 12, 210 * textFactor), pad: CGFloat = 14, strip: CGFloat = 10, fold: CGFloat = 16
+        let line = ceil(small.ascender - small.descender + small.leading)
+        // Lines break between words, and a lone "!" or "?" stays with the word before it.
+        var rows: [String] = []
+        for word in n.body.split(separator: " ").map(String.init) {
+            if let last = rows.last, word.allSatisfy({ $0.isPunctuation }) || textWidth(last + " " + word, hand) <= w - 2 * pad { rows[rows.count - 1] = last + " " + word } else { rows.append(word) }
+        }
+        let ink = Sprites.color(0x2B3A6E) // ballpoint blue
+        let attributes: [NSAttributedString.Key: Any] = [.font: hand, .foregroundColor: ink]
+        let text = rows.joined(separator: "\n") as NSString
+        let body = ceil(text.boundingRect(with: NSSize(width: w - 2 * pad, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: attributes).height)
+        let h = strip + 6 + line + body + line + 10
+        let box = NSRect(x: max(6, min(cx - w / 2, canvasSize.width - 6 - w)), y: bottom - h, width: w, height: h)
+        NSGraphicsContext.saveGraphicsState()
+        let turn = NSAffineTransform(); turn.translateX(by: box.midX, yBy: box.midY); turn.rotate(byDegrees: -3); turn.translateX(by: -w / 2, yBy: -h / 2); turn.concat()
+        func paper(_ dx: CGFloat, _ dy: CGFloat) -> NSBezierPath {
+            let p = NSBezierPath(); p.move(to: NSPoint(x: dx, y: dy))
+            for (x, y) in [(w, 0), (w, h - fold), (w - fold, h), (0, h)] { p.line(to: NSPoint(x: x + dx, y: y + dy)) }
+            p.close(); return p
+        }
+        NSColor(srgbRed: 70 / 255, green: 50 / 255, blue: 0, alpha: 55 / 255).setFill(); paper(3, 4).fill()
+        NSGradient(starting: Sprites.color(0xFFF6A8), ending: Sprites.color(0xFFEA7E))?.draw(in: paper(0, 0), angle: 90)
+        NSColor(srgbRed: 150 / 255, green: 110 / 255, blue: 0, alpha: 28 / 255).setFill(); NSBezierPath(rect: NSRect(x: 0, y: 0, width: w, height: strip)).fill()
+        let back = NSBezierPath(); back.move(to: NSPoint(x: w, y: h - fold)); back.line(to: NSPoint(x: w - fold, y: h)); back.line(to: NSPoint(x: w - fold, y: h - fold)); back.close()
+        Sprites.color(0xE9D05C).setFill(); back.fill()
+        let y = strip + 6
+        drawLine("To. " + n.to, font: small, color: ink, in: NSRect(x: pad, y: y, width: w - 2 * pad, height: line), align: .left)
+        text.draw(in: NSRect(x: pad, y: y + line, width: w - 2 * pad, height: body + 1), withAttributes: attributes)
+        drawLine("From. " + n.from, font: small, color: ink, in: NSRect(x: pad, y: y + line + body, width: w - pad - fold, height: line), align: .right)
+        NSGraphicsContext.restoreGraphicsState()
+        return box
     }
 
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
@@ -1062,6 +1117,12 @@ final class PetWindow: NSPanel {
         dragFrom = nil
         if dragged {
             remember("position", "\(Int(frame.origin.x)),\(Int(frame.origin.y))")
+            return
+        }
+        if noteHit.contains(p) {
+            note = nil
+            if mood == .away && visitTick < 0 && outgoingTick < 0 { fading = true } // nothing else kept the empty desk up
+            wake(); redraw()
             return
         }
         if visitTick >= 0 && visitorHit.contains(p) { visitorClicked(); return }

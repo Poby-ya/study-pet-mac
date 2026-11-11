@@ -714,10 +714,8 @@ final class AppController: NSObject, NSMenuDelegate {
     private func friendActions(_ mate: Member) -> [NSMenuItem] {
         func act(_ label: String, _ message: String?) -> NSMenuItem { let i = item(label, #selector(pokePerson(_:))); i.representedObject = message.map { [mate.id, $0] } ?? [mate.id]; return i }
         if !Room.isHere(mate, Room.latest(members)) {
-            let notes = NSMenu()
-            for line in FriendInteractions.notes { notes.addItem(act(line, line)) }
-            let noteItem = NSMenuItem(title: "쪽지 남기기", action: nil, keyEquivalent: ""); noteItem.submenu = notes
-            return [act("같이 공부하자 !", nil), noteItem]
+            let note = item("쪽지 남기기…", #selector(leaveNote(_:))); note.representedObject = mate.id
+            return [act("같이 공부하자 !", nil), note]
         }
         if mate.state == "paused" { return [act("깨우기", nil)] }
         var actions = [act("응원하기", nil), act("간식 주기", FriendInteractions.snacks.randomElement()!), act("뭐 공부해 ?", FriendInteractions.whatStudy), act("지우개 빌리기", FriendInteractions.borrow)]
@@ -731,7 +729,31 @@ final class AppController: NSObject, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: mate.name, action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         for action in friendActions(mate) { menu.addItem(action) }
+        menu.addItem(.separator())
+        let change = NSMenuItem(title: "옆자리 변경", action: nil, keyEquivalent: ""); change.submenu = seatChoices(side < 0 ? "seatmate" : "seatmateRight")
+        menu.addItem(change)
         return menu
+    }
+
+    /// Everyone in the room for one seat beside me, and emptying it: the friend menu's 옆자리 변경 and the menu's 양옆 자리 고정.
+    private func seatChoices(_ key: String) -> NSMenu {
+        let seats = NSMenu()
+        let newest = Room.latest(members)
+        for m in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
+            let place = !Room.isHere(m, newest) ? "자리 비움" : m.state == "paused" ? "쉬는 중" : "공부 중"
+            let seat = item("\(m.name) (\(place))", #selector(pinSeatmate(_:)))
+            seat.representedObject = ["id": m.id, "key": key]; seat.state = m.id == Settings.get(key) ? .on : .off
+            seats.addItem(seat)
+        }
+        let clear = item("자리 비우기", #selector(pinSeatmate(_:))); clear.representedObject = ["id": "", "key": key]; seats.addItem(clear)
+        return seats
+    }
+
+    /// 쪽지 남기기: written by hand, up to the room's 20 characters with noteMark.
+    @objc private func leaveNote(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) else { return }
+        let text = Room.cleanName(ask("\(mate.name)에게 남길 쪽지를 적어 주세요. (\(FriendInteractions.noteLength)자까지)\n친구가 돌아오면 포스트잇으로 보여요.", title: "쪽지 남기기", value: ""), max: FriendInteractions.noteLength)
+        if !text.isEmpty { pokeMember(mate, FriendInteractions.noteMark + text) }
     }
 
     /// 내 옆에 앉아 !: the friend goes in an empty seat beside me, or I pick which of the two to give up.
@@ -794,10 +816,17 @@ final class AppController: NSObject, NSMenuDelegate {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
+        let friendLook = members.first(where: { $0.id == poke.from })?.look ?? poke.look
+        // A note is brought over and stuck up above my desk until I click it off; it isn't a call to study.
+        if FriendInteractions.isNote(poke.message) {
+            let to = nickname
+            pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side, arrived: { [weak self] in self?.pet.showNote(to: to, body: FriendInteractions.noteText(poke.message), from: poke.name) })
+            return
+        }
         let text = "\(poke.name) : \(poke.message)"
         var arrived: (() -> Void)?
         if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
-        pet.visit(members.first(where: { $0.id == poke.from })?.look ?? poke.look, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke))
+        pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke))
         if FriendInteractions.thankable(poke.message) {
             // Clicking the visitor, or the bubble left over my desk for ten seconds after, says thank you.
             thankable = poke; thankUntil = Date().addingTimeInterval(16)
@@ -913,16 +942,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if room != nil {
             let allSeats = NSMenu()
             for (key, label) in [("seatmate", "왼쪽 자리"), ("seatmateRight", "오른쪽 자리")] {
-                let seats = NSMenu()
-                let newest = Room.latest(members)
-                for m in members.filter({ $0.id != myId }).sorted(by: { $0.name < $1.name }) {
-                    let place = !Room.isHere(m, newest) ? "자리 비움" : m.state == "paused" ? "쉬는 중" : "공부 중"
-                    let seat = item("\(m.name) (\(place))", #selector(pinSeatmate(_:)))
-                    seat.representedObject = ["id": m.id, "key": key]; seat.state = m.id == Settings.get(key) ? .on : .off
-                    seats.addItem(seat)
-                }
-                let clear = item("자리 비우기", #selector(pinSeatmate(_:))); clear.representedObject = ["id": "", "key": key]; seats.addItem(clear)
-                let sideItem = NSMenuItem(title: label, action: nil, keyEquivalent: ""); sideItem.submenu = seats; allSeats.addItem(sideItem)
+                let sideItem = NSMenuItem(title: label, action: nil, keyEquivalent: ""); sideItem.submenu = seatChoices(key); allSeats.addItem(sideItem)
             }
             let seatsItem = NSMenuItem(title: "양옆 자리 고정", action: nil, keyEquivalent: ""); seatsItem.submenu = allSeats; menu.addItem(seatsItem)
         }

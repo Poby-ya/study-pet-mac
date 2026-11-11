@@ -1,0 +1,8 @@
+NanumYeonJiCe.ttf (나눔손글씨 연지체)
+
+Copyright © 2019 NAVER Corporation. All rights reserved. Font created by CLOVA AI OCR Team.
+
+받은 쪽지(포스트잇)의 손글씨에 씁니다. 파일은 고치지 않고 그대로 넣었습니다.
+클로바 나눔손글씨는 네이버 나눔 글꼴 라이선스(SIL Open Font License 1.1)를 따르며,
+이 저작권 안내와 함께 다른 소프트웨어에 번들해 재배포할 수 있습니다. 글꼴 파일만 따로 파는 것은 안 됩니다.
+라이선스 원문: https://hangeul.naver.com/font
