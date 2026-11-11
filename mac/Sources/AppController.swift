@@ -871,7 +871,7 @@ final class AppController: NSObject, NSMenuDelegate {
         RunLoop.main.add(timer, forMode: .common)
         blink = timer
         statusItem.button?.image = Sprites.face(pet.look, dot: true)
-        // The dot is easy to miss; the friend stays peeking from the corner until I answer.
+        // The dot is easy to miss; the friend peeks up from the corner for a few seconds.
         if !poke.missed { peek.peek(friendLook, text: text, delay: pet.minimized ? 0 : Travel.total / 4 + 0.5) }
     }
 

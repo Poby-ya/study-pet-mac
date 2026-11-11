@@ -119,7 +119,7 @@ enum SelfTest {
             }
         }, out, "weather.png")
         // A friend who called peeks from the screen's corner: rising, looking left and right, waving, standing, ducking.
-        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.25, 1, 2, 4, 4.3, 10, 29.8]
+        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.25, 1, 2, 4, 6.5, 7.8, PeekWindow.duration]
         save(render(NSSize(width: peekSize.width * CGFloat(peekTimes.count), height: peekSize.height)) {
             for (i, t) in peekTimes.enumerated() {
                 NSGraphicsContext.saveGraphicsState()

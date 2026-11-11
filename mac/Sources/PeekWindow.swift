@@ -1,11 +1,10 @@
 import AppKit
 
 /// A friend who called while I'm away from my desk peeks up from the bottom-right corner of the
-/// screen (on top of the pet window when it's there), looks left and right for me, waves, and stays
-/// until I click them or the call is answered some other way. Every 30 seconds they duck and pop up
-/// again. Windows: PeekWindow.cs.
+/// screen (on top of the pet window when it's there), looks left and right for me, waves, and after
+/// a few seconds ducks down again; clicking them answers. Windows: PeekWindow.cs.
 final class PeekWindow: NSPanel {
-    static let cycle = 30.0
+    static let duration = 8.0
     // The art shown: rows from above the head (hats) to the shoulders, columns round the figure.
     private static let topRow = -4, rows = 28, column = 11, columns = 40
     private static let scale: CGFloat = 3
@@ -62,6 +61,7 @@ final class PeekWindow: NSPanel {
     private func step() {
         let t = seconds
         if t < 0 { schedule(-t); return }
+        if t >= Self.duration { dismiss(); return }
         let size = Self.measure(text)
         let area = (pet?.screen ?? NSScreen.main)?.visibleFrame ?? .zero
         var corner = NSRect(x: area.maxX - size.width - 8, y: area.minY, width: size.width, height: size.height)
@@ -69,8 +69,7 @@ final class PeekWindow: NSPanel {
         setFrame(corner, display: false)
         contentView?.needsDisplay = true
         if !isVisible { orderFrontRegardless() }
-        let c = t.truncatingRemainder(dividingBy: Self.cycle)
-        schedule(c < 5.6 || c > Self.cycle - 0.6 ? 0.05 : 0.5) // standing still between the moves
+        schedule(t < 5.6 || t > Self.duration - 0.6 ? 0.05 : 0.2) // standing still before ducking
     }
 
     fileprivate func paintNow() {
@@ -91,8 +90,8 @@ final class PeekWindow: NSPanel {
     /// The frame `t` seconds after the friend first pops up, in a flipped box of `size`; the self-test draws these too.
     static func paint(_ look: Look, _ text: String, t: Double, size: NSSize) {
         let s = scale
-        let c = t.truncatingRemainder(dividingBy: cycle)
-        let hidden = c < 0.5 ? 1 - Departure.ease(c / 0.5) : c > cycle - 0.4 ? Departure.ease((c - cycle + 0.4) / 0.4) : 0
+        let c = t
+        let hidden = c < 0.5 ? 1 - Departure.ease(c / 0.5) : c > duration - 0.4 ? Departure.ease((c - duration + 0.4) / 0.4) : 0
         let eyes = c < 1.5 ? "Left" : c < 2.5 ? "Right" : c < 3.5 ? "Left" : "Open"
         let wave = c >= 3.5 && c < 5.5
         let left = size.width - CGFloat(columns) * s, top = size.height - CGFloat(rows) * s
