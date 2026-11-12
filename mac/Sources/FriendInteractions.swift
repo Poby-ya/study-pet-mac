@@ -2,6 +2,11 @@ import Foundation
 
 final class FriendInteractions {
     static let updateNotice = "업데이트가 새로 나왔대 !"
+    /// Calling a friend who isn't studying: one of these at random, not the same twice in a row (picked by the
+    /// user, 2026-11-13). Each says 같이 공부, which is how every version tells an invitation from a cheer.
+    /// Windows: Calls, web: calls in app.js.
+    static let calls = ["같이 공부하자 !", "나랑 같이 공부할래 ?", "쉬엄쉬엄 같이 공부하자 !", "오늘 하루도 같이 공부하자 !", "어디 있어 ? 같이 공부하자 !", "여기 있나~ 같이 공부하자 !", "똑똑 ! 같이 공부할 사람 ~",
+                        "그만 놀고 같이 공부하자 !", "노는 거 다 보여 ! 같이 공부하자", "얼른 와 ! 같이 공부하자 !", "놀 만큼 놀았잖아 ! 같이 공부하자", "쉬는 시간 끝 ! 같이 공부하자 !", "딱 30분만 같이 공부하자 !", "자리 맡아 놨어 ! 같이 공부하자"]
     static let cheers = ["파이팅 !", "오늘도 힘내 !", "정말 대단해 !", "잘하고 있어 !", "조금만 더 해보자 !", "꾸준한 네가 멋져 !", "오늘도 응원할게 !", "한 걸음씩 가보자 !", "같이 끝까지 가자 !", "지금처럼만 해봐 !", "우리 해낼 수 있어 !", "집중하는 모습 멋져 !"]
     // Only between 구미 and 포비, whichever of them is sending.
     static func isCouple(_ a: String, _ b: String) -> Bool { a == "포비" && b == "구미" || a == "구미" && b == "포비" }
@@ -140,11 +145,15 @@ final class FriendInteractions {
             wakeLevels[m.id] = (min(3, level), Date())
             return Self.wake(level, couple: couple)
         }
-        if !here { return Room.pokeMessage(m, here: here) }
+        if !here { return pick(m.id + "\ncall", Self.calls) }
         if let greeting = greetings.removeValue(forKey: m.id) { return greeting }
-        let lines = couple ? Self.coupleLines : Self.friendLines
+        return pick(m.id, couple ? Self.coupleLines : Self.friendLines)
+    }
+
+    /// One of `lines` at random, not the one last picked under `key`.
+    private func pick(_ key: String, _ lines: [String]) -> String {
         var index = Int.random(in: 0..<(lines.count - 1))
-        if let previous = last[m.id], index >= previous { index += 1 }; last[m.id] = index
+        if let previous = last[key], index >= previous { index += 1 }; last[key] = index
         return lines[index]
     }
 }

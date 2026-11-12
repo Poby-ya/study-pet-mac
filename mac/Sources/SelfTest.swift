@@ -78,6 +78,11 @@ enum SelfTest {
         check(interactions.message(friend, here: true, current: "0.5.1") == "드디어 깼구나 !", "friend: rest greeting")
         var last = ""
         for _ in 0..<100 { let message = interactions.message(friend, here: true, current: "0.5.1"); check(message != last && message.count <= 20, "friend: no repeated cheer, legacy length"); last = message }
+        let calls = (0..<100).map { _ in interactions.message(friend, here: false, current: "0.5.1") }
+        check(calls.allSatisfy(FriendInteractions.calls.contains) && zip(calls, calls.dropFirst()).allSatisfy { $0 != $1 } && Set(calls).count > 5
+              && FriendInteractions.calls == ["같이 공부하자 !", "나랑 같이 공부할래 ?", "쉬엄쉬엄 같이 공부하자 !", "오늘 하루도 같이 공부하자 !", "어디 있어 ? 같이 공부하자 !", "여기 있나~ 같이 공부하자 !", "똑똑 ! 같이 공부할 사람 ~", "그만 놀고 같이 공부하자 !", "노는 거 다 보여 ! 같이 공부하자", "얼른 와 ! 같이 공부하자 !", "놀 만큼 놀았잖아 ! 같이 공부하자", "쉬는 시간 끝 ! 같이 공부하자 !", "딱 30분만 같이 공부하자 !", "자리 맡아 놨어 ! 같이 공부하자"]
+              && FriendInteractions.calls.allSatisfy { $0.count <= 20 && $0.contains("같이 공부") && !FriendInteractions.thankable($0) && FriendInteractions.wakeLevel($0) == 0 && FriendInteractions.touch($0) == 0 && !FriendInteractions.noFlames($0) && FriendInteractions.retort($0, couple: false).isEmpty },
+              "friend: calls to someone not studying vary, never twice in a row, the same list as Windows, and every version reads them as an invitation")
         let sweet = FriendInteractions(); var gumi = Member(id: "g", name: "구미", subject: "", state: "studying", minutes: 0, updated: 1); gumi.version = "0.5.1"
         let said = (0..<200).map { _ in sweet.message(gumi, here: true, current: "0.5.1", me: "포비") }
         check(said.allSatisfy(FriendInteractions.noFlames) && said.allSatisfy { $0.count <= 20 } && said.contains { FriendInteractions.touch($0) == 2 } && said.contains(where: FriendInteractions.isPat) && said.contains(where: FriendInteractions.isTreat) && FriendInteractions.touch("구미 : 머리 쓰담쓰담") == 1 && FriendInteractions.treatDrink("구미 : 커피 사 왔어 !") == .icedCoffee, "couple: 구미 and 포비 get their own interactions, within the message limit")
