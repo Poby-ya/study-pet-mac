@@ -502,6 +502,12 @@ enum Sprites {
         return (layers + head).map { Layer($0.grid, $0.x + dx, $0.y) }
     }
 
+    /// A friend peeking over the bottom of the screen: fists hooked on its edge (row `edge`) beside the chin,
+    /// the arms behind it; `right` false while that hand has let go to wave. Windows: HookedHands.
+    static func hookedHands(_ look: Look, edge: Int, right: Bool = true) -> [Layer] {
+        (right ? [3, 26] : [3]).map { x in let hand = arm(look, (x, edge + 6), (x, edge - 4)); return Layer(hand.grid, hand.x + dx, hand.y) }
+    }
+
     /// The visitor's arm reaching right to a shoulder; drawn after the pet it taps.
     /// `down` is the tap, the other frame the hand lifted.
     /// `touch`: 0 a tap on the shoulder, 1 stroking the top of the head, 2 an arm round them.

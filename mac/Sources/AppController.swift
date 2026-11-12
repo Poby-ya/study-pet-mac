@@ -838,10 +838,10 @@ final class AppController: NSObject, NSMenuDelegate {
         return Room.isHere(sender, Room.latest(members)) && sender.state == "studying" ? "" : FriendInteractions.retort(poke.message, couple: FriendInteractions.isCouple(nickname, sender.name))
     }
 
-    /// The friend visits my desk (unless minimized), the menu bar face's red dot blinks and the friend
-    /// peeks from the corner; clicking the face or the peek answers. For an hour after "1시간 동안 알림 끄기"
-    /// on the peek, nothing pops up (I may be sharing my screen): only the red dot, and a visit to a desk
-    /// already on screen.
+    /// The friend visits my desk if it's on screen and the menu bar face's red dot blinks; with the desk
+    /// closed or minimized the friend peeks up at the screen's corner instead of bringing it up. Clicking
+    /// the face or the peek answers. For an hour after "1시간 동안 알림 끄기" on the peek, nothing pops up
+    /// (I may be sharing my screen): only the red dot, and a visit to a desk already on screen.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
@@ -861,7 +861,8 @@ final class AppController: NSObject, NSMenuDelegate {
         let text = "\(poke.name) : \(poke.message)"
         var arrived: (() -> Void)?
         if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
-        if !hushed { pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke)) }
+        // Minimized it only hands over a treat; closed, the peek below calls me.
+        if pet.isVisible || pet.minimized { pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke)) }
         if FriendInteractions.thankable(poke.message) {
             // Clicking the visitor, or the bubble left over my desk for ten seconds after, says thank you.
             thankable = poke; thankUntil = Date().addingTimeInterval(16)
@@ -878,7 +879,7 @@ final class AppController: NSObject, NSMenuDelegate {
         blink = timer
         statusItem.button?.image = Sprites.face(pet.look, dot: true)
         // The dot is easy to miss; the friend peeks up from the corner for a few seconds.
-        if !poke.missed && !muted { peek.peek(friendLook, text: text, delay: pet.minimized ? 0 : Travel.total / 4 + 0.5) }
+        if !poke.missed && !muted && !pet.isVisible { peek.peek(friendLook, text: text, delay: 0) }
     }
 
     @objc private func blinkFace() {

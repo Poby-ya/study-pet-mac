@@ -118,8 +118,8 @@ enum SelfTest {
                 Sprites.drawWeather(98, 55, weather: c.2, kind: c.3, phase: c.4, t: c.5, left: CGFloat(i % 4 * 196), top: CGFloat(i / 4 * 110), scale: 2, frame: i % 4)
             }
         }, out, "weather.png")
-        // A friend who called peeks from the screen's corner: rising, looking left and right, waving, standing, ducking.
-        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.25, 1, 2, 4, 6.5, 7.8, PeekWindow.duration]
+        // A friend who called peeks over the screen's edge: fists up, head up, looking left and right, waving, holding, ducking, gone.
+        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.2, 0.6, 1.2, 2.2, 3.2, 4.4, 6.5, 7.5, 7.9, PeekWindow.duration]
         save(render(NSSize(width: peekSize.width * CGFloat(peekTimes.count), height: peekSize.height)) {
             for (i, t) in peekTimes.enumerated() {
                 NSGraphicsContext.saveGraphicsState()
