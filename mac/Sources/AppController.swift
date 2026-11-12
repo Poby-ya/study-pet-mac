@@ -50,8 +50,10 @@ final class AppController: NSObject, NSMenuDelegate {
     private lazy var peek: PeekWindow = {
         let window = PeekWindow(pet: pet)
         window.answered = { [weak self] in self?.answerPoke() }
+        window.muted = { [weak self] in self?.quietUntil = Date().addingTimeInterval(3600) }
         return window
     }()
+    private var quietUntil = Date.distantPast // set from the peek's right-click menu
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let hotkeys = Hotkeys()
@@ -836,27 +838,30 @@ final class AppController: NSObject, NSMenuDelegate {
         return Room.isHere(sender, Room.latest(members)) && sender.state == "studying" ? "" : FriendInteractions.retort(poke.message, couple: FriendInteractions.isCouple(nickname, sender.name))
     }
 
-    /// No window pops up by itself: I may be sharing my screen. The friend visits my desk
-    /// (unless minimized) and the menu bar face's red dot blinks; clicking it
-    /// answers; otherwise it opens the menu.
+    /// The friend visits my desk (unless minimized), the menu bar face's red dot blinks and the friend
+    /// peeks from the corner; clicking the face or the peek answers. For an hour after "1시간 동안 알림 끄기"
+    /// on the peek, nothing pops up (I may be sharing my screen): only the red dot, and a visit to a desk
+    /// already on screen.
     private func receivePoke(_ poke: Poke) {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
         let friendLook = members.first(where: { $0.id == poke.from })?.look ?? poke.look
+        let muted = Date() < quietUntil
+        let hushed = muted && !pet.isVisible && !pet.minimized // a visit would bring the desk up on screen
         // A note goes in the inbox and waits over my desk as 쪽지가 왔어요 ! until clicked open; it isn't a call to study.
         if FriendInteractions.isNote(poke.message) {
             var notes = inbox
             let received: FriendInteractions.Received = (poke.at, Room.cleanName(poke.name), Room.cleanName(FriendInteractions.noteText(poke.message), max: 20), false)
             // The same poke can come twice on a reconnect.
             if !notes.contains(where: { $0.at == received.at && $0.from == received.from && $0.text == received.text }) { notes.append(received); keep(notes) }
-            pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side)
+            if !hushed { pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side) }
             return
         }
         let text = "\(poke.name) : \(poke.message)"
         var arrived: (() -> Void)?
         if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
-        pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke))
+        if !hushed { pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke)) }
         if FriendInteractions.thankable(poke.message) {
             // Clicking the visitor, or the bubble left over my desk for ten seconds after, says thank you.
             thankable = poke; thankUntil = Date().addingTimeInterval(16)
@@ -873,7 +878,7 @@ final class AppController: NSObject, NSMenuDelegate {
         blink = timer
         statusItem.button?.image = Sprites.face(pet.look, dot: true)
         // The dot is easy to miss; the friend peeks up from the corner for a few seconds.
-        if !poke.missed { peek.peek(friendLook, text: text, delay: pet.minimized ? 0 : Travel.total / 4 + 0.5) }
+        if !poke.missed && !muted { peek.peek(friendLook, text: text, delay: pet.minimized ? 0 : Travel.total / 4 + 0.5) }
     }
 
     @objc private func blinkFace() {

@@ -16,6 +16,7 @@ final class PeekWindow: NSPanel {
     private var start = Date()
     private var timer: Timer?
     var answered: (() -> Void)?
+    var muted: (() -> Void)?
 
     init(pet: NSWindow) {
         self.pet = pet
@@ -48,6 +49,19 @@ final class PeekWindow: NSPanel {
         timer = nil
         orderOut(nil)
     }
+
+    /// A right-click sends them away at once (they may have startled me mid screen share) and offers an hour's quiet.
+    fileprivate func rightClicked(_ event: NSEvent, in view: NSView) {
+        timer?.invalidate()
+        let menu = NSMenu()
+        let quiet = NSMenuItem(title: "1시간 동안 알림 끄기", action: #selector(mute), keyEquivalent: "")
+        quiet.target = self
+        menu.addItem(quiet)
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+        dismiss()
+    }
+
+    @objc private func mute() { muted?() }
 
     private var seconds: Double { Date().timeIntervalSince(start) }
 
@@ -150,4 +164,5 @@ private final class PeekView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) { owner?.answered?() }
+    override func rightMouseDown(with event: NSEvent) { owner?.rightClicked(event, in: self) }
 }
