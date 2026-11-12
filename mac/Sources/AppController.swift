@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = AppController()
         controller?.openPlanner(onlyWhenIdle: true)
+        controller?.turnOnLoginItemOnce() // here, not in the controller: self-tests build controllers too
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -1092,6 +1093,15 @@ final class AppController: NSObject, NSMenuDelegate {
         if SMAppService.mainApp.status == .requiresApproval {
             alert("시스템 설정 → 일반 → 로그인 항목에서 '공부 친구'를 허용해 주세요.")
         }
+    }
+
+    /// Once per install, on a real launch: open at login from now on, so a friend's call finds the app in
+    /// the menu bar after a restart. Turned off from the menu afterwards, it stays off.
+    func turnOnLoginItemOnce() {
+        guard Settings.get("autoLaunchDefault").isEmpty else { return }
+        try? Settings.set("autoLaunchDefault", "1")
+        guard SMAppService.mainApp.status == .notRegistered, (try? SMAppService.mainApp.register()) != nil else { return }
+        pet.showFeedback("이제 컴퓨터를 켜면 같이 켜져요 !\n메뉴 → 설정에서 끌 수 있어요")
     }
 
     @objc private func showDeviceLink() {
