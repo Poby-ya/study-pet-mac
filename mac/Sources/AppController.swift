@@ -49,7 +49,10 @@ final class AppController: NSObject, NSMenuDelegate {
     private let pet = PetWindow()
     private lazy var peek: PeekWindow = {
         let window = PeekWindow(pet: pet)
-        window.answered = { [weak self] in self?.answerPoke() }
+        window.answered = { [weak self] in // a note's peek opens the desk
+            guard let self else { return }
+            if self.waitingPoke == nil && self.pet.minimized && self.pet.unreadNotes > 0 { self.pet.restoreScene() } else { self.answerPoke() }
+        }
         window.muted = { [weak self] in self?.quietUntil = Date().addingTimeInterval(3600) }
         return window
     }()
@@ -147,7 +150,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.rightSeatmate = { [unowned self] in self.seatView("seatmateRight") }
         pet.myName = { Settings.get("name") }
         pet.boardClicked = { [unowned self] in self.safely("방 선택") { try self.room?.next();self.profileDirty=self.deviceSync != nil;self.profileEdit += 1;self.syncNow() } }
-        pet.newsText = { [unowned self] in self.state != .off && Date() < self.newsUntil ? self.news : "" }
+        pet.newsText = { [unowned self] in Date() < self.newsUntil ? self.news : "" }
         pet.laptop = Settings.get("laptop") == "1"
         pet.focus = Settings.get("focusMode") == "1"
         pet.board = { [unowned self] in
@@ -465,6 +468,8 @@ final class AppController: NSObject, NSMenuDelegate {
             if self.roomSeen && !started.isEmpty {
                 self.news = Room.startedText(started)
                 self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
+                // Not studying with the desk put away: a notification, so everyone hears, not just whoever is at a desk.
+                if self.state == .off && (!self.pet.isVisible || self.pet.minimized) && Date() >= self.quietUntil { self.updateNotifications.news(self.news) }
             }
             self.roomSeen = true
             for id in self.interactions.observe(list) { self.pet.celebrate(id == Settings.get("seatmate") ? -1 : id == Settings.get("seatmateRight") ? 1 : 0) }
@@ -724,13 +729,15 @@ final class AppController: NSObject, NSMenuDelegate {
     /// What I can do for a friend, by what they're doing: the right-click menu on their desk and 친구 부르기.
     private func friendActions(_ mate: Member) -> [NSMenuItem] {
         func act(_ label: String, _ message: String?) -> NSMenuItem { let i = item(label, #selector(pokePerson(_:))); i.representedObject = message.map { [mate.id, $0] } ?? [mate.id]; return i }
+        let note = item("쪽지 남기기…", #selector(leaveNote(_:))); note.representedObject = mate.id
         if !Room.isHere(mate, Room.latest(members)) {
-            let note = item("쪽지 남기기…", #selector(leaveNote(_:))); note.representedObject = mate.id
-            return [act("같이 공부하자 !", nil), note]
+            let call = item("부르기…", #selector(callMember(_:))); call.representedObject = mate.id
+            return [call, note]
         }
-        if mate.state == "paused" { return [act("깨우기", nil)] }
+        if mate.state == "paused" { return [act("깨우기", nil), note] }
         var actions = [act("응원하기", nil), act("간식 주기", FriendInteractions.snacks.randomElement()!), act("뭐 공부해 ?", FriendInteractions.whatStudy), act("지우개 빌리기", FriendInteractions.borrow)]
         if mate.id != Settings.get("seatmate") && mate.id != Settings.get("seatmateRight") { actions.append(act("내 옆에 앉아 !", FriendInteractions.seatInvite)) }
+        actions.append(note)
         return actions
     }
 
@@ -781,7 +788,14 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func leaveNote(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) else { return }
         let text = Room.cleanName(ask("\(mate.name)에게 남길 쪽지를 적어 주세요. (\(FriendInteractions.noteLength)자까지)\n친구가 돌아오면 포스트잇으로 보여요.", title: "쪽지 남기기", value: ""), max: FriendInteractions.noteLength)
-        if !text.isEmpty { pokeMember(mate, FriendInteractions.noteMark + text) }
+        if !text.isEmpty { pokeMember(mate, FriendInteractions.noteMark + text, typed: true) }
+    }
+
+    /// 부르기: a call to a friend who isn't here, written by hand; it peeks up on their screen as it is.
+    @objc private func callMember(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) else { return }
+        let text = Room.cleanName(ask("\(mate.name)에게 보낼 말을 적어 주세요. (\(FriendInteractions.callLength)자까지)\n친구 화면 아래에 빼꼼 나타나요.", title: "부르기", value: ""), max: FriendInteractions.callLength)
+        if !text.isEmpty { pokeMember(mate, text, typed: true) }
     }
 
     /// 내 옆에 앉아 !: the friend goes in an empty seat beside me, or I pick which of the two to give up.
@@ -815,9 +829,10 @@ final class AppController: NSObject, NSMenuDelegate {
     @objc private func chooseRoom(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { safely("방 선택") { try room?.select(id);profileDirty=deviceSync != nil;profileEdit += 1;syncNow() } } }
 
     /// `chosen`: the friend menu's own message; otherwise the usual one for what they're doing.
-    private func pokeMember(_ mate: Member, _ chosen: String? = nil) {
+    private func pokeMember(_ mate: Member, _ chosen: String? = nil, typed: Bool = false) {
         guard let room else { return }
-        guard Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
+        // Something written by hand is never thrown away for coming too soon after the last call.
+        guard typed || Date().timeIntervalSince(lastPokes[mate.id] ?? .distantPast) >= AppController.pokeCooldown else { news = mate.name + " · 방금 불렀어요"; newsUntil = Date().addingTimeInterval(3); return }
         lastPokes[mate.id] = Date()
         let here = Room.isHere(mate, Room.latest(members))
         let message = chosen ?? interactions.message(mate, here: here, current: Updater.current, me: nickname)
@@ -856,6 +871,8 @@ final class AppController: NSObject, NSMenuDelegate {
             // The same poke can come twice on a reconnect.
             if !notes.contains(where: { $0.at == received.at && $0.from == received.from && $0.text == received.text }) { notes.append(received); keep(notes) }
             if !hushed { pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side) }
+            // A minimized desk shows no visit: the friend peeks up instead, and a click brings the desk back.
+            if pet.minimized && !muted && !poke.missed { peek.peek(friendLook, text: "\(poke.name) : \(FriendInteractions.noteArrived)", delay: 0) }
             return
         }
         let text = "\(poke.name) : \(poke.message)"
@@ -916,15 +933,23 @@ final class AppController: NSObject, NSMenuDelegate {
             guard let self else { return }
             defer { self.invitePromptOpen = false }
             if self.quitting { return }
+            let friend = self.members.first(where: { $0.id == poke.from })
             let alert = NSAlert()
             alert.messageText = "\(poke.name) : \(poke.message)"
-            alert.informativeText = "공부를 시작할까요?"
-            alert.addButton(withTitle: "공부 시작")
-            alert.addButton(withTitle: "나중에")
+            for title in ["답장하기", "공부 시작", FriendInteractions.playMore, "1시간 알림 끄기", "취소"] { alert.addButton(withTitle: title) }
             NSApp.activate(ignoringOtherApps: true)
-            if alert.runModal() == .alertFirstButtonReturn {
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                let text = Room.cleanName(self.ask("\(poke.name)에게 보낼 답장을 적어 주세요. (\(FriendInteractions.callLength)자까지)", title: "답장하기", value: ""), max: FriendInteractions.callLength)
+                if !text.isEmpty, let friend { self.pokeMember(friend, text, typed: true) }
+            case .alertSecondButtonReturn:
                 if self.state != .off { self.stop() }
                 if self.state == .off { self.showPlanner() }
+            case .alertThirdButtonReturn:
+                if let friend { self.pokeMember(friend, FriendInteractions.playMore, typed: true) }
+            case NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertThirdButtonReturn.rawValue + 1):
+                self.quietUntil = Date().addingTimeInterval(3600) // no peeks or desk popping up, as from the peek's right-click
+            default: break
             }
         }
     }
@@ -1010,7 +1035,7 @@ final class AppController: NSObject, NSMenuDelegate {
         // A new version is announced at the top level, never inside 설정.
         if updater.available { menu.addItem(item("새 버전 설치하기", #selector(showSettings))) }
         menu.addItem(item("사용 설명서", #selector(showHelp)))
-        menu.addItem(item("종료", #selector(quit)))
+        // No 종료 (user, 2026-11-15): it read as "stop studying"; 그만하기 does that, and the app keeps waiting in the menu bar for calls.
     }
 
     private func item(_ title: String, _ action: Selector) -> NSMenuItem {

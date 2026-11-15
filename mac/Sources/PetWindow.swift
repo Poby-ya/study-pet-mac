@@ -737,7 +737,7 @@ final class PetWindow: NSPanel {
                 if let seat = seats[i] { let talk = seat.here && seat.dozing ? Routine.sleepTalk(frameCount, seed: Self.seatSeed(seat), restSeconds: restSeconds(i)) : ""; drawBubble(leavingTicks[i] >= 0 && leavingTicks[i] < 18 ? "다녀올게요!" : !talk.isEmpty ? talk : seat.text,
                                                     cx: (i == 0 ? seatX : rightX) + (seat.here || leavingTicks[i] >= 0 ? mid : 34 * scale), tipY: tip, maxWidth: narrow, fill: .white) }
             }
-            let news = mood != .away ? newsText() : ""
+            let news = newsText() // over the empty desk too: friends starting is news even when I'm not studying
             if news != shownNews { shownNews = news; newsShownAt = animationSeconds }
             // Flashes yellow for its first three seconds, so a glance away doesn't miss it.
             let flash = animationSeconds - newsShownAt < 3 && frameCount / 2 % 2 == 0
@@ -747,7 +747,7 @@ final class PetWindow: NSPanel {
         bellHit = .zero
         // Not while the friend is still at my desk saying it, nor over an open note.
         if note == nil && unreadNotes > 0 && visitTick < 0 {
-            drawBubble((unreadNotes == 1 ? FriendInteractions.noteArrived : "쪽지 \(unreadNotes)장이 왔어요 !") + "\n눌러서 확인", cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
+            drawBubble((unreadNotes == 1 ? FriendInteractions.noteArrived : "쪽지 \(unreadNotes)장이 도착했어요 !!") + "\n눌러서 확인", cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
             bellHit = lastBubble
         }
         // 구미 and 포비: hearts while one visits the other, and now and then from each other's desk.

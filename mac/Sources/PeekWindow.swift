@@ -1,6 +1,6 @@
 import AppKit
 
-/// A friend who called while my desk is closed or minimized peeks up at the bottom-right corner of the
+/// A friend who called while my desk is closed or minimized peeks up at the bottom centre of the
 /// screen (over the Dock's line when the Dock is at the bottom): fists hooked on the edge, face only,
 /// looking left and right for me (여기 있나~), waving, and after a few seconds ducking down again;
 /// clicking them answers. Windows: PeekWindow.cs.
@@ -8,7 +8,7 @@ final class PeekWindow: NSPanel {
     static let duration = 8.0
     // The art shown: rows from above the head (hats) down to the edge under the chin, columns round the figure.
     private static let topRow = -4, edge = 18, rows = edge - topRow, column = 11, columns = 40
-    private static let scale: CGFloat = 3
+    private static let scale: CGFloat = 4
     private static let paper = Sprites.color(0xFFF1A8)
     private static let font = NSFont.boldSystemFont(ofSize: 13)
     private weak var pet: NSWindow?
@@ -79,7 +79,7 @@ final class PeekWindow: NSPanel {
         if t >= Self.duration { dismiss(); return }
         let size = Self.measure(text)
         let area = (pet?.screen ?? NSScreen.main)?.visibleFrame ?? .zero // clear of the Dock, wherever it is
-        setFrame(NSRect(x: area.maxX - size.width - 8, y: area.minY, width: size.width, height: size.height), display: false)
+        setFrame(NSRect(x: (area.midX - size.width / 2).rounded(), y: area.minY, width: size.width, height: size.height), display: false)
         contentView?.needsDisplay = true
         if !isVisible { orderFrontRegardless() }
         schedule(t < 5.8 || t > Self.duration - 0.8 ? 0.05 : 0.2) // holding still before ducking
@@ -89,7 +89,7 @@ final class PeekWindow: NSPanel {
         if let friend { Self.paint(friend, text, t: max(0, seconds), size: Self.measure(text)) }
     }
 
-    private static func lines(_ text: String) -> [String] { [text, "눌러서 답하기"] }
+    private static func lines(_ text: String) -> [String] { [text, text.hasSuffix(FriendInteractions.noteArrived) ? "눌러서 확인" : "눌러서 답하기"] }
     private static func bubbleSize(_ text: String) -> NSSize {
         NSSize(width: ((lines(text).map { textWidth($0, font) }.max() ?? 0) + 22).rounded(.up), height: CGFloat(lines(text).count) * 18 + 10)
     }

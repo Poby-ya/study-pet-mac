@@ -20,7 +20,8 @@ final class FriendInteractions {
     /// Left on an empty desk; read when its owner comes back. Written by hand after noteMark, which old
     /// versions show as it is ("민지 : 쪽지: 내일 봐"); the fixed lines are what v0.7.0 sent, still read as notes.
     static let notes = ["오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !", "내일 봐 !"]
-    static let noteMark = "쪽지: ", noteArrived = "쪽지가 왔어요 !"
+    static let noteMark = "쪽지: ", noteArrived = "쪽지가 도착했어요 !!"
+    static let callLength = 20 // a call written by hand: the room's whole message
     static let noteLength = 20 - 4 // the room's 20 characters less noteMark
     /// From v0.7.1 (and the web app at that protocol) notes go in their own entries and none is lost; older apps
     /// only read the one poke slot.
@@ -44,6 +45,7 @@ final class FriendInteractions {
     static func inbox(_ notes: [Received]) -> String { notes.suffix(20).map { "\($0.at)\t\($0.from)\t\($0.text)\t\($0.read ? 1 : 0)" }.joined(separator: "\u{1E}") }
     static let whatStudy = "뭐 공부해 ?"
     static let thanks = "고마워 !"
+    static let playMore = "더 놀거야 !" // the answer to a call when I'd rather not study yet
     static func celebration(_ hours: Int) -> String { "\(hours)시간 달성 축하해 !" }
     /// Waking a friend gets louder each time they don't get up: a tap, an alarm clock, a pot and spoon.
     /// Every one says 일어나, so older versions still take it as a wake-up.
@@ -72,7 +74,7 @@ final class FriendInteractions {
     static func isThanks(_ text: String) -> Bool { text == thanks || text.hasSuffix(" : " + thanks) || text.hasSuffix("\n" + thanks) }
     /// What earns a thank-you: cheers, drinks, snacks, celebrations. Not a wake-up, an invitation, a
     /// note, a question or another thank-you, so the two can't go on thanking each other.
-    static func thankable(_ text: String) -> Bool { !text.contains("일어나") && !text.contains("같이 공부") && text != updateNotice && !isThanks(text) && !isNote(text) && !isWhatStudy(text) && !isSeatInvite(text) && !isBorrow(text) && !isGiveBack(text) }
+    static func thankable(_ text: String) -> Bool { !text.contains("일어나") && !text.contains("같이 공부") && !text.contains(playMore) && text != updateNotice && !isThanks(text) && !isNote(text) && !isWhatStudy(text) && !isSeatInvite(text) && !isBorrow(text) && !isGiveBack(text) }
     /// What a visitor holds on the way over (`back`: on the way home): a drink or a snack to give, an
     /// eraser borrowed or brought back, the alarm clock or pot they wake you with (all the way).
     static func carriedArt(_ text: String, back: Bool = false) -> String {
