@@ -936,7 +936,16 @@ final class AppController: NSObject, NSMenuDelegate {
             let friend = self.members.first(where: { $0.id == poke.from })
             let alert = NSAlert()
             alert.messageText = "\(poke.name) : \(poke.message)"
-            for title in ["답장하기", "공부 시작", FriendInteractions.playMore, "1시간 알림 끄기", "취소"] { alert.addButton(withTitle: title) }
+            for title in ["답장하기", "공부 시작", FriendInteractions.playMore] { alert.addButton(withTitle: title) }
+            // The bell on the right: an hour's quiet, after a yes.
+            let corner = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+            let bell = NSButton(title: "🔕", target: self, action: #selector(self.confirmQuiet(_:)))
+            bell.isBordered = false
+            bell.font = .systemFont(ofSize: 18)
+            bell.toolTip = "1시간 알림 끄기"
+            bell.frame = NSRect(x: corner.frame.width - 32, y: 0, width: 32, height: 28)
+            corner.addSubview(bell)
+            alert.accessoryView = corner
             NSApp.activate(ignoringOtherApps: true)
             switch alert.runModal() {
             case .alertFirstButtonReturn:
@@ -947,11 +956,21 @@ final class AppController: NSObject, NSMenuDelegate {
                 if self.state == .off { self.showPlanner() }
             case .alertThirdButtonReturn:
                 if let friend { self.pokeMember(friend, FriendInteractions.playMore, typed: true) }
-            case NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertThirdButtonReturn.rawValue + 1):
+            case AppController.quietResponse:
                 self.quietUntil = Date().addingTimeInterval(3600) // no peeks or desk popping up, as from the peek's right-click
             default: break
             }
         }
+    }
+
+    private static let quietResponse = NSApplication.ModalResponse(rawValue: 9001)
+    @objc private func confirmQuiet(_ sender: NSButton) {
+        let confirm = NSAlert()
+        confirm.messageText = "1시간 동안 알림을 끌까요?"
+        confirm.informativeText = "빼꼼과 알림이 한 시간 동안 오지 않아요."
+        confirm.addButton(withTitle: "예")
+        confirm.addButton(withTitle: "아니요")
+        if confirm.runModal() == .alertFirstButtonReturn { NSApp.stopModal(withCode: AppController.quietResponse) } // ends the answer alert under it
     }
 
     // ---- Menu ---------------------------------------------------------------------
