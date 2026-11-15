@@ -167,7 +167,7 @@
                   ".validate": "newData.isBoolean()"
                 },
                 "value": {
-                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 12"
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 29"
                 },
                 "$other": {
                   ".validate": false
@@ -287,7 +287,7 @@
                   ".validate": "newData.isBoolean()"
                 },
                 "value": {
-                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 2"
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 4"
                 },
                 "$other": {
                   ".validate": false
