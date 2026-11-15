@@ -166,6 +166,11 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.visitorClicked = { [unowned self] in self.sendThanks() }
         pet.newsClicked = { [unowned self] in self.sendThanks() }
         pet.noteBellClicked = { [unowned self] in self.openNote(self.inbox.firstIndex { !$0.read } ?? -1) }
+        pet.noteReplyClicked = { [unowned self] from in // the inbox keeps the sender's name, not their id
+            if let mate = self.members.first(where: { $0.name == from && $0.id != self.myId }) {
+                DispatchQueue.main.async { self.writeNote(to: mate) } // after the click, not inside it
+            } else { self.news = from + " · 지금 방에 없어서 답장할 수 없어요"; self.newsUntil = Date().addingTimeInterval(5) }
+        }
         pet.unreadNotes = inbox.filter { !$0.read }.count
         pet.roomDday = { [unowned self] in self.room?.dday ?? "" }
         pet.worriedAbout = { [unowned self] name, minutes in
@@ -787,7 +792,10 @@ final class AppController: NSObject, NSMenuDelegate {
     /// 쪽지 남기기: written by hand, up to the room's 20 characters with noteMark.
     @objc private func leaveNote(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let mate = members.first(where: { $0.id == id }) else { return }
-        let text = Room.cleanName(ask("\(mate.name)에게 남길 쪽지를 적어 주세요. (\(FriendInteractions.noteLength)자까지)\n친구가 돌아오면 포스트잇으로 보여요.", title: "쪽지 남기기", value: ""), max: FriendInteractions.noteLength)
+        writeNote(to: mate)
+    }
+    private func writeNote(to mate: Member) {
+        let text = Room.cleanName(ask("\(mate.name)에게 남길 쪽지를 적어 주세요. (\(FriendInteractions.noteLength)자까지)\n친구 책상에 포스트잇으로 보여요.", title: "쪽지 남기기", value: ""), max: FriendInteractions.noteLength)
         if !text.isEmpty { pokeMember(mate, FriendInteractions.noteMark + text, typed: true) }
     }
 

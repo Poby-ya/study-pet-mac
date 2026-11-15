@@ -117,7 +117,9 @@ final class PetWindow: NSPanel {
     private var lookUntil = -1.0
     private var celebratedAt = [-100.0, -100.0]
     private var worried = [false, false]
-    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero, bellHit = NSRect.zero
+    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero, bellHit = NSRect.zero, replyHit = NSRect.zero
+    /// 답장하기 on an open note: who it's from. The note comes down.
+    var noteReplyClicked: (String) -> Void = { _ in }
     // A friend's note opened above my desk until it's clicked off.
     private var note: (to: String, body: String, from: String)?
     /// Received notes not yet opened: 쪽지가 왔어요 ! waits over my desk (and keeps an empty desk up) until clicked.
@@ -743,11 +745,12 @@ final class PetWindow: NSPanel {
             let flash = animationSeconds - newsShownAt < 3 && frameCount / 2 % 2 == 0
             if !news.isEmpty { top = drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint); newsHit = lastBubble }
         }
-        noteHit = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? .zero
+        (noteHit, replyHit) = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? (.zero, .zero)
         bellHit = .zero
         // Not while the friend is still at my desk saying it, nor over an open note.
         if note == nil && unreadNotes > 0 && visitTick < 0 {
-            drawBubble((unreadNotes == 1 ? FriendInteractions.noteArrived : "쪽지 \(unreadNotes)장이 도착했어요 !!") + "\n눌러서 확인", cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow)
+            // Blinks white and yellow until opened: gentler than the news flash, but hard to miss for long.
+            drawBubble((unreadNotes == 1 ? FriendInteractions.noteArrived : "쪽지 \(unreadNotes)장이 도착했어요 !!") + "\n눌러서 확인", cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: frameCount / 3 % 2 == 0 ? PetWindow.visitYellow : .white)
             bellHit = lastBubble
         }
         // 구미 and 포비: hearts while one visits the other, and now and then from each other's desk.
@@ -888,8 +891,8 @@ final class PetWindow: NSPanel {
     }
 
     /// A friend's note, bottom at `bottom`: a yellow post-it written in pen, tilted a little, its
-    /// corner folded over. Returns where clicking takes it down.
-    private func drawNote(_ n: (to: String, body: String, from: String), cx: CGFloat, bottom: CGFloat) -> NSRect {
+    /// corner folded over, with 답장하기 under the sender. Returns where clicking takes it down, and the reply button.
+    private func drawNote(_ n: (to: String, body: String, from: String), cx: CGFloat, bottom: CGFloat) -> (NSRect, NSRect) {
         let hand = Self.noteFont(24 * textFactor), small = Self.noteFont(20 * textFactor)
         let w = min(canvasSize.width - 12, 210 * textFactor), pad: CGFloat = 14, strip: CGFloat = 10, fold: CGFloat = 16
         let line = ceil(small.ascender - small.descender + small.leading)
@@ -903,7 +906,8 @@ final class PetWindow: NSPanel {
         let text = rows.joined(separator: "\n") as NSString
         let wrap = w - pad - 4 // slack past the rows' own width: a row that just fits must not wrap again inside a word
         let body = ceil(text.boundingRect(with: NSSize(width: wrap, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: attributes).height)
-        let h = strip + 6 + line + body + line + 10
+        let button = NSSize(width: ceil(textWidth("답장하기", small)) + 12, height: line + 4)
+        let h = strip + 6 + line + body + line + 6 + button.height + 10
         let box = NSRect(x: max(6, min(cx - w / 2, canvasSize.width - 6 - w)), y: bottom - h, width: w, height: h)
         NSGraphicsContext.saveGraphicsState()
         let turn = NSAffineTransform(); turn.translateX(by: box.midX, yBy: box.midY); turn.rotate(byDegrees: -3); turn.translateX(by: -w / 2, yBy: -h / 2); turn.concat()
@@ -921,8 +925,15 @@ final class PetWindow: NSPanel {
         drawLine("To. " + n.to, font: small, color: ink, in: NSRect(x: pad, y: y, width: w - 2 * pad, height: line), align: .left)
         text.draw(in: NSRect(x: pad, y: y + line, width: wrap, height: body + 1), withAttributes: attributes)
         drawLine("From. " + n.from, font: small, color: ink, in: NSRect(x: pad, y: y + line + body, width: w - pad - fold, height: line), align: .right)
+        let reply = NSRect(x: pad, y: y + line + body + line + 6, width: button.width, height: button.height)
+        Sprites.color(0xFFFDF4).setFill(); NSBezierPath(rect: reply).fill()
+        ink.setStroke(); let edge = NSBezierPath(rect: reply); edge.lineWidth = 1.5; edge.stroke()
+        drawLine("답장하기", font: small, color: ink, in: NSRect(x: reply.minX, y: reply.minY + 2, width: reply.width, height: line), align: .center)
         NSGraphicsContext.restoreGraphicsState()
-        return box
+        // The button in view coordinates: the same turn as the paper, then its bounding box.
+        let corners = [NSPoint(x: reply.minX, y: reply.minY), NSPoint(x: reply.maxX, y: reply.minY), NSPoint(x: reply.maxX, y: reply.maxY), NSPoint(x: reply.minX, y: reply.maxY)].map { turn.transform($0) }
+        let hit = NSRect(x: corners.map(\.x).min()!, y: corners.map(\.y).min()!, width: corners.map(\.x).max()! - corners.map(\.x).min()!, height: corners.map(\.y).max()! - corners.map(\.y).min()!)
+        return (box, hit)
     }
 
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
@@ -1130,9 +1141,11 @@ final class PetWindow: NSPanel {
             return
         }
         if noteHit.contains(p) {
+            let replyTo = replyHit.contains(p) ? note?.from : nil
             note = nil
             if mood == .away && visitTick < 0 && outgoingTick < 0 && !keptUp { fading = true } // nothing else kept the empty desk up
             wake(); redraw()
+            if let replyTo { noteReplyClicked(replyTo) }
             return
         }
         if bellHit.contains(p) { noteBellClicked(); return }
