@@ -53,15 +53,17 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertSucceeds(set(ref(guest,customPath),custom));
     await assertFails(set(ref(outsider,customPath),custom));
     await assertFails(set(ref(host,customPath),custom));
-    await assertFails(set(ref(guest,customPath+'/slots/hat/value'),13));
+    // Up to the last design in Shared/customization.json (30 hats, 5 desks); test-customization.mjs keeps the two in step.
+    await assertFails(set(ref(guest,customPath+'/slots/hat/value'),30));
+    await assertSucceeds(set(ref(guest,customPath+'/slots/hat/value'),29));
     await assertFails(set(ref(guest,customPath+'/slots/hat/value'),1.5));
     await assertFails(set(ref(guest,customPath+'/slots/hat/enabled'),'yes'));
     await assertFails(set(ref(guest,customPath+'/slots/floor'),{enabled:true,value:1}));
     await assertFails(set(ref(guest,customPath+'/slots/hat/locked'),true));
     await assertFails(set(ref(guest,customPath+'/version'),2));
-    await assertSucceeds(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:2}));
-    await assertFails(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:3}));
-    assert.equal((await get(ref(host,customPath+'/slots/hat/value'))).val(),12);
+    await assertSucceeds(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:4}));
+    await assertFails(set(ref(guest,customPath+'/slots/desk'),{enabled:true,value:5}));
+    assert.equal((await get(ref(host,customPath+'/slots/hat/value'))).val(),29);
 
     await assertSucceeds(set(ref(guest, `rooms/${first}/versions/guest`), '0.5.1'));
     await assertFails(set(ref(guest, `rooms/${first}/versions/host`), '0.5.1'));

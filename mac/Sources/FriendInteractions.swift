@@ -70,6 +70,9 @@ final class FriendInteractions {
     /// As sent, or with "name : " or "name에게\n" in front.
     static func isNote(_ text: String) -> Bool { text.hasPrefix(noteMark) || text.contains(" : " + noteMark) || text.contains("\n" + noteMark) || notes.contains { text.contains($0) } }
     static func isWhatStudy(_ text: String) -> Bool { text.contains(whatStudy) }
+    /// Some notes are folded up and thrown instead of carried over (user, 2026-11-15): chosen from the words
+    /// sent, which both screens have, so the sender and the friend see the same. Windows: ThrowsNote.
+    static func throwsNote(_ message: String) -> Bool { isNote(message) && message.utf16.reduce(0) { $0 + Int($1) } % 2 == 1 }
     /// Only a plain thank-you, as sent or with "name : " or "name에게\n" in front.
     static func isThanks(_ text: String) -> Bool { text == thanks || text.hasSuffix(" : " + thanks) || text.hasSuffix("\n" + thanks) }
     /// What earns a thank-you: cheers, drinks, snacks, celebrations. Not a wake-up, an invitation, a

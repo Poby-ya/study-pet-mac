@@ -849,7 +849,8 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.goVisit(mate.name, message: !here ? message + "\n" + Room.offPokeHint : FriendInteractions.isSeatInvite(message) ? message + "\n받아 줬는지는 알 수 없어요" : message,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0,
                     retort: !here || mate.state != "studying" ? "" : FriendInteractions.isWhatStudy(message) ? FriendInteractions.answer(mate.subject, mate.minutes) : FriendInteractions.isBorrow(message) ? FriendInteractions.handOver
-                        : state != .studying ? FriendInteractions.retort(message, couple: FriendInteractions.isCouple(nickname, mate.name)) : "")
+                        : state != .studying ? FriendInteractions.retort(message, couple: FriendInteractions.isCouple(nickname, mate.name)) : "",
+                    thrown: FriendInteractions.throwsNote(message))
     }
 
     /// What my pet says back when someone who isn't studying comes to cheer me on.
@@ -878,7 +879,7 @@ final class AppController: NSObject, NSMenuDelegate {
             let received: FriendInteractions.Received = (poke.at, Room.cleanName(poke.name), Room.cleanName(FriendInteractions.noteText(poke.message), max: 20), false)
             // The same poke can come twice on a reconnect.
             if !notes.contains(where: { $0.at == received.at && $0.from == received.from && $0.text == received.text }) { notes.append(received); keep(notes) }
-            if !hushed { pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side) }
+            if !hushed { pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side, thrown: FriendInteractions.throwsNote(poke.message)) }
             // A minimized desk shows no visit: the friend peeks up instead, and a click brings the desk back.
             if pet.minimized && !muted && !poke.missed { peek.peek(friendLook, text: "\(poke.name) : \(FriendInteractions.noteArrived)", delay: 0) }
             return

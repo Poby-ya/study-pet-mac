@@ -91,6 +91,7 @@ final class PetWindow: NSPanel {
     private var onArrival: (() -> Void)? // what happens once the visitor reaches the desk
     private var visitRetort = "", outgoingRetort = "" // the answer to a cheer from someone not studying
     private var visitSide = 0
+    private var visitThrown = false, outgoingThrown = false // a note folded up and thrown rather than carried
     private var outgoingTick = -1.0
     private var outgoingSide = 0
     private var outgoingText = ""
@@ -343,7 +344,8 @@ final class PetWindow: NSPanel {
     /// A friend comes round behind my desk and taps my pet on the shoulder, saying `text`.
     /// If my pet isn't out, the friend turns up at my empty desk, waves, and leaves again.
     /// `side` is where they come from: -1 the left seat, 1 the right, 0 from outside.
-    func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil, retort: String = "") {
+    func visit(_ friend: Look, text: String, side: Int, arrived: (() -> Void)? = nil, retort: String = "", thrown: Bool = false) {
+        visitThrown = thrown
         returnAt = -1 // a new visit comes first
         if minimized { arrived?(); return }
         if FriendInteractions.isBorrow(text) { (returnAt, returnIncoming, returnLook, returnName, returnSide) = (animationSeconds + 26, true, friend, text.components(separatedBy: " : ")[0], side) }
@@ -411,7 +413,8 @@ final class PetWindow: NSPanel {
         else { play(id, delay: id == "yawn" ? 6 : 3, line: id == "yawn" ? "하품이 옮았다…" : "같이 으쌰 !") }
     }
 
-    func goVisit(_ name: String, message: String, side: Int, retort: String = "") {
+    func goVisit(_ name: String, message: String, side: Int, retort: String = "", thrown: Bool = false) {
+        outgoingThrown = thrown
         returnAt = -1
         if minimized { return }
         if FriendInteractions.isBorrow(message) { (returnAt, returnIncoming, returnName, returnSide) = (animationSeconds + 26, false, name, side) }
@@ -423,8 +426,9 @@ final class PetWindow: NSPanel {
 
     /// For the self-test: one moment of the animation, set up without showing the window.
     func preview(_ atMood: Mood, frame atFrame: Int, visitTick atVisitTick: Double = -1,
-                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1, arrivalTick atArrivalTick: Double = -1) {
+                 friend: Look = Look(girl: false, 0, 0, 0, 0, 0, 0), friendText: String = "", outgoingTick atOutgoingTick: Double = -1, outgoingDirection: Int = 0, incomingDirection: Int = -1, arrivalTick atArrivalTick: Double = -1, thrown: Bool = false) {
         mood = atMood
+        visitThrown = thrown; outgoingThrown = thrown
         arrivalTick = atArrivalTick
         routineSeed = 0
         frameCount = atFrame
@@ -616,8 +620,11 @@ final class PetWindow: NSPanel {
         let start = visitSide == 1 ? rightX : visitSide == -1 ? seatX : -deskWidth / 2
         let arrived = myX + (visitSide == 1 ? 1 : -1) * (FriendInteractions.touch(visitText) == 2 ? 18 : 25) * scale // a hug stands right up close
         // A cheer from the desk right beside mine comes on a folded note; the friend stays in their seat.
-        let passingIn = visiting && visitSide != 0 && FriendInteractions.passesNote(visitText) && seats[visitSide < 0 ? 0 : 1].map { $0.here && !$0.dozing } == true
-        let visitorX = passingIn ? (visitSide < 0 ? seatX : rightX) : start + (arrived - start) * CGFloat(Travel.progress(visitTick))
+        // A thrown note comes the same way: from their desk, or in from the side when they aren't sitting beside me.
+        let seatIn = visitSide != 0 && seats[visitSide < 0 ? 0 : 1].map { $0.here && !$0.dozing } == true
+        let throwingIn = visiting && visitThrown
+        let passingIn = throwingIn || visiting && visitSide != 0 && FriendInteractions.passesNote(visitText) && seatIn
+        let visitorX = passingIn ? (seatIn ? (visitSide < 0 ? seatX : rightX) : visitSide > 0 ? canvasSize.width + deskWidth / 2 : -deskWidth / 2) : start + (arrived - start) * CGFloat(Travel.progress(visitTick))
         let walking = Travel.walking(visitTick)
         let cheering = visiting && !visitText.contains("일어나") && !visitText.contains("같이 공부") && !FriendInteractions.isPat(visitText)
         let pat = visiting && FriendInteractions.isPat(visitText)
@@ -634,7 +641,9 @@ final class PetWindow: NSPanel {
                                  hop: hop(visitTick, fromSeat: visitSide != 0), mirror: (visitSide == 1) != (visitTick > Travel.leave), carried: visitTick < Travel.arrive || visitTick > Travel.leave || FriendInteractions.wakeLevel(visitText) >= 2 ? FriendInteractions.carriedArt(visitText, back: visitTick > Travel.leave) : "", held: !walking && FriendInteractions.wakeLevel(visitText) >= 2) }
         let beside = (FriendInteractions.touch(outgoingText) == 2 ? 18 : 25) * scale
         let destination = outgoingSide < 0 ? seatX + beside : outgoingSide > 0 ? rightX - beside : canvasSize.width - deskWidth / 2
-        let passingOut = outgoing && outgoingSide != 0 && mood == .studying && FriendInteractions.passesNote(outgoingText) && seats[outgoingSide < 0 ? 0 : 1]?.here == true
+        let seatOut = outgoingSide != 0 && seats[outgoingSide < 0 ? 0 : 1]?.here == true
+        let throwingOut = outgoing && outgoingThrown && mood == .studying // away from the desk, my pet walks it over
+        let passingOut = throwingOut || outgoing && outgoingSide != 0 && mood == .studying && FriendInteractions.passesNote(outgoingText) && seatOut
         let outX = passingOut ? myX : myX + (destination - myX) * CGFloat(Travel.progress(outgoingTick))
         // Wave with the far hand: the near one would be behind the friend I'm visiting.
         if outgoing && !passingOut { drawVisitor(look, pose: Travel.walking(outgoingTick) ? .walk : patting ? .reach : outgoingText.contains("일어나") || outgoingText.contains("같이 공부") || FriendInteractions.noFlames(outgoingText) ? .wave : .cheer, x: outX,
@@ -667,7 +676,7 @@ final class PetWindow: NSPanel {
             let gone = visiting && visitSide == (i == 0 ? -1 : 1) && !passingIn
             let cheered = cheeredSide == (i == 0 ? -1 : 1) && seat.here && !seat.dozing
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i])
-                : passingIn && visitSide == (i == 0 ? -1 : 1) && visitTick < Travel.leave ? (i == 0 ? .lookRight : .lookLeft) : seatForcedFrame(i) >= 0 && seat.here && !seat.dozing ? Routine.momentPose(seatForced[i].moment, seatForcedFrame(i))
+                : passingIn && seatIn && visitSide == (i == 0 ? -1 : 1) && visitTick < Travel.leave ? (i == 0 ? .lookRight : .lookLeft) : seatForcedFrame(i) >= 0 && seat.here && !seat.dozing ? Routine.momentPose(seatForced[i].moment, seatForcedFrame(i))
                 : animationSeconds - celebratedAt[i] < 2 && seat.here && !seat.dozing && arrivingTicks[i] < 0 ? .cheer
                 : cheered ? (sentRetort ? (cheeredSide < 0 ? .lookRight : .lookLeft) : .content) : seatPose(seat, i)
             let arriving = !gone && arrivingTicks[i] >= 0 ? Departure.arrival(arrivingTicks[i]) : -1
@@ -714,8 +723,8 @@ final class PetWindow: NSPanel {
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
         else if arrivalTick >= 0 && Departure.arrival(arrivalTick) < 12 { drawDepartureProps(look, laptop: laptop, x: myX, tick: Departure.arrival(arrivalTick)) }
         else if mood == .away && !outgoing { drawAwaySign(myX) }
-        if passingIn { drawPassedNote(visitorX, myX, visitTick) }
-        if passingOut { drawPassedNote(myX, outgoingSide < 0 ? seatX : rightX, outgoingTick) }
+        if passingIn { drawPassedNote(visitorX, myX, visitTick, thrown: throwingIn) }
+        if passingOut { drawPassedNote(myX, seatOut ? (outgoingSide < 0 ? seatX : rightX) : outgoingSide < 0 ? -deskWidth / 2 : canvasSize.width + deskWidth / 2, outgoingTick, thrown: throwingOut) }
         // Now and then a cat crosses the floor in front of the desks; not with the background hidden, nor in focus mode.
         if board() != nil && !focus { let cat = Sprites.catAt(clock().timeIntervalSince1970); if !cat.frame.isEmpty { Sprites.drawArt(cat.frame, left: (-17 * scale + CGFloat(cat.across) * (canvasSize.width + 17 * scale)).rounded(), top: floorY + 29 * scale, scale: scale) } }
         // The lamps' light over everything at their desks (but under the speech bubbles).
@@ -728,7 +737,7 @@ final class PetWindow: NSPanel {
         if visiting || outgoing {
             if retorting { top = drawBubble(visitRetort, cx: myX + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
             else if sentRetort { top = drawBubble(outgoingRetort, cx: (outgoingSide == 0 ? myX : outgoingSide < 0 ? seatX : rightX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: .white) }
-            else { top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? visitorX : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
+            else { top = drawBubble(visiting ? visitText : outgoingText, cx: (visiting ? (throwingIn && !seatIn ? myX : visitorX) : outX) + mid, tipY: tip, maxWidth: canvasSize.width - 2, fill: PetWindow.visitYellow) }
             if visiting { visitorHit = lastBubble.union(NSRect(x: visitorX + CGFloat(Sprites.dx + 4) * scale, y: floorY, width: 24 * scale, height: 36 * scale)) }
             if !updateText.isEmpty { top = drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
@@ -816,11 +825,12 @@ final class PetWindow: NSPanel {
     }
 
     /// The folded note: lifted off one desk, over the gap, onto the next, and read there until tick 10.
-    private func drawPassedNote(_ fromDesk: CGFloat, _ toDesk: CGFloat, _ tick: Double) {
+    /// Thrown: quicker, in a high lob, from as far as the edge of the window.
+    private func drawPassedNote(_ fromDesk: CGFloat, _ toDesk: CGFloat, _ tick: Double, thrown: Bool = false) {
         if tick < 1 || tick > 10 { return }
-        let t = CGFloat(Departure.ease((tick - 1) / 4))
+        let t = thrown ? CGFloat(min(1, (tick - 1) / 3)) : CGFloat(Departure.ease((tick - 1) / 4)) // a throw flies at an even pace
         let x = fromDesk + (toDesk - fromDesk) * t + CGFloat(Sprites.dx + 14) * scale
-        Sprites.drawArt("Folded", left: x.rounded(), top: floorY + ((22 - sin(t * .pi) * 6) * scale).rounded(), scale: scale)
+        Sprites.drawArt("Folded", left: x.rounded(), top: floorY + ((22 - sin(t * .pi) * (thrown ? 20 : 6)) * scale).rounded(), scale: scale)
     }
 
     /// Three sparkles rising off a desk over three seconds (phase in ticks).

@@ -429,6 +429,9 @@ enum SelfTest {
         check(written.utf16.count <= 20 && FriendInteractions.noteLength + FriendInteractions.noteMark.utf16.count == 20 && FriendInteractions.isNote(written) && FriendInteractions.isNote("민지 : " + written) && FriendInteractions.isNote("민지에게\n" + written) && FriendInteractions.isNote("내일 봐 !")
               && !FriendInteractions.isNote("파이팅 !") && !FriendInteractions.isNote(FriendInteractions.noteArrived) && FriendInteractions.noteText(written) == "내일은 꼭 같이 공부하자 !" && FriendInteractions.retort(written, couple: false).isEmpty, "note: written by hand after its mark within 20 characters; v0.7.0's fixed notes still count")
         check(PetWindow.noteFont(20).fontName != NSFont.systemFont(ofSize: 20).fontName, "note: the handwriting font is bundled and loads")
+        // Thrown or carried, from the words alone: the same answers as Windows (sums of UTF-16 units).
+        check(["내일 봐 !", "오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !"].map { FriendInteractions.throwsNote(FriendInteractions.noteMark + $0) } == [false, false, true, true, false]
+              && !FriendInteractions.throwsNote("파이팅 !!"), "note: thrown or carried, decided by the words the same as Windows")
         var inbox = FriendInteractions.inbox("")
         for i in 0..<22 { inbox.append((1000 + Int64(i), "민지", "a=b 내일 봐 \(i)", i % 2 == 0)) }
         let kept = FriendInteractions.inbox(FriendInteractions.inbox(inbox))
