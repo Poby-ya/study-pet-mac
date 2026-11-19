@@ -798,7 +798,8 @@ enum SelfTest {
         // The same words as Windows (Room.MissedNote), in the Mac's own time zone.
         var parts = DateComponents(); parts.year = 2026; parts.month = 11; parts.day = 19; parts.hour = 10
         let morning = Calendar.current.date(from: parts)!
-        let whens = [-20 * 60.0, -3 * 3600, -12.5 * 3600, -3 * 86400].map { Room.missedNote(Int64(morning.addingTimeInterval($0).timeIntervalSince1970 * 1000), now: morning) }
+        let offsets: [TimeInterval] = [-1200, -10800, -45000, -259200] // 20 minutes, 3 hours, 12½ hours, 3 days before
+        let whens = offsets.map { Room.missedNote(Int64(morning.addingTimeInterval($0).timeIntervalSince1970 * 1000), now: morning) }
         check(whens == ["20분 전에 왔었어요", "3시간 전에 왔었어요", "어제 21:30에 왔었어요", "11/16 10:00에 왔었어요"], "missed poke: says when it came (\(whens.joined(separator: ", ")))")
 
         let latest = Room.latest(members)
