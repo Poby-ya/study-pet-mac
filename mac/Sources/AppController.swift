@@ -166,6 +166,7 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.visitorClicked = { [unowned self] in self.sendThanks() }
         pet.newsClicked = { [unowned self] in self.sendThanks() }
         pet.noteBellClicked = { [unowned self] in self.openNote(self.inbox.firstIndex { !$0.read } ?? -1) }
+        pet.noteNextClicked = { [unowned self] in self.openNextNote() }
         pet.noteReplyClicked = { [unowned self] from in // the inbox keeps the sender's name, not their id
             if let mate = self.members.first(where: { $0.name == from && $0.id != self.myId }) {
                 DispatchQueue.main.async { self.writeNote(to: mate) } // after the click, not inside it
@@ -779,13 +780,18 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.redraw()
     }
 
-    /// Opens a received note as the handwritten post-it, and marks it read.
+    /// Opens a received note as the handwritten post-it, and marks it read; 다음 쪽지 on it opens the one after.
     private func openNote(_ index: Int) {
         var notes = inbox
         guard notes.indices.contains(index) else { return }
         notes[index].read = true
         keep(notes)
-        pet.showNote(to: nickname, body: notes[index].text, from: notes[index].from)
+        openNoteKey = (notes[index].at, notes[index].from, notes[index].text)
+        pet.showNote(to: nickname, body: notes[index].text, from: notes[index].from, more: index + 1 < notes.count)
+    }
+    private var openNoteKey: (at: Int64, from: String, text: String) = (0, "", "") // found again by value: a new note may have pushed the oldest out
+    private func openNextNote() {
+        if let i = inbox.firstIndex(where: { $0.at == openNoteKey.at && $0.from == openNoteKey.from && $0.text == openNoteKey.text }) { openNote(i + 1) }
     }
     @objc private func openNoteItem(_ sender: NSMenuItem) { if let index = sender.representedObject as? Int { openNote(index) } }
 
@@ -846,6 +852,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let message = chosen ?? interactions.message(mate, here: here, current: Updater.current, me: nickname)
         let sent: [String: Any] = ["from": myId, "name": nickname, "look": pet.look.girl ? "girl" : "boy", "style": pet.look.code, "message": message, "at": Room.serverTime]
         if FriendInteractions.isNote(message) && FriendInteractions.keepsNotes(mate.version) { room.leaveNote(mate.id, sent) } else { room.poke(mate.id, sent) }
+        room.log(to: mate.id, Room.logLine(from: myId, name: nickname, to: mate.id, toName: mate.name, message: message, typed: typed, at: Room.serverTime))
         pet.goVisit(mate.name, message: !here ? message + "\n" + Room.offPokeHint : FriendInteractions.isSeatInvite(message) ? message + "\n받아 줬는지는 알 수 없어요" : message,
                     side: mate.id == Settings.get("seatmate") ? -1 : mate.id == Settings.get("seatmateRight") ? 1 : 0,
                     retort: !here || mate.state != "studying" ? "" : FriendInteractions.isWhatStudy(message) ? FriendInteractions.answer(mate.subject, mate.minutes) : FriendInteractions.isBorrow(message) ? FriendInteractions.handOver
@@ -870,7 +877,8 @@ final class AppController: NSObject, NSMenuDelegate {
         if quitting { return }
         if poke.message == FriendInteractions.updateNotice { updater.check() }
         let side = poke.from == Settings.get("seatmate") ? -1 : poke.from == Settings.get("seatmateRight") ? 1 : 0
-        let friendLook = members.first(where: { $0.id == poke.from })?.look ?? poke.look
+        // The caller as they look in the room, hat and all; a name-only entry (never published) has no look of its own.
+        let friendLook = members.first(where: { $0.id == poke.from && !$0.style.isEmpty })?.look ?? poke.look
         let muted = Date() < quietUntil
         let hushed = muted && !pet.isVisible && !pet.minimized // a visit would bring the desk up on screen
         // A note goes in the inbox and waits over my desk as 쪽지가 왔어요 ! until clicked open; it isn't a call to study.
@@ -885,10 +893,11 @@ final class AppController: NSObject, NSMenuDelegate {
             return
         }
         let text = "\(poke.name) : \(poke.message)"
+        let late = poke.missed ? "\n" + Room.missedNote(poke.at, now: Date()) : "" // a call that waited for me says when it came
         var arrived: (() -> Void)?
         if FriendInteractions.isTreat(poke.message) && state != .off { arrived = { [weak self] in self?.pet.drink = FriendInteractions.treatDrink(poke.message); self?.publish() } }
         // Minimized it only hands over a treat; closed, the peek below calls me.
-        if pet.isVisible || pet.minimized { pet.visit(friendLook, text: poke.missed ? text + "\n" + Room.missedPokeNote : text, side: side, arrived: arrived, retort: retort(to: poke)) }
+        if pet.isVisible || pet.minimized { pet.visit(friendLook, text: text + late, side: side, arrived: arrived, retort: retort(to: poke)) }
         if FriendInteractions.thankable(poke.message) {
             // Clicking the visitor, or the bubble left over my desk for ten seconds after, says thank you.
             thankable = poke; thankUntil = Date().addingTimeInterval(16)
@@ -905,7 +914,7 @@ final class AppController: NSObject, NSMenuDelegate {
         blink = timer
         statusItem.button?.image = Sprites.face(pet.look, dot: true)
         // The dot is easy to miss; the friend peeks up from the corner for a few seconds.
-        if !poke.missed && !muted && !pet.isVisible { peek.peek(friendLook, text: text, delay: 0) }
+        if !muted && !pet.isVisible { peek.peek(friendLook, text: text + late, delay: 0) }
     }
 
     @objc private func blinkFace() {
@@ -944,7 +953,7 @@ final class AppController: NSObject, NSMenuDelegate {
             if self.quitting { return }
             let friend = self.members.first(where: { $0.id == poke.from })
             let alert = NSAlert()
-            alert.messageText = "\(poke.name) : \(poke.message)"
+            alert.messageText = "\(poke.name) : \(poke.message)" + (poke.missed ? "\n" + Room.missedNote(poke.at, now: Date()) : "")
             for title in ["답장하기", "공부 시작", FriendInteractions.playMore] { alert.addButton(withTitle: title) }
             // The bell on the right: an hour's quiet, after a yes.
             let corner = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
@@ -957,9 +966,8 @@ final class AppController: NSObject, NSMenuDelegate {
             alert.accessoryView = corner
             NSApp.activate(ignoringOtherApps: true)
             switch alert.runModal() {
-            case .alertFirstButtonReturn:
-                let text = Room.cleanName(self.ask("\(poke.name)에게 보낼 답장을 적어 주세요. (\(FriendInteractions.callLength)자까지)", title: "답장하기", value: ""), max: FriendInteractions.callLength)
-                if !text.isEmpty, let friend { self.pokeMember(friend, text, typed: true) }
+            case .alertFirstButtonReturn: // a written answer arrives as a note, kept in their inbox, not as another call (user, 2026-11-19)
+                if let friend { self.writeNote(to: friend) } else { self.news = poke.name + " · 지금 방에 없어서 답장할 수 없어요"; self.newsUntil = Date().addingTimeInterval(5) }
             case .alertSecondButtonReturn:
                 if self.state != .off { self.stop() }
                 if self.state == .off { self.showPlanner() }
@@ -1026,7 +1034,7 @@ final class AppController: NSObject, NSMenuDelegate {
             if !received.isEmpty {
                 let notes = NSMenu()
                 let day = DateFormatter(); day.dateFormat = "M/d"
-                for (index, n) in received.enumerated().reversed() {
+                for (index, n) in received.enumerated() { // oldest first, the order 다음 쪽지 reads them in
                     let entry = item("\(n.read ? "" : "● ")\(n.from) · \(n.text) (\(day.string(from: Date(timeIntervalSince1970: Double(n.at) / 1000))))", #selector(openNoteItem(_:)))
                     entry.representedObject = index; notes.addItem(entry)
                 }

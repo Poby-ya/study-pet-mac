@@ -312,6 +312,12 @@ final class Room: @unchecked Sendable {
     func poke(_ to: String, _ poke: [String: Any]) { write("PUT", "\(roomPath)/pokes/\(to)", poke) }
     /// A note in its own entry, so notes left while the friend's app is off all wait for them.
     func leaveNote(_ to: String, _ note: [String: Any]) { write("PUT", "\(roomPath)/notes/\(to)/\(Room.randomId(20))", note) }
+    /// A line in the record only the room's owner reads (v0.7.7): what I just sent. Quiet: without the rule
+    /// that allows it nothing is kept, and the poke itself has already gone. Windows: Room.Log.
+    func log(_ line: [String: Any]) { write("PUT", "roomLogs/\(invite.roomId)/\(Room.randomId(20))", line, quiet: true) }
+    static func logLine(from: String, name: String, to: String, toName: String, message: String, typed: Bool, at: Any) -> [String: Any] {
+        ["from": from, "name": name, "to": to, "toName": toName, "message": message, "typed": typed, "at": at]
+    }
 
     func leave() { write("DELETE", "\(roomPath)/members/\(me)", nil) }
 
@@ -550,16 +556,33 @@ final class Room: @unchecked Sendable {
         return result
     }
 
-    /// A poke left while my app was off still counts for this long.
-    static let missedPokeMs: Int64 = 12 * 3_600_000
-    static let missedPokeNote = "자리 비운 사이에 왔었어요"
+    /// A poke left while my app was off still counts for this long: a week, as long as the room counts minutes away.
+    static let missedPokeMs: Int64 = 7 * 24 * 3_600_000
+    /// Older than this when it reaches a connected app, a poke waited out a dropped connection (or sleep); the
+    /// margin is for clocks a little off the server's.
+    static let latePokeMs: Int64 = 5 * 60_000
     /// Under my outgoing bubble when the friend isn't at their desk: their app may be off.
     static let offPokeHint = "꺼져 있으면 켤 때 전해져요"
 
-    /// Whether to show a poke. One already waiting at the first snapshot (lastPokeAt -1)
-    /// was sent while the app was off: shown, marked missed, if it's recent.
+    /// Under a call that waited for me, so it isn't taken for one sent just now: "20분 전에 왔었어요", "어제 21:30에 왔었어요".
+    static func missedNote(_ at: Int64, now: Date) -> String {
+        let sent = Date(timeIntervalSince1970: Double(at) / 1000), calendar = Calendar.current
+        let minutes = max(1, Int(now.timeIntervalSince(sent) / 60))
+        let time = DateFormatter(); time.dateFormat = "HH:mm"
+        let when = minutes < 60 ? "\(minutes)분 전" : calendar.isDate(sent, inSameDayAs: now) ? "\(minutes / 60)시간 전"
+            : calendar.isDate(sent, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: now)!) ? "어제 \(time.string(from: sent))"
+            : "\(calendar.component(.month, from: sent))/\(calendar.component(.day, from: sent)) \(time.string(from: sent))"
+        return when + "에 왔었어요"
+    }
+
+    /// Whether to show a poke. One already waiting at the first snapshot (lastPokeAt -1) was sent while the
+    /// app was off: shown, marked missed, if it's from the last week. A later one is missed when it waited out a
+    /// dropped connection.
     static func deliverPoke(_ poke: inout Poke, lastPokeAt: Int64, now: Int64) -> Bool {
-        if lastPokeAt >= 0 { return poke.at > lastPokeAt }
+        if lastPokeAt >= 0 {
+            poke.missed = now - poke.at > latePokeMs
+            return poke.at > lastPokeAt
+        }
         poke.missed = poke.at > 0 && now - poke.at < missedPokeMs
         return poke.missed
     }

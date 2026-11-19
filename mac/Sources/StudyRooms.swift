@@ -97,6 +97,8 @@ final class StudyRooms {
     func publish(_ value: [String: Any]) { status = value; channels.values.forEach { $0.publish(value) } }
     func poke(_ to: String, _ value: [String: Any]) { channel(of: to)?.poke(to, value) }
     func leaveNote(_ to: String, _ value: [String: Any]) { channel(of: to)?.leaveNote(to, value) }
+    /// Into the record of the room the friend I sent to sits in.
+    func log(to: String, _ line: [String: Any]) { channel(of: to)?.log(line) }
     private func channel(of to: String) -> Room? {
         snapshots.first(where: { $0.value.contains(where: { $0.id == to }) }).flatMap { channels[$0.key] }
     }

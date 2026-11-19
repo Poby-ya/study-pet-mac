@@ -118,11 +118,13 @@ final class PetWindow: NSPanel {
     private var lookUntil = -1.0
     private var celebratedAt = [-100.0, -100.0]
     private var worried = [false, false]
-    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero, bellHit = NSRect.zero, replyHit = NSRect.zero
+    private var visitorHit = NSRect.zero, newsHit = NSRect.zero, noteHit = NSRect.zero, bellHit = NSRect.zero, replyHit = NSRect.zero, nextHit = NSRect.zero
     /// 답장하기 on an open note: who it's from. The note comes down.
     var noteReplyClicked: (String) -> Void = { _ in }
-    // A friend's note opened above my desk until it's clicked off.
-    private var note: (to: String, body: String, from: String)?
+    /// 다음 쪽지 on an open note that has a later one after it in the inbox.
+    var noteNextClicked: () -> Void = {}
+    // A friend's note opened above my desk until it's clicked off; more: a later note follows it.
+    private var note: (to: String, body: String, from: String, more: Bool)?
     /// Received notes not yet opened: 쪽지가 왔어요 ! waits over my desk (and keeps an empty desk up) until clicked.
     var unreadNotes = 0
     var noteBellClicked: () -> Void = {}
@@ -361,8 +363,8 @@ final class PetWindow: NSPanel {
     }
 
     /// A note from `from` to `to`, opened over my desk until clicked; it keeps an empty desk's window open.
-    func showNote(to: String, body: String, from: String) {
-        note = (to.isEmpty ? "나" : to, body, from)
+    func showNote(to: String, body: String, from: String, more: Bool = false) {
+        note = (to.isEmpty ? "나" : to, body, from, more)
         if minimized { restoreScene() } // asked for: opened from the bubble or the menu
         if !isVisible || fading { appear(.away) }
         wake(); redraw()
@@ -754,7 +756,7 @@ final class PetWindow: NSPanel {
             let flash = animationSeconds - newsShownAt < 3 && frameCount / 2 % 2 == 0
             if !news.isEmpty { top = drawBubble(news, cx: myX + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: flash ? PetWindow.visitYellow : PetWindow.newsMint); newsHit = lastBubble }
         }
-        (noteHit, replyHit) = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? (.zero, .zero)
+        (noteHit, replyHit, nextHit) = note.map { drawNote($0, cx: myX + mid, bottom: top - 4) } ?? (.zero, .zero, .zero)
         bellHit = .zero
         // Not while the friend is still at my desk saying it, nor over an open note.
         if note == nil && unreadNotes > 0 && visitTick < 0 {
@@ -901,8 +903,9 @@ final class PetWindow: NSPanel {
     }
 
     /// A friend's note, bottom at `bottom`: a yellow post-it written in pen, tilted a little, its
-    /// corner folded over, with 답장하기 under the sender. Returns where clicking takes it down, and the reply button.
-    private func drawNote(_ n: (to: String, body: String, from: String), cx: CGFloat, bottom: CGFloat) -> (NSRect, NSRect) {
+    /// corner folded over, with 답장하기 under the sender and 다음 쪽지 beside it when another follows. Returns where
+    /// clicking takes it down, and the two buttons.
+    private func drawNote(_ n: (to: String, body: String, from: String, more: Bool), cx: CGFloat, bottom: CGFloat) -> (NSRect, NSRect, NSRect) {
         let hand = Self.noteFont(24 * textFactor), small = Self.noteFont(20 * textFactor)
         let w = min(canvasSize.width - 12, 210 * textFactor), pad: CGFloat = 14, strip: CGFloat = 10, fold: CGFloat = 16
         let line = ceil(small.ascender - small.descender + small.leading)
@@ -936,14 +939,21 @@ final class PetWindow: NSPanel {
         text.draw(in: NSRect(x: pad, y: y + line, width: wrap, height: body + 1), withAttributes: attributes)
         drawLine("From. " + n.from, font: small, color: ink, in: NSRect(x: pad, y: y + line + body, width: w - pad - fold, height: line), align: .right)
         let reply = NSRect(x: pad, y: y + line + body + line + 6, width: button.width, height: button.height)
-        Sprites.color(0xFFFDF4).setFill(); NSBezierPath(rect: reply).fill()
-        ink.setStroke(); let edge = NSBezierPath(rect: reply); edge.lineWidth = 1.5; edge.stroke()
-        drawLine("답장하기", font: small, color: ink, in: NSRect(x: reply.minX, y: reply.minY + 2, width: reply.width, height: line), align: .center)
+        let nextWidth = ceil(textWidth("다음 쪽지", small)) + 12
+        let next = n.more ? NSRect(x: w - fold - nextWidth, y: reply.minY, width: nextWidth, height: button.height) : .zero // right edge with From's
+        for (rect, label) in [(reply, "답장하기"), (next, "다음 쪽지")] where !rect.isEmpty {
+            Sprites.color(0xFFFDF4).setFill(); NSBezierPath(rect: rect).fill()
+            ink.setStroke(); let edge = NSBezierPath(rect: rect); edge.lineWidth = 1.5; edge.stroke()
+            drawLine(label, font: small, color: ink, in: NSRect(x: rect.minX, y: rect.minY + 2, width: rect.width, height: line), align: .center)
+        }
         NSGraphicsContext.restoreGraphicsState()
-        // The button in view coordinates: the same turn as the paper, then its bounding box.
-        let corners = [NSPoint(x: reply.minX, y: reply.minY), NSPoint(x: reply.maxX, y: reply.minY), NSPoint(x: reply.maxX, y: reply.maxY), NSPoint(x: reply.minX, y: reply.maxY)].map { turn.transform($0) }
-        let hit = NSRect(x: corners.map(\.x).min()!, y: corners.map(\.y).min()!, width: corners.map(\.x).max()! - corners.map(\.x).min()!, height: corners.map(\.y).max()! - corners.map(\.y).min()!)
-        return (box, hit)
+        // The buttons in view coordinates: the same turn as the paper, then their bounding boxes.
+        func hit(_ r: NSRect) -> NSRect {
+            if r.isEmpty { return .zero }
+            let corners = [NSPoint(x: r.minX, y: r.minY), NSPoint(x: r.maxX, y: r.minY), NSPoint(x: r.maxX, y: r.maxY), NSPoint(x: r.minX, y: r.maxY)].map { turn.transform($0) }
+            return NSRect(x: corners.map(\.x).min()!, y: corners.map(\.y).min()!, width: corners.map(\.x).max()! - corners.map(\.x).min()!, height: corners.map(\.y).max()! - corners.map(\.y).min()!)
+        }
+        return (box, hit(reply), hit(next))
     }
 
     /// A wooden nameplate standing on the left end of the desk top, like on a teacher's desk.
@@ -1152,10 +1162,12 @@ final class PetWindow: NSPanel {
         }
         if noteHit.contains(p) {
             let replyTo = replyHit.contains(p) ? note?.from : nil
+            let next = nextHit.contains(p) && note?.more == true
             note = nil
-            if mood == .away && visitTick < 0 && outgoingTick < 0 && !keptUp { fading = true } // nothing else kept the empty desk up
+            if mood == .away && visitTick < 0 && outgoingTick < 0 && !keptUp && !next { fading = true } // nothing else kept the empty desk up
             wake(); redraw()
             if let replyTo { noteReplyClicked(replyTo) }
+            if next { noteNextClicked() }
             return
         }
         if bellHit.contains(p) { noteBellClicked(); return }

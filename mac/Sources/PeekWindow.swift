@@ -89,7 +89,8 @@ final class PeekWindow: NSPanel {
         if let friend { Self.paint(friend, text, t: max(0, seconds), size: Self.measure(text)) }
     }
 
-    private static func lines(_ text: String) -> [String] { [text, text.hasSuffix(FriendInteractions.noteArrived) ? "눌러서 확인" : "눌러서 답하기"] }
+    // A call that waited for me has a second line saying when it came.
+    private static func lines(_ text: String) -> [String] { text.components(separatedBy: "\n") + [text.hasSuffix(FriendInteractions.noteArrived) ? "눌러서 확인" : "눌러서 답하기"] }
     private static func bubbleSize(_ text: String) -> NSSize {
         NSSize(width: ((lines(text).map { textWidth($0, font) }.max() ?? 0) + 22).rounded(.up), height: CGFloat(lines(text).count) * 18 + 10)
     }

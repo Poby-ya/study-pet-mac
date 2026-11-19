@@ -116,6 +116,27 @@ test('multi-room access, shared presence, private approvals and owner boundaries
     await assertFails(set(ref(other, notes + 'note000000000000001'), null));
     await assertSucceeds(set(ref(host, notes + 'note000000000000001'), null));
     await assertSucceeds(set(ref(guest, notes + 'note000000000000002'), null));
+    // The owner's record (v0.7.7): any member adds what they sent, as themselves, at the server's time; only the owner reads or deletes.
+    const line = { from: 'guest', name: '친구', to: 'host', toName: '방장', message: '쪽지: 내일 봐 !', typed: true, at: serverTimestamp() };
+    const logs = `roomLogs/${first}/`;
+    await assertSucceeds(set(ref(guest, logs + 'line000000000000001'), line));
+    await assertSucceeds(set(ref(host, logs + 'line000000000000002'), { ...line, from: 'host', name: '방장', to: 'guest', toName: '친구', typed: false }));
+    await assertFails(set(ref(guest, logs + 'line000000000000001'), line));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, from: 'host' }));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, at: 1000 }));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, to: 'outsider' }));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, message: '가'.repeat(21) }));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, typed: 'yes' }));
+    await assertFails(set(ref(guest, logs + 'line000000000000003'), { ...line, extra: 1 }));
+    await assertFails(set(ref(guest, logs + 'NOTE!'), line));
+    await assertFails(set(ref(outsider, logs + 'line000000000000003'), { ...line, from: 'outsider' }));
+    await assertFails(set(ref(other, logs + 'line000000000000003'), { ...line, from: 'other' })); // another room's owner, not in this one
+    await assertFails(get(ref(guest, `roomLogs/${first}`)));
+    await assertFails(get(ref(outsider, `roomLogs/${first}`)));
+    await assertFails(get(ref(other, `roomLogs/${first}`)));
+    assert.equal(Object.keys((await get(ref(host, `roomLogs/${first}`))).val()).length, 2);
+    await assertFails(set(ref(guest, logs + 'line000000000000001'), null));
+    await assertSucceeds(update(ref(host), { [logs + 'line000000000000001']: null, [logs + 'line000000000000002']: null }));
     // The room's D-day: the owner's, in the board's own "name|yyyy-MM-dd".
     await assertSucceeds(set(ref(host, `rooms/${first}/dday`), '기말|2026-12-23'));
     assert.equal((await get(ref(guest, `rooms/${first}/dday`))).val(), '기말|2026-12-23');

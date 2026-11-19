@@ -443,6 +443,11 @@ enum SelfTest {
         pet.unreadNotes = 0
         pet.showNote(to: "지우", body: "내일은 꼭 같이 공부하자 !", from: "민지")
         pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note-card.png")
+        func noteHit(_ name: String) -> NSRect { Mirror(reflecting: pet).children.first { $0.label == name }?.value as? NSRect ?? .zero }
+        check(noteHit("nextHit").isEmpty && !noteHit("replyHit").isEmpty, "note: the last note has no 다음 쪽지")
+        pet.showNote(to: "지우", body: "첫 쪽지야 !", from: "민지", more: true)
+        pet.preview(.studying, frame: 0); save(render(pet.canvasSize) { pet.paint() }, out, "note-card-next.png")
+        check(!noteHit("nextHit").isEmpty, "note: one with a later note after it has 다음 쪽지")
         pet.close()
     }
 
@@ -779,14 +784,22 @@ enum SelfTest {
         let hour: Int64 = 3_600_000
         var missed = Poke(at: now - 2 * hour)
         check(Room.deliverPoke(&missed, lastPokeAt: -1, now: now) && missed.missed, "missed poke: one waiting from two hours ago is shown, marked missed")
-        var old = Poke(at: now - 13 * hour)
-        check(!Room.deliverPoke(&old, lastPokeAt: -1, now: now), "missed poke: older than 12 hours is dropped")
+        let month = 30 * 24 * hour // a clock far enough in for a week back
+        var yesterday = Poke(at: month - 30 * hour), old = Poke(at: month - 8 * 24 * hour)
+        check(Room.deliverPoke(&yesterday, lastPokeAt: -1, now: month) && yesterday.missed && !Room.deliverPoke(&old, lastPokeAt: -1, now: month), "missed poke: a week's are shown, older ones dropped")
         var undated = Poke(at: 0)
         check(!Room.deliverPoke(&undated, lastPokeAt: -1, now: now), "missed poke: no time is dropped")
         var live = Poke(at: now)
         check(Room.deliverPoke(&live, lastPokeAt: 5, now: now) && !live.missed, "poke: a new one while connected is live")
+        var offline = Poke(at: now - hour)
+        check(Room.deliverPoke(&offline, lastPokeAt: 5, now: now) && offline.missed, "poke: one that waited out a dropped connection is marked missed")
         var again = Poke(at: 5)
         check(!Room.deliverPoke(&again, lastPokeAt: 5, now: now), "poke: the same one twice is shown once")
+        // The same words as Windows (Room.MissedNote), in the Mac's own time zone.
+        var parts = DateComponents(); parts.year = 2026; parts.month = 11; parts.day = 19; parts.hour = 10
+        let morning = Calendar.current.date(from: parts)!
+        let whens = [-20 * 60.0, -3 * 3600, -12.5 * 3600, -3 * 86400].map { Room.missedNote(Int64(morning.addingTimeInterval($0).timeIntervalSince1970 * 1000), now: morning) }
+        check(whens == ["20분 전에 왔었어요", "3시간 전에 왔었어요", "어제 21:30에 왔었어요", "11/16 10:00에 왔었어요"], "missed poke: says when it came (\(whens.joined(separator: ", ")))")
 
         let latest = Room.latest(members)
         check(Room.seatText(members[1], here: Room.isHere(members[1], latest)) == "수학\n32분째 공부 중", "seat: studying text")

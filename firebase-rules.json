@@ -363,6 +363,39 @@
         }
       }
     },
+    "roomLogs": {
+      "$room": {
+        ".read": "auth != null && root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
+        "$entry": {
+          ".write": "auth != null && ((newData.exists() && !data.exists() && root.child('rooms').child($room).child('approved').child((root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)).val() == true) || (!newData.exists() && root.child('rooms').child($room).child('owner').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)))",
+          ".validate": "$entry.matches(/^[a-z0-9]{16,40}$/) && newData.hasChildren(['from', 'name', 'to', 'toName', 'message', 'typed', 'at']) && newData.child('from').val() == (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid)",
+          "from": {
+            ".validate": "newData.isString()"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          },
+          "to": {
+            ".validate": "newData.isString() && root.child('rooms').child($room).child('approved').child(newData.val()).val() == true"
+          },
+          "toName": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          },
+          "message": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "typed": {
+            ".validate": "newData.isBoolean()"
+          },
+          "at": {
+            ".validate": "newData.val() == now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
     "access": {
       "$uid": {
         ".read": "auth != null && (root.child('deviceAccounts').child(auth.uid).child('account').exists() ? root.child('deviceAccounts').child(auth.uid).child('account').val() : auth.uid) == $uid",
