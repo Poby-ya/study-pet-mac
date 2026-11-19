@@ -830,6 +830,7 @@ enum SelfTest {
         let id = Room.randomId(12)
         check(id.count == 12 && id.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber) }, "id: 12 lowercase letters and digits")
         check(Room.cleanName(" 민\t지 ") == "민지" && Room.cleanName(String(repeating: "가", count: 20)).count == Room.maxNameLength, "name: cleaned and cut")
+        check(Room.cleanName("다른\u{3000}사람한테\u{3000}넣을거냐고？ ｈｉ！", max: 20) == "다른 사람한테 넣을거냐고? hi!" && Room.cleanName("ㅋㅋ 고마워～", max: 20) == "ㅋㅋ 고마워~", "text: the IME's full-width spaces and signs are sent as plain ones, Hangul as it is")
         check(Look.parse("g213402", girl: false).code == "g213402" && Look.parse("b219999", girl: false).code == "b210913",
               "look: codes round-trip; boys' bottoms fold to trousers")
         check(Look.parse("nonsense", girl: true) == Look(girl: true, 0, 0, 2, 2, 0, 0), "look: a bad code is the plain look")

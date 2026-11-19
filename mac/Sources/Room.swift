@@ -684,7 +684,10 @@ final class Room: @unchecked Sendable {
     static func pokeMessage(_ m: Member, here: Bool) -> String { !here ? "같이 공부하자 !" : m.state == "paused" ? "일어나 !" : "화이팅 !" }
 
     static func cleanName(_ raw: String, max: Int = maxNameLength) -> String {
-        Records.cut(String(raw.filter { !Records.isControl($0) }).trimmingCharacters(in: .whitespacesAndNewlines), max)
+        // The Korean IME's full-width mode types '　' and '？': kept as the plain ones, so a post-it isn't spaced out. Windows: CleanName.
+        let plain = String(String.UnicodeScalarView(raw.unicodeScalars.map { s -> Unicode.Scalar in
+            s.value == 0x3000 ? Unicode.Scalar(0x20) : (0xFF01...0xFF5E).contains(s.value) ? Unicode.Scalar(s.value - 0xFEE0)! : s }))
+        return Records.cut(String(plain.filter { !Records.isControl($0) }).trimmingCharacters(in: .whitespacesAndNewlines), max)
     }
 
     /// Lowercase letters and digits: safe as a Firebase key and in a URL.
