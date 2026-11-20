@@ -33,16 +33,23 @@ final class FriendInteractions {
     /// What the friend wrote, without noteMark.
     static func noteText(_ message: String) -> String { message.hasPrefix(noteMark) ? String(message.dropFirst(noteMark.count)) : message }
     /// The notes I've received, kept in settings ("notes") so all can be read again: oldest first, the
-    /// last 20, each "ms\tfrom\ttext\tread" joined by U+001E (names and texts are cleaned of control characters).
-    typealias Received = (at: Int64, from: String, text: String, read: Bool)
+    /// last 20, each "ms\tfrom\ttext\tread\tid" joined by U+001E (names and texts are cleaned of control characters).
+    /// The sender's id came in v0.7.8; older entries have none and a reply looks them up by name.
+    typealias Received = (at: Int64, from: String, text: String, read: Bool, id: String)
     static func inbox(_ stored: String) -> [Received] {
         stored.components(separatedBy: "\u{1E}").compactMap { entry -> Received? in
             let f = entry.components(separatedBy: "\t")
-            guard f.count == 4, let at = Int64(f[0]) else { return nil }
-            return (at, f[1], f[2], f[3] == "1")
+            guard f.count == 4 || f.count == 5, let at = Int64(f[0]) else { return nil }
+            return (at, f[1], f[2], f[3] == "1", f.count == 5 ? f[4] : "")
         }
     }
-    static func inbox(_ notes: [Received]) -> String { notes.suffix(20).map { "\($0.at)\t\($0.from)\t\($0.text)\t\($0.read ? 1 : 0)" }.joined(separator: "\u{1E}") }
+    static func inbox(_ notes: [Received]) -> String { notes.suffix(20).map { "\($0.at)\t\($0.from)\t\($0.text)\t\($0.read ? 1 : 0)\t\($0.id)" }.joined(separator: "\u{1E}") }
+    /// Who a reply to a note goes to: the sender by id, or for an older note without one, the only friend with that name.
+    static func replyTarget(_ members: [Member], fromId: String, fromName: String, me: String) -> Member? {
+        if !fromId.isEmpty { return members.first { $0.id == fromId } }
+        let named = members.filter { $0.name == fromName && $0.id != me }
+        return named.count == 1 ? named[0] : nil
+    }
     static let whatStudy = "뭐 공부해 ?"
     static let thanks = "고마워 !"
     static let playMore = "더 놀거야 !" // the answer to a call when I'd rather not study yet

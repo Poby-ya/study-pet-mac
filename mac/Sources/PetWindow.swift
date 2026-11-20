@@ -45,6 +45,8 @@ final class PetWindow: NSPanel {
         var note = false
         /// Their minutes of study as the room shows them, for the timer on their desk; -1 unknown.
         var minutes = -1
+        /// Away, but their app is on (Room.onStandby): their bag stays on its hook.
+        var standby = false
     }
 
     static let ink = Sprites.color(0x3A2E39)
@@ -674,7 +676,7 @@ final class PetWindow: NSPanel {
             if let before = previousSeats[i], before.id == seat.id && before.here && !seat.here && !focus { leavingTicks[i] = 0;departingSeats[i]=before }
             if seat.here { leavingTicks[i] = -1 }
             previousSeats[i] = seat
-            if leavingTicks[i]>=0,let snapshot=departingSeats[i] {let note=seat.note;seat=snapshot;seat.here=false;seat.note=note}
+            if leavingTicks[i]>=0,let snapshot=departingSeats[i] {let (note,standby)=(seat.note,seat.standby);seat=snapshot;seat.here=false;seat.note=note;seat.standby=standby}
             let gone = visiting && visitSide == (i == 0 ? -1 : 1) && !passingIn
             let cheered = cheeredSide == (i == 0 ? -1 : 1) && seat.here && !seat.dozing
             let pose: Sprites.Pose = gone ? .empty : leavingTicks[i] >= 0 ? Departure.pose(leavingTicks[i])
@@ -695,8 +697,9 @@ final class PetWindow: NSPanel {
             if cheered && outgoingRetort.isEmpty && !FriendInteractions.noFlames(outgoingText) { Sprites.drawFlameEyes(left: x, top: floorY, scale: scale, alt: frameCount % 2 == 0) }
             if !gone && leavingTicks[i] < 0 && arriving < 0 { effects.append((x, seatMoment(seat), Routine.momentPhase(animationSeconds * 4, seed: seed))) }
             drawNameplate(seat.name, deskX: x)
-            if arriving >= 0 && arriving < 12 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: arriving) }
-            if !seat.here && !gone { if leavingTicks[i] >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i]) } else { drawAwaySign(x) } }
+            if arriving >= 0 { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: arriving, sign: false) }
+            // An empty desk is where leaving ends (26): the sign, and the bag on its hook while their app is on.
+            if !seat.here && !gone { drawDepartureProps(seat.look, laptop: seat.laptop, x: x, tick: leavingTicks[i] >= 0 ? leavingTicks[i] : 26, hung: seat.standby) }
             if !seat.here && !gone && seat.note && (leavingTicks[i] < 0 || leavingTicks[i] >= 18) { Sprites.drawArt("PostIt", left: x + 45 * scale, top: floorY + 23 * scale, scale: scale) }
             if lit { lamps.append(x) }
         }
@@ -723,8 +726,8 @@ final class PetWindow: NSPanel {
         }
         drawNameplate(myName(), deskX: myX)
         if mood == .leaving { drawDepartureProps(departureLook ?? look, laptop: departureLook == nil ? laptop : departureLaptop, x: myX, tick: moodSeconds * 4) }
-        else if arrivalTick >= 0 && Departure.arrival(arrivalTick) < 12 { drawDepartureProps(look, laptop: laptop, x: myX, tick: Departure.arrival(arrivalTick)) }
-        else if mood == .away && !outgoing { drawAwaySign(myX) }
+        else if arrivalTick >= 0 { drawDepartureProps(look, laptop: laptop, x: myX, tick: Departure.arrival(arrivalTick), sign: false) }
+        else if mood == .away { drawDepartureProps(look, laptop: laptop, x: myX, tick: 26, sign: !outgoing) } // my app is on: my bag stays on its hook
         if passingIn { drawPassedNote(visitorX, myX, visitTick, thrown: throwingIn) }
         if passingOut { drawPassedNote(myX, seatOut ? (outgoingSide < 0 ? seatX : rightX) : outgoingSide < 0 ? -deskWidth / 2 : canvasSize.width + deskWidth / 2, outgoingTick, thrown: throwingOut) }
         // Now and then a cat crosses the floor in front of the desks; not with the background hidden, nor in focus mode.
@@ -779,14 +782,15 @@ final class PetWindow: NSPanel {
     private func drawDepartureWalker(_ actor: Look, origin: CGFloat, tick: Double) {
         guard tick>=18 && tick<26 else {return}
         let x=origin-(origin+deskWidth)*CGFloat(Departure.walk(tick))
-        drawVisitor(actor,pose:.carry,x:x,hop:CGFloat(abs(sin(tick * .pi)))*scale,mirror:false)
-        Sprites.drawBag(actor,left:x+12*scale,top:floorY+22*scale,scale:scale)
-        Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:15,targetY:23,leftHand:true)
+        drawVisitor(actor,pose:.walk,x:x,hop:CGFloat(abs(sin(tick * .pi)))*scale,mirror:false) // the bag stays on its hook
     }
-    private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double) {
+    /// `hung`: the bag stays on its hook once packed (the app is on); without it the desk ends bare.
+    /// `sign`: arriving has no sign to pick up. Windows: DrawDepartureProps.
+    private func drawDepartureProps(_ actor: Look, laptop: Bool, x: CGFloat, tick: Double, hung: Bool = true, sign: Bool = true) {
         if tick>=4 && tick<10 {let p=Departure.item(tick,laptop);NSGraphicsContext.saveGraphicsState();NSRect(x:x,y:0,width:deskWidth,height:floorY+20*scale).clip();Sprites.drawPackingItem(actor,laptop:laptop,left:x+CGFloat(p.0)*scale,top:floorY+CGFloat(p.1)*scale,scale:scale,turn:Departure.ease((tick-4)/3));NSGraphicsContext.restoreGraphicsState()}
-        if tick<18 {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10);if tick>=2 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}}
-        if tick>=12 {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)));if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:34,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
+        if tick<12 || hung {let bag=Departure.bag(tick);Sprites.drawBag(actor,left:x+CGFloat(bag.0)*scale,top:floorY+CGFloat(bag.1)*scale,scale:scale,open:tick>=5 && tick<10)}
+        if tick>=2 && tick<12 {let target=Departure.hand(tick,laptop);Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:Int(target.0.rounded()),targetY:Int(target.1.rounded()),leftHand:target.0<28)}
+        if tick>=12 && sign {drawAwaySign(x,lift:CGFloat(Departure.signLift(tick)));if tick<16 {Sprites.drawPackingReach(actor,left:x,top:floorY,scale:scale,targetX:34,targetY:Int((20-Departure.signLift(tick)).rounded()))}}
     }
     private func drawAwaySign(_ x: CGFloat, lift: Double = 0) {
         let height = 18
@@ -1080,12 +1084,29 @@ final class PetWindow: NSPanel {
         for (n, text) in Self.boardCorner(clock(), boardDday).enumerated() {
             drawLine(text, font: .boldSystemFont(ofSize: 11 * boardFactor), color: n == 0 ? faint : Sprites.color(0xF7D774), in: NSRect(x: slate.minX, y: slate.minY + 4 + CGFloat(n) * 14 * boardFactor, width: slate.width - 8, height: 14 * boardFactor), align: .right)
         }
+        // Each column left-aligned and centred as a block, so lines of any length start together; a friend
+        // whose app is on gets a green dot in front (user, 2026-11-20). Windows: DrawClassroom.
         let cellWidth = textW / CGFloat(columns)
-        for (i, line) in lines.enumerated() {
-            drawLine(line, font: .systemFont(ofSize: 16 * boardFactor), color: PetWindow.chalk,
-                     in: NSRect(x: textX + CGFloat(i % columns) * cellWidth, y: slate.minY + CGFloat(titleLines.count) * boardLine + 10 + CGFloat(i / columns) * boardLine, width: cellWidth, height: boardLine), align: .center)
+        let font = NSFont.systemFont(ofSize: 16 * boardFactor)
+        let bare = { (line: String) in line.hasPrefix(Room.standbyMark) ? String(line.dropFirst(Room.standbyMark.count)) : line }
+        let gutter: CGFloat = lines.contains { $0.hasPrefix(Room.standbyMark) } ? 13 * boardFactor : 0
+        for c in 0..<columns {
+            let column = lines.indices.filter { $0 % columns == c }
+            guard !column.isEmpty else { continue }
+            let width = min(cellWidth, gutter + (column.map { ceil((bare(lines[$0]) as NSString).size(withAttributes: [.font: font]).width) + 2 }.max() ?? 0))
+            let left = textX + CGFloat(c) * cellWidth + (cellWidth - width) / 2
+            for i in column {
+                let row = NSRect(x: left + gutter, y: slate.minY + CGFloat(titleLines.count) * boardLine + 10 + CGFloat(i / columns) * boardLine, width: width - gutter, height: boardLine)
+                if lines[i].hasPrefix(Room.standbyMark) {
+                    let d = 8 * boardFactor
+                    PetWindow.standbyGreen.setFill()
+                    NSBezierPath(ovalIn: NSRect(x: left + (gutter - d) / 2, y: row.midY - d / 2, width: d, height: d)).fill()
+                }
+                drawLine(bare(lines[i]), font: font, color: PetWindow.chalk, in: row, align: .left)
+            }
         }
     }
+    private static let standbyGreen = Sprites.color(0x7CE88A)
 
     /// The kind of sky at an hour: 0 night, 1 dawn, 2 day, 3 sunset. Dawn and sunset get an
     /// hour each; the rest of the day is a blue sky, in every season.

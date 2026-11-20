@@ -90,7 +90,7 @@ final class PeekWindow: NSPanel {
     }
 
     // A call that waited for me has a second line saying when it came.
-    private static func lines(_ text: String) -> [String] { text.components(separatedBy: "\n") + [text.hasSuffix(FriendInteractions.noteArrived) ? "눌러서 확인" : "눌러서 답하기"] }
+    private static func lines(_ text: String) -> [String] { text.components(separatedBy: "\n") + [text.hasSuffix(FriendInteractions.noteArrived) ? "눌러서 확인" : text.hasSuffix(Room.startedTail) ? "눌러서 같이 공부하기" : "눌러서 답하기"] }
     private static func bubbleSize(_ text: String) -> NSSize {
         NSSize(width: ((lines(text).map { textWidth($0, font) }.max() ?? 0) + 22).rounded(.up), height: CGFloat(lines(text).count) * 18 + 10)
     }

@@ -10,7 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = AppController()
-        controller?.openPlanner(onlyWhenIdle: true)
+        // Opened at login: just the menu bar face, until I open it or a friend calls. Windows: --login.
+        let launch = NSAppleEventManager.shared().currentAppleEvent
+        let atLogin = launch?.eventID == AEEventID(kAEOpenApplication) && launch?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+        if !atLogin { controller?.openPlanner(onlyWhenIdle: true) }
         controller?.turnOnLoginItemOnce() // here, not in the controller: self-tests build controllers too
     }
 
@@ -49,14 +52,28 @@ final class AppController: NSObject, NSMenuDelegate {
     private let pet = PetWindow()
     private lazy var peek: PeekWindow = {
         let window = PeekWindow(pet: pet)
-        window.answered = { [weak self] in // a note's peek opens the desk
+        window.answered = { [weak self] in
             guard let self else { return }
-            if self.waitingPoke == nil && self.pet.minimized && self.pet.unreadNotes > 0 { self.pet.restoreScene() } else { self.answerPoke() }
+            if self.waitingPoke != nil { self.answerPoke() }
+            else if self.pet.minimized && self.pet.unreadNotes > 0 { self.pet.restoreScene() } // a note's peek opens the desk
+            else { self.openPlanner(onlyWhenIdle: true) } // a friend started studying: start too
         }
         window.muted = { [weak self] in self?.quietUntil = Date().addingTimeInterval(3600) }
         return window
     }()
     private var quietUntil = Date.distantPast // set from the peek's right-click menu
+    private var startPeeks: [String: Date] = [:] // a friend who started studying peeks once an hour at most
+    private var studyingCount = 0 // friends studying now, on the menu bar face's green badge
+    private var faceTip: String { studyingCount > 0 ? "공부 친구 · 지금 친구 \(studyingCount)명이 공부 중" : "공부 친구 · ⌃⌥S로 공부 시작" }
+    /// The menu bar face: friends studying right now on a green badge. Windows: UpdateTrayIcons.
+    private func updateFace() {
+        let latest = Room.latest(members)
+        let count = Set(members.filter { $0.id != myId && $0.state == "studying" && Room.isHere($0, latest) }.map(\.id)).count
+        guard count != studyingCount else { return }
+        studyingCount = count
+        statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil && blinks % 2 == 0, studying: count)
+        if waitingPoke == nil { statusItem.button?.toolTip = faceTip }
+    }
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let hotkeys = Hotkeys()
@@ -145,6 +162,7 @@ final class AppController: NSObject, NSMenuDelegate {
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         pet.contextMenu = menu
+        startHeartbeat() // off too: publish's five-minutely sign of life tells friends the app is on (Room.onStandby)
         pet.bubbleText = { [unowned self] in self.bubble() }
         pet.seatmate = { [unowned self] in self.seatView("seatmate") }
         pet.rightSeatmate = { [unowned self] in self.seatView("seatmateRight") }
@@ -167,8 +185,8 @@ final class AppController: NSObject, NSMenuDelegate {
         pet.newsClicked = { [unowned self] in self.sendThanks() }
         pet.noteBellClicked = { [unowned self] in self.openNote(self.inbox.firstIndex { !$0.read } ?? -1) }
         pet.noteNextClicked = { [unowned self] in self.openNextNote() }
-        pet.noteReplyClicked = { [unowned self] from in // the inbox keeps the sender's name, not their id
-            if let mate = self.members.first(where: { $0.name == from && $0.id != self.myId }) {
+        pet.noteReplyClicked = { [unowned self] from in // to the open note's sender: by id, so a namesake or a new nickname can't take it
+            if let mate = FriendInteractions.replyTarget(self.members, fromId: self.openNoteKey.id, fromName: from, me: self.myId) {
                 DispatchQueue.main.async { self.writeNote(to: mate) } // after the click, not inside it
             } else { self.news = from + " · 지금 방에 없어서 답장할 수 없어요"; self.newsUntil = Date().addingTimeInterval(5) }
         }
@@ -326,7 +344,10 @@ final class AppController: NSObject, NSMenuDelegate {
     /// recorded here (under 10, under 50, more), and a book for each subject studied today.
     private func updateProps() {
         let all = (try? Records.load()) ?? []
-        let hours = all.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) / 3600 } + (state == .off ? 0 : elapsed / 3600)
+        // Only the stretch still running: a pause already wrote the earlier ones to the file. Windows: UpdateProps.
+        var running = segmentStart.map { segmentEnd($0).timeIntervalSince($0) } ?? 0
+        if let sync = deviceSync, DeviceSync.str(sync.active, "state") == "studying" { running += Double(DeviceSync.now - DeviceSync.num(sync.active, "start")) / 1000 }
+        let hours = (all.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) } + max(0, running)) / 3600
         pet.propGrowth = hours < 10 ? 0 : hours < 50 ? 1 : 2
         let today = Calendar.current.startOfDay(for: Date())
         let subjects = Set(all.filter { $0.end > today }.map(\.subject) + (state == .off ? [] : [subject])).filter { !$0.isEmpty }
@@ -368,8 +389,6 @@ final class AppController: NSObject, NSMenuDelegate {
         if quitting { return }
         guard state != .off else { return }
         guard closeSegment() else { state = .paused; pet.setMood(.dozing); publish(); return }
-        heartbeat?.invalidate()
-        heartbeat = nil
         state = .off
         var today = 0.0
         let midnight = Calendar.current.startOfDay(for: Date())
@@ -433,7 +452,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard let selected = AppearanceWindow.choose(pet.look) else { return }
         pet.look = selected
         profileDirty = deviceSync != nil; profileEdit += 1; syncNow()
-        statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil)
+        statusItem.button?.image = Sprites.face(pet.look, dot: waitingPoke != nil, studying: studyingCount)
         publish()
     }
 
@@ -474,8 +493,14 @@ final class AppController: NSObject, NSMenuDelegate {
             if self.roomSeen && !started.isEmpty {
                 self.news = Room.startedText(started)
                 self.newsUntil = Date().addingTimeInterval(AppController.newsSeconds)
-                // Not studying with the desk put away: a notification, so everyone hears, not just whoever is at a desk.
-                if self.state == .off && (!self.pet.isVisible || self.pet.minimized) && Date() >= self.quietUntil { self.updateNotifications.news(self.news) }
+                // Not studying with the desk put away: the friend peeks up (each once an hour; a click starts me too),
+                // or else a notification, so everyone hears, not just whoever is at a desk. Windows: room.Changed.
+                if self.state == .off && (!self.pet.isVisible || self.pet.minimized) && Date() >= self.quietUntil {
+                    if self.waitingPoke == nil, let first = list.first(where: { $0.id != self.myId && started.contains($0.name) && Date() >= (self.startPeeks[$0.id] ?? .distantPast) }) {
+                        self.startPeeks[first.id] = Date().addingTimeInterval(3600)
+                        self.peek.peek(first.look, text: Room.startedText([first.name]), delay: 0)
+                    } else { self.updateNotifications.news(self.news) }
+                }
             }
             self.roomSeen = true
             for id in self.interactions.observe(list) { self.pet.celebrate(id == Settings.get("seatmate") ? -1 : id == Settings.get("seatmateRight") ? 1 : 0) }
@@ -484,6 +509,7 @@ final class AppController: NSObject, NSMenuDelegate {
                 try? Settings.set("friendMenuHint", "1")
             }
             self.members = list
+            self.updateFace()
         }
         joined.poked = { [weak self, weak joined] poke in
             guard let self, self.room === joined else { return }
@@ -717,7 +743,7 @@ final class AppController: NSObject, NSMenuDelegate {
         guard room != nil, let mate = findSeatmate(key) else { return nil }
         let latest = Room.latest(members)
         let here = Room.isHere(mate, latest)
-        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here, now: max(Int64(Date().timeIntervalSince1970 * 1000), latest)), drink: mate.drink, laptop: mate.laptop, id: mate.id, note: !here && FriendInteractions.isNote(mate.waiting), minutes: here ? mate.minutes : -1)
+        return PetWindow.Seat(name: mate.name, look: mate.look, here: here, dozing: here && mate.state == "paused", text: Room.seatText(mate, here: here, now: max(Int64(Date().timeIntervalSince1970 * 1000), latest)), drink: mate.drink, laptop: mate.laptop, id: mate.id, note: !here && FriendInteractions.isNote(mate.waiting), minutes: here ? mate.minutes : -1, standby: Room.onStandby(mate, latest: latest))
     }
 
     @objc private func pinSeatmate(_ sender: NSMenuItem) {
@@ -786,10 +812,10 @@ final class AppController: NSObject, NSMenuDelegate {
         guard notes.indices.contains(index) else { return }
         notes[index].read = true
         keep(notes)
-        openNoteKey = (notes[index].at, notes[index].from, notes[index].text)
+        openNoteKey = (notes[index].at, notes[index].from, notes[index].text, notes[index].id)
         pet.showNote(to: nickname, body: notes[index].text, from: notes[index].from, more: index + 1 < notes.count)
     }
-    private var openNoteKey: (at: Int64, from: String, text: String) = (0, "", "") // found again by value: a new note may have pushed the oldest out
+    private var openNoteKey: (at: Int64, from: String, text: String, id: String) = (0, "", "", "") // found again by value: a new note may have pushed the oldest out
     private func openNextNote() {
         if let i = inbox.firstIndex(where: { $0.at == openNoteKey.at && $0.from == openNoteKey.from && $0.text == openNoteKey.text }) { openNote(i + 1) }
     }
@@ -884,7 +910,7 @@ final class AppController: NSObject, NSMenuDelegate {
         // A note goes in the inbox and waits over my desk as 쪽지가 왔어요 ! until clicked open; it isn't a call to study.
         if FriendInteractions.isNote(poke.message) {
             var notes = inbox
-            let received: FriendInteractions.Received = (poke.at, Room.cleanName(poke.name), Room.cleanName(FriendInteractions.noteText(poke.message), max: 20), false)
+            let received: FriendInteractions.Received = (poke.at, Room.cleanName(poke.name), Room.cleanName(FriendInteractions.noteText(poke.message), max: 20), false, Room.cleanName(poke.from, max: 64))
             // The same poke can come twice on a reconnect.
             if !notes.contains(where: { $0.at == received.at && $0.from == received.from && $0.text == received.text }) { notes.append(received); keep(notes) }
             if !hushed { pet.visit(friendLook, text: FriendInteractions.noteArrived, side: side, thrown: FriendInteractions.throwsNote(poke.message)) }
@@ -912,14 +938,14 @@ final class AppController: NSObject, NSMenuDelegate {
         let timer = Timer(timeInterval: 0.5, target: self, selector: #selector(blinkFace), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
         blink = timer
-        statusItem.button?.image = Sprites.face(pet.look, dot: true)
+        statusItem.button?.image = Sprites.face(pet.look, dot: true, studying: studyingCount)
         // The dot is easy to miss; the friend peeks up from the corner for a few seconds.
         if !muted && !pet.isVisible { peek.peek(friendLook, text: text + late, delay: 0) }
     }
 
     @objc private func blinkFace() {
         blinks += 1
-        statusItem.button?.image = Sprites.face(pet.look, dot: blinks % 2 == 0)
+        statusItem.button?.image = Sprites.face(pet.look, dot: blinks % 2 == 0, studying: studyingCount)
     }
 
     private func clearWaitingPoke() {
@@ -928,8 +954,8 @@ final class AppController: NSObject, NSMenuDelegate {
         peek.dismiss()
         blink?.invalidate()
         blink = nil
-        statusItem.button?.image = Sprites.face(pet.look)
-        statusItem.button?.toolTip = "공부 친구 · ⌃⌥S로 공부 시작"
+        statusItem.button?.image = Sprites.face(pet.look, studying: studyingCount)
+        statusItem.button?.toolTip = faceTip
     }
 
     /// While a call waits, a click answers it; otherwise, and on a right-click, the menu opens.
@@ -1234,7 +1260,7 @@ final class AppController: NSObject, NSMenuDelegate {
         let next: State = active.isEmpty ? .off : DeviceSync.str(active,"state") == "paused" ? .paused : .studying
         let changed = state != next; let started = changed && state == .off && syncReady; state = next; // not the first pull: already studying when the app opened subject = DeviceSync.str(active,"subject"); segmentStart = nil; banked = 0
         if state != .off { startHeartbeat(); if changed || !pet.isVisible && !pet.minimized { pet.appear(state == .studying ? .studying : .dozing, arrive: started) } else { pet.setMood(state == .studying ? .studying : .dozing) } }
-        else if changed { heartbeat?.invalidate(); pet.standUpAndLeave() }
+        else if changed { pet.standUpAndLeave() }
         pet.redraw()
     }
 

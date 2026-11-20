@@ -854,7 +854,8 @@ enum Sprites {
 
     /// The face alone, for the menu bar icon.
     /// `dot`: a red dot in the top-right corner, for a friend's call not yet answered.
-    static func face(_ look: Look, dot: Bool = false) -> NSImage {
+    /// `studying`: how many friends are studying now, on a green badge in the bottom-right corner (9 at most). Windows: TrayIcon.
+    static func face(_ look: Look, dot: Bool = false, studying: Int = 0) -> NSImage {
         let (back, head) = headLayers(look, "Open", "Small", 3, 2)
         return NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
             Sprites.draw(layers: back + head, look, left: 0, top: 0, scale: 0.75)
@@ -862,6 +863,13 @@ enum Sprites {
                 let circle = NSBezierPath(ovalIn: NSRect(x: 9.5, y: 0.5, width: 8, height: 8))
                 Sprites.color(0xE53935).setFill(); circle.fill()
                 NSColor.white.setStroke(); circle.lineWidth = 1; circle.stroke()
+            }
+            if studying > 0 {
+                let badge = NSRect(x: 7.5, y: 7.5, width: 10.5, height: 10.5)
+                Sprites.color(0x2E9E5B).setFill(); NSBezierPath(ovalIn: badge).fill()
+                let style = NSMutableParagraphStyle(); style.alignment = .center
+                let digit = NSAttributedString(string: String(min(9, studying)), attributes: [.font: NSFont.boldSystemFont(ofSize: 8.5), .foregroundColor: NSColor.white, .paragraphStyle: style])
+                digit.draw(in: NSRect(x: badge.minX, y: badge.midY - digit.size().height / 2, width: badge.width, height: digit.size().height))
             }
             return true
         }

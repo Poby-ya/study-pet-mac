@@ -44,7 +44,7 @@ enum SelfTest {
         check(!Customization.categories.contains { $0.key.lowercased().contains("sticker") },"customization: stickers are gone")
         let shared=legacy.data(shared:true)["slots"] as! [String:Any];check(shared["floor"] == nil && (shared["hat"] as! [String:Any])["locked"] == nil,"customization: shared state excludes classroom and locks")
         check(Sprites.compose(.empty,basic).first!.grid[0].count==Sprites.width,"desk: visible art matches layout width")
-        check(Departure.bag(18).0==12 && Departure.bag(18).1==22 && Departure.signLift(16)==0,"packing: carry and sign end at their resting positions")
+        check(Departure.bag(0) == (50, 28) && Departure.bag(7) == (36, 17) && Departure.bag(12) == (50, 28) && Departure.signLift(16)==0,"packing: the bag goes back on its hook and the sign ends at its resting position")
         for t in stride(from:0.0,to:16.0,by:0.02) {let a=Departure.hand(t),b=Departure.hand(t+0.02);check(abs(a.0-b.0)<1 && abs(a.1-b.1)<1,"packing: upright head and continuous hand path")}
         do {try JSONSerialization.data(withJSONObject:fixtures).write(to:out.appendingPathComponent("customization-fixtures.json"))}catch{check(false,"customization fixture export failed")}
     }
@@ -135,6 +135,12 @@ enum SelfTest {
                 NSGraphicsContext.restoreGraphicsState()
             }
         }, out, "peek.png")
+        // A friend who started studying while I'm idle: a click starts me too. And the menu bar face with friends studying.
+        let startedLine = Room.startedText(["민지"]), startedSize = PeekWindow.measure(startedLine)
+        save(render(startedSize) { PeekWindow.paint(Look.parse("g213402", girl: true), startedLine, t: 6.5, size: startedSize) }, out, "peek-started.png")
+        save(render(NSSize(width: 120, height: 40)) {
+            for (i, (dot, count)) in [(false, 0), (false, 3), (true, 12)].enumerated() { Sprites.face(Look.parse("b120310", girl: false), dot: dot, studying: count).draw(in: NSRect(x: CGFloat(i) * 40 + 2, y: 2, width: 36, height: 36)) }
+        }, out, "tray-badge.png")
         save(render(NSSize(width: 624,height: 630)) {
             for drink in 1...5 { for f in 0..<4 { Sprites.draw([Sprites.Pose.teaReach,.teaHold,.teaLift,.teaSip][f], Look(girl: true,1,0,2,2,0,0), left: CGFloat(f*156),top: CGFloat((drink-1)*126),scale: 3,decor: Sprites.Decor(drink: Sprites.Drink(rawValue: drink)!,laptop: true,seed: 7)) } }
         }, out, "tea.png")
@@ -285,6 +291,15 @@ enum SelfTest {
         pet.preview(.studying, frame: 0)
         save(render(pet.canvasSize) { pet.paint() }, out, "two-seats-right-away.png")
         check(abs(pet.frame.width - twoWidth) < 1, "layout: two desks have equal width on either side")
+        // A friend whose app is on: their bag stays on its hook, and the board gives them a green dot; lines start together.
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: mixed[0], here: false, dozing: false, text: "3시간째 노는 중", standby: true) }
+        pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: false, dozing: false, text: "200시간째 노는 중") }
+        pet.board = { ("공부 중 1 / 쉬는 중 1 / 노는 중 4", ["지우 · 영어 1시간 20분", "다온 · 쉬는 중", Room.standbyMark + "준혁 · 3시간째 노는 중", Room.standbyMark + "도윤 · 12분째 노는 중", "민지 · 200시간째 노는 중", "하늘 · 2시간째 노는 중"]) }
+        pet.preview(.studying, frame: 0)
+        save(render(pet.canvasSize) { pet.paint() }, out, "board-standby.png")
+        pet.board = { nil }
+        pet.seatmate = { nil }
+        pet.rightSeatmate = { PetWindow.Seat(name: "준혁", look: mixed[0], here: false, dozing: false, text: "자리 비움") }
         // A few frames of each moment, with both seatmates mid-moment too.
         pet.seatmate = { PetWindow.Seat(name: "민지", look: Look.parse("g213402", girl: true), here: true, dozing: false, text: "수학\n32분째 공부 중") }
         for at in (0..<Routine.moments).flatMap({ m in [4, 14].map { m * 120 + 96 + $0 } }) {
@@ -433,9 +448,18 @@ enum SelfTest {
         check(["내일 봐 !", "오늘도 수고했어 !", "내일은 같이 하자 !", "먼저 갈게, 파이팅 !", "기다리고 있을게 !"].map { FriendInteractions.throwsNote(FriendInteractions.noteMark + $0) } == [false, false, true, true, false]
               && !FriendInteractions.throwsNote("파이팅 !!"), "note: thrown or carried, decided by the words the same as Windows")
         var inbox = FriendInteractions.inbox("")
-        for i in 0..<22 { inbox.append((1000 + Int64(i), "민지", "a=b 내일 봐 \(i)", i % 2 == 0)) }
+        for i in 0..<22 { inbox.append((1000 + Int64(i), "민지", "a=b 내일 봐 \(i)", i % 2 == 0, "id\(i)")) }
         let kept = FriendInteractions.inbox(FriendInteractions.inbox(inbox))
-        check(kept.count == 20 && kept[0].at == 1002 && kept[0].text == "a=b 내일 봐 2" && kept[0].read && kept[19].at == 1021 && !kept[19].read && FriendInteractions.inbox("").isEmpty && FriendInteractions.inbox("x\ty").isEmpty, "note: the inbox keeps the last 20 received, read or not")
+        let old = FriendInteractions.inbox("5\t민지\t옛 쪽지\t1")
+        check(kept.count == 20 && kept[0].at == 1002 && kept[0].text == "a=b 내일 봐 2" && kept[0].read && kept[0].id == "id2" && kept[19].at == 1021 && !kept[19].read && FriendInteractions.inbox("").isEmpty && FriendInteractions.inbox("x\ty").isEmpty
+              && old.count == 1 && old[0].read && old[0].id.isEmpty, "note: the inbox keeps the last 20 received, read or not, and reads the ones kept before ids")
+        // 답장하기 goes to the sender's id, not the first friend with that name; an old note without an id only to a name no one else has.
+        var twinA = Member(), twinB = Member(), other = Member()
+        (twinA.id, twinA.name, twinB.id, twinB.name, other.id, other.name) = ("a", "민지", "b", "민지", "c", "준혁")
+        let twins = [twinA, twinB, other]
+        check(FriendInteractions.replyTarget(twins, fromId: "b", fromName: "민지", me: "me")?.id == "b" && FriendInteractions.replyTarget(twins, fromId: "b", fromName: "새이름", me: "me")?.id == "b"
+              && FriendInteractions.replyTarget(twins, fromId: "", fromName: "민지", me: "me") == nil && FriendInteractions.replyTarget(twins, fromId: "", fromName: "준혁", me: "me")?.id == "c"
+              && FriendInteractions.replyTarget(twins, fromId: "gone", fromName: "준혁", me: "me") == nil, "note: a reply finds its sender by id, and an old note only by a name no one else has")
         // Two notes in: the friend says it, then 쪽지 2장이 왔어요 ! waits over the empty desk until clicked open.
         pet.unreadNotes = 2
         pet.preview(.away, frame: 0, visitTick: 10, friend: minji, friendText: FriendInteractions.noteArrived); save(render(pet.canvasSize) { pet.paint() }, out, "note-arrive.png")
@@ -758,9 +782,13 @@ enum SelfTest {
         }
         var members = [m("me", "나", "studying", 0), m("a", "민지", "studying", 30_000, 32, "수학"), m("b", "준혁", "paused", 60_000, 65),
                        m("c", "서연", "off", 0), m("d", "하늘", "studying", Room.staleMs + 1)]
+        members.append(m("h", "도윤", "off", Room.standbyMs + 60_000))
         var board = Room.board(members, now: now)
-        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 2" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중", "서연 · 1분째 노는 중", "하늘 · 3분째 노는 중"],
-              "board: study, rest and absent people keep individual rows: \(board.lines)")
+        check(board.title == "공부 중 2 / 쉬는 중 1 / 노는 중 3" && board.lines == ["민지 · 수학 32분", "나 · 방금 시작", "준혁 · 쉬는 중", Room.standbyMark + "서연 · 1분째 노는 중", "하늘 · 3분째 노는 중", "도윤 · 8분째 노는 중"],
+              "board: study, rest and absent people keep individual rows, a dot for those whose app is on: \(board.lines)")
+        check(Room.onStandby(members[3], latest: now) && !Room.onStandby(members[5], latest: now) && !Room.onStandby(members[4], latest: now) && !Room.onStandby(members[1], latest: now),
+              "standby: off with a sign of life in the last seven minutes; a stale study or an old sign isn't")
+        members.removeLast()
         members += [m("e", "가람", "studying", 0), m("f", "다온", "studying", 0, 0, "국어")]
         board = Room.board(members, now: now)
         check(board.title == "공부 중 4 / 쉬는 중 1 / 노는 중 2" && board.lines.count == 7 && board.lines.contains("다온 · 국어 방금 시작"), "board: a line per person")

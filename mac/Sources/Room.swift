@@ -610,6 +610,13 @@ final class Room: @unchecked Sendable {
 
     static func isHere(_ m: Member, _ latest: Int64) -> Bool { (m.state == "studying" || m.state == "paused") && latest - m.updated <= staleMs }
 
+    /// Not studying, but the app is on: from v0.7.8 it says so every five minutes (a minute's tick late at most),
+    /// so a call reaches them now. Before that only device-linked apps kept it up. Windows: OnStandby.
+    static let standbyMs: Int64 = 7 * 60_000
+    static func onStandby(_ m: Member, latest: Int64) -> Bool { m.state == "off" && m.updated > 0 && latest - m.updated <= standbyMs }
+    /// Starts a chalkboard line for a friend on standby; the board draws it as a green dot.
+    static let standbyMark = "● "
+
     /// The chalkboard: everyone else at their desk, studying first. It grows a line per
     /// person up to boardLines; the title always has the head count.
     static func board(_ members: [Member], now: Int64 = 0) -> (title: String, lines: [String]) {
@@ -626,7 +633,7 @@ final class Room: @unchecked Sendable {
             return m.minutes < 1 ? "\(m.name) · \(what)방금 시작" : "\(m.name) · \(what)\(Records.duration(Double(m.minutes)))"
         }
         let hereIds = Set(here.map(\.id))
-        let away = members.filter { !hereIds.contains($0.id) && $0.updated > 0 }.sorted { $0.updated > $1.updated }.map { "\($0.name) · \(awayText($0, now: clock))" }
+        let away = members.filter { !hereIds.contains($0.id) && $0.updated > 0 }.sorted { $0.updated > $1.updated }.map { (onStandby($0, latest: newest) ? standbyMark : "") + "\($0.name) · \(awayText($0, now: clock))" }
         let lines = Array((studying + away).prefix(2 * boardLines))
         return ("공부 중 \(here.filter { $0.state == "studying" }.count) / 쉬는 중 \(here.filter { $0.state == "paused" }.count) / 노는 중 \(members.count - here.count)", lines)
     }
@@ -653,8 +660,9 @@ final class Room: @unchecked Sendable {
     /// "민지가 공부를 시작했어요 !" / "민지, 준혁이 공부를 시작했어요 !"
     static func startedText(_ names: [String]) -> String {
         guard let last = names.last else { return "" }
-        return (Array(names.dropLast()) + [withSubjectMarker(last)]).joined(separator: ", ") + " 공부를 시작했어요 !"
+        return (Array(names.dropLast()) + [withSubjectMarker(last)]).joined(separator: ", ") + startedTail
     }
+    static let startedTail = " 공부를 시작했어요 !"
 
     /// 민지가 / 준혁이: 이 after a final consonant.
     static func withSubjectMarker(_ name: String) -> String {
