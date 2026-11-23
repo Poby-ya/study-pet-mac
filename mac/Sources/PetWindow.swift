@@ -352,6 +352,7 @@ final class PetWindow: NSPanel {
         visitThrown = thrown
         returnAt = -1 // a new visit comes first
         if minimized { arrived?(); return }
+        if focus { showFeedback(text); arrived?(); return } // focus mode: just the words, nobody walks over or throws
         if FriendInteractions.isBorrow(text) { (returnAt, returnIncoming, returnLook, returnName, returnSide) = (animationSeconds + 26, true, friend, text.components(separatedBy: " : ")[0], side) }
         onArrival = arrived
         arrivalTick = -1 // a visit comes first
@@ -421,6 +422,7 @@ final class PetWindow: NSPanel {
         outgoingThrown = thrown
         returnAt = -1
         if minimized { return }
+        if focus { showFeedback(name + "에게\n" + message); return }
         if FriendInteractions.isBorrow(message) { (returnAt, returnIncoming, returnName, returnSide) = (animationSeconds + 26, false, name, side) }
         arrivalTick = -1
         outgoingTick = 0; outgoingSide = side; outgoingText = name + "에게\n" + message; outgoingRetort = side == 0 && !retort.isEmpty ? name + " : " + retort : retort // no desk on screen to say it from
@@ -746,7 +748,7 @@ final class PetWindow: NSPanel {
             if visiting { visitorHit = lastBubble.union(NSRect(x: visitorX + CGFloat(Sprites.dx + 4) * scale, y: floorY, width: 24 * scale, height: 36 * scale)) }
             if !updateText.isEmpty { top = drawBubble(updateText, cx: (outgoing ? outX : myX) + mid, tipY: top - 2, maxWidth: canvasSize.width - 2, fill: PetWindow.newsMint) }
         }
-        else if !focus {
+        else {
             let talk = mood == .dozing ? Routine.sleepTalk(tick, seed: Self.nameSeed(myName()), restSeconds: moodSeconds) : ""
             if mood != .away && (arrivalTick < 0 || !updateText.isEmpty) { top = drawBubble(!updateText.isEmpty ? updateText : sendOffSide != 0 ? "잘 가 !" : forced >= 0 ? (forcedLine.isEmpty ? Routine.line(forcedMoment, forced, laptop: laptop) : forcedLine) : !talk.isEmpty ? talk : moment == 0 ? bubbleText() : momentText, cx: myX + mid, tipY: tip, maxWidth: updateText.isEmpty ? narrow : canvasSize.width - 2, fill: .white) }
             for i in 0..<2 {

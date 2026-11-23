@@ -124,7 +124,7 @@ enum SelfTest {
             }
         }, out, "weather.png")
         // A friend who called peeks over the screen's edge: fists up, head up, looking left and right, waving, holding, ducking, gone.
-        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.2, 0.6, 1.2, 2.2, 3.2, 4.4, 6.5, 7.5, 7.9, PeekWindow.duration]
+        let peekLine = "민지 : 같이 공부하자 !", peekSize = PeekWindow.measure(peekLine), peekTimes: [Double] = [0, 0.2, 0.6, 1.2, 2.2, 3.2, 4.4, 6.5, PeekWindow.duration - 0.5, PeekWindow.duration - 0.1, PeekWindow.duration]
         save(render(NSSize(width: peekSize.width * CGFloat(peekTimes.count), height: peekSize.height)) {
             for (i, t) in peekTimes.enumerated() {
                 NSGraphicsContext.saveGraphicsState()
@@ -371,8 +371,8 @@ enum SelfTest {
         pet.orderOut(nil)
         let hour: Int64 = 1_794_315_600 // 2026-11-10 13:00 UTC
         let ways = Set((1...30).map { Routine.restPose(0, seed: $0, restSeconds: 0, unixSeconds: hour) })
-        check(ways.count == 3 && ways.allSatisfy(Routine.resting), "rest: names sleep three different ways")
-        check((0..<40).allSatisfy { Routine.restPose($0, seed: 5, restSeconds: 60, unixSeconds: hour) == Routine.restPose(0, seed: 5, restSeconds: 60, unixSeconds: hour + 600) }, "rest: the way holds for twenty minutes and the first three are still")
+        check(ways == [.dozeA], "rest: everyone sleeps head on the arms (no leaning back, no cheek on an arm)")
+        check((0..<40).allSatisfy { Routine.restPose($0, seed: 5, restSeconds: 60, unixSeconds: hour) == Routine.restPose(0, seed: 5, restSeconds: 60, unixSeconds: hour + 600) }, "rest: still for the first three minutes")
         func turns(_ rest: Double) -> Int { (0..<96).filter { Routine.restPose($0, seed: 5, restSeconds: rest, unixSeconds: hour) != Routine.restPose($0 + 1, seed: 5, restSeconds: rest, unixSeconds: hour) }.count }
         check(turns(300) > turns(900) && turns(900) > 0, "rest: breathing slows after ten minutes")
         check((0..<2000).allSatisfy { Routine.sleepTalk($0, seed: 5, restSeconds: 120).isEmpty } && ["5분만…", "음냐…", "다 외웠는데…"].allSatisfy { line in (0..<2000).contains { Routine.sleepTalk($0, seed: 5, restSeconds: 400) == line } }, "rest: sleep talk once a rest has gone on a while")

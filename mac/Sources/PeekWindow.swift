@@ -5,7 +5,7 @@ import AppKit
 /// looking left and right for me (여기 있나~), waving, and after a few seconds ducking down again;
 /// clicking them answers. Windows: PeekWindow.cs.
 final class PeekWindow: NSPanel {
-    static let duration = 8.0
+    static let duration = 10.0
     // The art shown: rows from above the head (hats) down to the edge under the chin, columns round the figure.
     private static let topRow = -4, edge = 18, rows = edge - topRow, column = 11, columns = 40
     private static let scale: CGFloat = 4
@@ -74,8 +74,10 @@ final class PeekWindow: NSPanel {
     }
 
     private func step() {
-        let t = seconds
+        var t = seconds
         if t < 0 { schedule(-t); return }
+        // Timed from when it's first on screen, not from the call: a late first frame ate most of it (Windows, 2026-11-23).
+        if !isVisible { start = Date(); t = 0 }
         if t >= Self.duration { dismiss(); return }
         let size = Self.measure(text)
         let area = (pet?.screen ?? NSScreen.main)?.visibleFrame ?? .zero // clear of the Dock, wherever it is

@@ -74,14 +74,12 @@ enum Routine {
     private static let restPoses: [Sprites.Pose] = [.dozeA, .dozeB, .leanBackA, .leanBackB, .pillowA, .pillowB]
     static func resting(_ pose: Sprites.Pose) -> Bool { restPoses.contains(pose) }
 
-    /// Asleep at the desk: head on the arms, leaning back, or cheek on one arm. The way comes from the
-    /// name seed and the twenty-minute stretch of the clock, so every screen shows a friend sleeping the
-    /// same way without a word between them. Still for the first three minutes, then breathing deeply,
-    /// more slowly after ten.
+    /// Asleep at the desk, head on the arms: leaning back and cheek on one arm looked ugly sitting up
+    /// (2026-11-23), so they stay drawn but unused; seed and unixSeconds stay for the callers.
+    /// Still for the first three minutes, then breathing deeply, more slowly after ten.
     static func restPose(_ ticks: Int, seed: Int, restSeconds: Double, unixSeconds: Int64) -> Sprites.Pose {
-        let way = Int((Int64(seed) + unixSeconds / 1200) % 3)
         let deep = restSeconds >= 180 && ticks / (restSeconds >= 600 ? 12 : 8) % 2 == 1
-        return restPoses[way * 2 + (deep ? 1 : 0)]
+        return deep ? .dozeB : .dozeA
     }
 
     private static let sleepLines = ["5분만…", "음냐…", "다 외웠는데…"]
