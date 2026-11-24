@@ -7,8 +7,12 @@ import ServiceManagement
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: AppController?
     private var terminating = false
+    private var awake: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A menu bar app with its desk closed gets App Nap: a friend's call reached it late and the peek's timers
+        // stalled. Kept out of it for good; idle sleep is still allowed.
+        awake = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep, reason: "친구가 부르면 바로 알리기")
         controller = AppController()
         // Opened at login: just the menu bar face, until I open it or a friend calls. Windows: --login.
         let launch = NSAppleEventManager.shared().currentAppleEvent
@@ -231,11 +235,19 @@ final class AppController: NSObject, NSMenuDelegate {
             self.signalledTag = tag
             self.updater.check()
         }
-        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.updater.check(); self?.afterSleep() }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.updater.check(); self?.afterSleep(); Room.reconnectStreams() }
         networkMonitor.pathUpdateHandler = { [weak self] path in
-            if path.status == .satisfied { DispatchQueue.main.async { self?.updater.check() } }
+            let up = path.status == .satisfied
+            DispatchQueue.main.async { self?.networkChanged(up) }
         }
         networkMonitor.start(queue: DispatchQueue(label: "StudyPet.reconnect"))
+    }
+
+    private var online = true // the first update is the path at launch, when the streams are just starting
+    /// Back online (Wi-Fi rejoined): reconnect the room streams now, not when the dead ones time out.
+    private func networkChanged(_ up: Bool) {
+        if up { updater.check(); if !online { Room.reconnectStreams() } }
+        online = up
     }
 
     private var nickname: String { Settings.get("name") }

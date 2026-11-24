@@ -248,9 +248,17 @@ final class Room: @unchecked Sendable {
     private static let stream: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 128
-        config.timeoutIntervalForRequest = 120 // Firebase sends a keep-alive every 30 s
+        config.timeoutIntervalForRequest = 75 // Firebase sends a keep-alive every 30 s; Windows: Room.StallTimeout
         return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
     }()
+
+    /// After sleep or a Wi-Fi change the old streams can be dead without saying so until the timeout: drop
+    /// them, and not the writes sharing the session, so every listener reconnects at once.
+    static func reconnectStreams() {
+        stream.getAllTasks { tasks in
+            for task in tasks where task.originalRequest?.value(forHTTPHeaderField: "Accept") == "text/event-stream" { task.cancel() }
+        }
+    }
 
     private let invite: Invite
     private let me: String
@@ -443,13 +451,14 @@ final class Room: @unchecked Sendable {
                 }
             } catch {
                 if Task.isCancelled { return }
+                if (error as? URLError)?.code == .cancelled { continue } // reconnectStreams: straight back, no error shown
                 report(describe(error), path: path)
             }
             if revoked { continue }
 
-            // Dropped or refused: try again, backing off to once a minute.
+            // Dropped or refused: try again, backing off to every 15 s.
             do { try await Task.sleep(nanoseconds: wait * 1_000_000_000) } catch { return }
-            wait = min(wait * 2, 60)
+            wait = min(wait * 2, 15) // a call gets through soon after the Wi-Fi is back, as on Windows
         }
     }
 
